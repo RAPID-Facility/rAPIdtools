@@ -1,0 +1,108 @@
+# ==============================================================================
+# Build System Configuration (PEP 517)
+# ==============================================================================
+# This section tells tools like pip how to build your project.
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+
+# ==============================================================================
+# Project Metadata (PEP 621)
+# ==============================================================================
+# This is the core information about your installable package.
+[project]
+name = "rapidtools"
+version = "0.1.0"
+description = "A toolkit for damage detection in regional assets using AI and geospatial data."
+readme = "README.md"
+authors = [
+  { name = "UW RAPID", email = "uwrapid@uwrapid.org" },
+]
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+classifiers = [
+    # Full list: https://pypi.org/classifiers/
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+keywords = ["gis", "geospatial", "damage detection", "computer vision", "shapely"]
+
+# --- Core Dependencies ---
+# These are the libraries your application ALWAYS needs to run.
+dependencies = [
+    "numpy",
+    "pillow",
+    "rasterio",
+    "requests",
+    "shapely >= 2.0",
+    "tqdm"
+]
+
+# --- Optional Dependencies ---
+# These are for specific use cases (testing, development).
+# Install with: pip install .[test] or pip install .[dev]
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-cov", # For checking test coverage
+]
+dev = [
+    "rapidtools[test]", 
+    "ruff",             
+    "black",            
+    "mypy",             
+    "sphinx",   
+    "shibuya",     
+]
+
+# --- Project URLs ---
+# These are helpful links that will be displayed on PyPI if you publish the package.
+[project.urls]
+"Homepage" = "https://github.com/your_username/rapidtools"
+"Repository" = "https://github.com/your_username/rapidtools"
+"Bug Tracker" = "https://github.com/your_username/rapidtools/issues"
+
+
+# ==============================================================================
+# Tool Configurations
+# ==============================================================================
+# This section centralizes configuration for your development tools.
+
+# --- Ruff (Linter & Formatter) ---
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+select = [
+    "E", "W", "F", "I", "UP", "B",
+]
+
+# --- Black (Code Formatter) ---
+[tool.black]
+line-length = 88
+target-version = ['py311']
+
+# --- MyPy (Static Type Checker) ---
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+ignore_missing_imports = true
+strict = true
+
+# --- Pytest (Testing Framework) ---
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q --cov=src --cov-report=term-missing"
+testpaths = [
+    "tests",
+]
