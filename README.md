@@ -27,7 +27,7 @@ The library is built with a clean, decoupled architecture, making it easy to ext
 Currently, `rapidtools` is under development. To install it directly from the repository for use in your own projects:
 
 ```bash
-pip install git+https://github.com/your-username/rapidtools.git
+pip install git+https://github.com/RAPID-Facility/rAPIdtools
 ```
 
 ## Project Structure
