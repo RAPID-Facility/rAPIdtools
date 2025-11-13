@@ -1,6 +1,5 @@
 # rAPIdtools
 
-[![Python Package CI](https://github.com/your-username/rapidtools/actions/workflows/python-ci.yml/badge.svg)](https://github.com/your-username/rapidtools/actions/workflows/python-ci.yml)
 [![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 
 A toolkit for damage detection in regional assets using AI and geospatial data.
@@ -29,6 +28,7 @@ Currently, `rapidtools` is under development. To install it directly from the re
 
 ```bash
 pip install git+https://github.com/your-username/rapidtools.git
+```
 
 ## Project Structure
 
@@ -38,8 +38,6 @@ The project follows a clean, modern Python architecture to separate concerns:
 *   **`src/rapidtools/data_sources/`**: Contains **clients** for fetching data from external APIs (e.g., `MapillaryClient`).
 *   **`src/rapidtools/inference/`**: Contains **wrappers** for running ML models (e.g., `DamagePredictor`).
 *   **`src/rapidtools/application/`** (or `services/`): Contains the **business logic** and **workflows** that orchestrate the other components.
-
----
 
 ## Documentation
 
@@ -57,8 +55,6 @@ The official documentation is generated using [Sphinx](https://www.sphinx-doc.or
 
 3.  **Open the documentation:**
     Open the file `docs/build/html/index.html` in your web browser to view the site.
-
----
 
 ## License
 
