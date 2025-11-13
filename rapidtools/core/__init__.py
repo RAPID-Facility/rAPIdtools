@@ -35,8 +35,12 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 11-11-2025
+# 11-12-2025
 
 from .bounding_box import BoundingBox
-from .polygon import Polygon
+from .image_asset import ImageAsset
+from .infrastructure_asset import InfrastructureAsset
+from .infrastructure_asset import InfrastructureAssetCollection
+from .polygon_region import PolygonRegion
+
 
