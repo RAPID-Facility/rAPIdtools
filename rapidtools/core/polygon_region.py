@@ -42,7 +42,7 @@ from shapely.geometry import Polygon as ShapelyPolygon
 from .region import Region
 from .bounding_box import BoundingBox
 
-class Polygon(Region):
+class PolygonRegion(Region):
     """
     Represents a geographical region defined by a list of vertices.
     """
