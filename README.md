@@ -1,1 +1,65 @@
-# AI-Damage-Assessment
+# rAPIdtools
+
+[![Python Package CI](https://github.com/your-username/rapidtools/actions/workflows/python-ci.yml/badge.svg)](https://github.com/your-username/rapidtools/actions/workflows/python-ci.yml)
+[![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
+
+A toolkit for damage detection in regional assets using AI and geospatial data.
+
+## Overview
+
+`rapidtools` is a Python package designed to streamline the process of analyzing infrastructure assets (such as buildings, bridges, and roads) from various imagery sources. It provides a robust, object-oriented framework for representing geospatial data and leverages powerful AI vision models to perform tasks like damage detection and description.
+
+The library is built with a clean, decoupled architecture, making it easy to extend with new data sources, AI models, and analysis workflows.
+
+## Key Features
+
+*   **Domain-Driven Design:** A core set of intuitive, type-hinted classes (`InfrastructureAsset`, `ImageAsset`, `Region`, `BoundingBox`) to represent your data in a structured way.
+*   **Geospatial Power:** Built on top of `shapely` for robust geometry handling, including automatic tiling of large bounding boxes for efficient processing.
+*   **Multi-AI Provider Support:** Includes swappable clients for interacting with leading vision models, including:
+    *   OpenAI (GPT-4o, etc.)
+    *   Google (Gemini, Llama on Vertex AI)
+    *   Anthropic (Claude 3.5 Sonnet, etc.)
+    *   And more...
+*   **Concurrent Batch Processing:** High-performance, multi-threaded utilities for processing entire directories of images with progress bars and automatic retries.
+*   **Professional Tooling:** Comes with a complete setup for testing (`pytest`), linting (`ruff`), formatting (`black`), and type-checking (`mypy`).
+
+## Installation
+
+Currently, `rapidtools` is under development. To install it directly from the repository for use in your own projects:
+
+```bash
+pip install git+https://github.com/your-username/rapidtools.git
+
+## Project Structure
+
+The project follows a clean, modern Python architecture to separate concerns:
+
+*   **`src/rapidtools/core/`**: Contains the **core domain models** (`Region`, `InfrastructureAsset`, `ImageAsset`). These are the **"nouns"** of the application.
+*   **`src/rapidtools/data_sources/`**: Contains **clients** for fetching data from external APIs (e.g., `MapillaryClient`).
+*   **`src/rapidtools/inference/`**: Contains **wrappers** for running ML models (e.g., `DamagePredictor`).
+*   **`src/rapidtools/application/`** (or `services/`): Contains the **business logic** and **workflows** that orchestrate the other components.
+
+---
+
+## Documentation
+
+The official documentation is generated using [Sphinx](https://www.sphinx-doc.org/) and can be built locally.
+
+1.  **Navigate to the docs directory:**
+    ```bash
+    cd docs
+    ```
+
+2.  **Build the HTML:**
+    ```bash
+    make html
+    ```
+
+3.  **Open the documentation:**
+    Open the file `docs/build/html/index.html` in your web browser to view the site.
+
+---
+
+## License
+
+This project is licensed under the [BSD-3-Clause License](https://opensource.org/licenses/BSD-3-Clause). See the [LICENSE](LICENSE) file for details.
