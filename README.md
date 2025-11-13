@@ -34,10 +34,10 @@ pip install git+https://github.com/your-username/rapidtools.git
 
 The project follows a clean, modern Python architecture to separate concerns:
 
-*   **`src/rapidtools/core/`**: Contains the **core domain models** (`Region`, `InfrastructureAsset`, `ImageAsset`). These are the **"nouns"** of the application.
-*   **`src/rapidtools/data_sources/`**: Contains **clients** for fetching data from external APIs (e.g., `MapillaryClient`).
-*   **`src/rapidtools/inference/`**: Contains **wrappers** for running ML models (e.g., `DamagePredictor`).
-*   **`src/rapidtools/application/`** (or `services/`): Contains the **business logic** and **workflows** that orchestrate the other components.
+*   `rapidtools/core/`: Contains the **core domain models** (`Region`, `InfrastructureAsset`, `ImageAsset`). These are the **"nouns"** of the application.
+*   `rapidtools/data_sources/`: Contains **clients** for fetching data from external APIs (e.g., `MapillaryClient`).
+*   `rapidtools/inference/`: Contains **wrappers** for running ML models (e.g., `DamagePredictor`).
+*   `rapidtools/workflows/`: Contains the **workflows** that combines all components.
 
 ## Documentation
 
