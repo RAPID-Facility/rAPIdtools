@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 11-11-2025
+# 11-13-2025
 
 import math
 import logging
@@ -78,6 +78,29 @@ class BoundingBox(Region):
     def get_bounding_box(self) -> Self:
         """A BoundingBox's bounding box is itself."""
         return self
+
+    def split(self) -> list[Self]:
+        '''
+        Splits the bounding box into four equal-sized quadrants.
+
+        This method is used by the API client for adaptive tiling when a tile
+        is too dense with features and needs to be subdivided.
+
+        Returns:
+            A list of four new BoundingBox objects for the quadrants:
+            [bottom-left, bottom-right, top-left, top-right].
+        '''
+        min_lon, min_lat, max_lon, max_lat = self._geom.bounds
+        mid_lon = (min_lon + max_lon) / 2
+        mid_lat = (min_lat + max_lat) / 2
+
+        # Create the four new bounding boxes using the class initializer
+        bottom_left = BoundingBox(min_lon, min_lat, mid_lon, mid_lat)
+        bottom_right = BoundingBox(mid_lon, min_lat, max_lon, mid_lat)
+        top_left = BoundingBox(min_lon, mid_lat, mid_lon, max_lat)
+        top_right = BoundingBox(mid_lon, mid_lat, max_lon, max_lat)
+
+        return [bottom_left, bottom_right, top_left, top_right]
 
 
     def tile_by_area(self, max_area: float = 0.01) -> list[Self]:
