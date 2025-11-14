@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 11-11-2025
+# 11-13-2025
 
 from .mapillary_client import MapillaryClient
-from .orthomosaic_processor import RAPIDUtils
+#from .orthomosaic_processor import RAPIDUtils
