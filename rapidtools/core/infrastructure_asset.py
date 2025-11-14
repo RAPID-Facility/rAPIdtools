@@ -35,92 +35,292 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 11-13-2025
+# 11-14-2025
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
+import json
+import logging
 from typing import Any, Iterator
 
-# Import the other domain objects
+from shapely.geometry.base import BaseGeometry
+from shapely.geometry import shape, mapping
+from shapely.ops import unary_union
+
 from .image_asset import ImageAsset
 from .bounding_box import BoundingBox
 
-# Import shapely for geometry handling
-try:
-    from shapely.geometry.base import BaseGeometry
-    from shapely.geometry import shape
-    from shapely.ops import unary_union
-except ImportError:
-    BaseGeometry = None
-    unary_union = None
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
-
-@dataclass(kw_only=True)
+@dataclass(kw_only=True, repr=False)
 class InfrastructureAsset:
     """
-    Represents a real-world, built-environment asset, such as a building, bridge, or road.
+    Represents a real-world, built-environment asset, such as a building, etc.
 
-    An InfrastructureAsset combines geometric information (its location and shape), a set of
-    descriptive attributes, and a list of related image assets.
+    An InfrastructureAsset combines geometric information (its location and 
+    shape), a set of descriptive attributes, and a list of related image 
+    assets.
 
     Attributes:
-        id (str): A unique identifier for the asset.
-        geometry (BaseGeometry): The geographic shape of the asset, represented
-            by a shapely object (e.g., Polygon, LineString, Point).
-        attributes (dict[str, Any]): A flexible dictionary to hold descriptive
-            properties of the asset (e.g., {'asset_type': 'Building', 'height': 50}).
-        image_assets (list[ImageAsset]): A list of ImageAsset objects associated
-            with this asset.
+        id (str): 
+            A unique identifier for the asset.
+        geometry (BaseGeometry): 
+            The geographic shape of the asset, represented by a shapely object
+            (e.g., Polygon, LineString, Point).
+        attributes (dict[str, Any]): 
+            A flexible dictionary to hold descriptive properties of the asset
+            (e.g., {'asset_type': 'Building', 'height': 50}).
+        image_assets (list[ImageAsset]): 
+            A list of ImageAsset objects associated with this asset.
     """
     id: str
     geometry: BaseGeometry
     attributes: dict[str, Any] = field(default_factory=dict)
     image_assets: list[ImageAsset] = field(default_factory=list)
 
+    # Define the keys to search as a class attribute for easy configuration:
+    _ASSET_TYPE_KEYS: list[str] = [
+        'asset_type', 'type', 'category', 'feature_type'
+        ]
+
     def __post_init__(self):
-        """Validates input after initialization."""
-        if BaseGeometry is None:
-            raise ImportError("Shapely library is required. Please run 'pip install shapely'.")
-        
+        """Validates input after initialization."""        
         if not isinstance(self.geometry, BaseGeometry):
-            raise TypeError(f"The 'geometry' attribute must be a valid shapely geometry object, not {type(self.geometry)}.")
+            raise TypeError(
+                "The 'geometry' attribute must be a valid shapely geometry"
+                f' object, not {type(self.geometry)}.'
+                )
         
         if not self.id:
             raise ValueError("InfrastructureAsset 'id' cannot be empty.")
+    
+    def __repr__(self) -> str:
+        """
+        Provides a compact, developer-friendly representation of the asset.
+        """
+        class_name = self.__class__.__name__
+        geom_type = self.geometry.geom_type
+        asset_type = self.asset_type or 'N/A'
+        
+        return (
+            f"<{class_name} id='{self.id}' "
+            f"asset_type='{asset_type}' "
+            f"geometry='{geom_type}'>"
+        )
 
     @property
     def asset_type(self) -> str | None:
-        """A convenience property to get the asset type from attributes."""
-        return self.attributes.get("asset_type")
+        """
+        A convenience property to get the asset type from attributes.
 
-    def get_attribute(self, key: str, default: Any = None) -> Any:
-        """Safely retrieves a descriptive attribute from the asset."""
-        return self.attributes.get(key, default)
+        It searches a predefined list of keys (e.g., 'asset_type', 'type')
+        and returns the value of the first key found. Returns None if none
+        of the keys are present.
+        """
+        for key in self._ASSET_TYPE_KEYS:
+            # Check if the key exists in the attributes dictionary:
+            if key in self.attributes:
+                # If found, return its value immediately:
+                return self.attributes[key]
+        
+        # If the loop finishes without finding any of the keys, return None:
+        return None
+    
+    def add_attributes(
+            self, 
+            new_attributes: dict[str, Any], 
+            overwrite: bool = False
+        ) -> None:
+        """
+        Adds or updates attributes from a dictionary.
+    
+        Args:
+            new_attributes (Dict[str, Any]): A dictionary of attributes to add.
+            overwrite (bool, optional): If True, existing attributes will be
+                overwritten with new values. If False, existing attributes
+                will be skipped. Defaults to False.
+        """
+        if not isinstance(new_attributes, dict):
+            raise TypeError("Input 'new_attributes' must be a dictionary.")
+    
+        for key, value in new_attributes.items():
+            # Check if the key already exists
+            if key in self.attributes:
+                if overwrite:
+                    # If overwrite is True, update the value and log it for traceability
+                    self.attributes[key] = value
+                    logging.debug(
+                        f"Overwrote attribute '{key}' in asset '{self.id}'."
+                    )
+                else:
+                    # If overwrite is False, skip and inform the user
+                    logging.info(
+                        f"Attribute '{key}' already exists in asset "
+                        "'{self.id}'. Skipping attribute as 'overwrite is set"
+                        'to False.'
+                    )
+            else:
+                # If the key is new, simply add it
+                self.attributes[key] = value
 
-    def add_image_asset(self, image_asset: ImageAsset):
-        """Associates a new ImageAsset with this asset."""
-        if not isinstance(image_asset, ImageAsset):
-            raise TypeError("Can only add ImageAsset objects to an InfrastructureAsset.")
-        self.image_assets.append(image_asset)
+    def add_image_assets(self, *image_assets: Any) -> None:
+        """
+        Associates one or more ImageAsset objects with this asset.
+
+        This method filters the provided arguments, adding only the items
+        that are valid ImageAsset instances. If an argument is not a
+        valid ImageAsset, it is skipped and a warning is logged.
+
+        Args:
+            *image_assets: A variable number of items to add. Only
+                ImageAsset objects will be added.
+        """
+        # Create a temporary list to hold only the valid assets:
+        valid_assets_to_add = []
+
+        # Iterate through all provided arguments:
+        for asset in image_assets:
+            if isinstance(asset, ImageAsset):
+                # If the item is a valid ImageAsset, add it to our list.
+                valid_assets_to_add.append(asset)
+            else:
+                # If the item is NOT a valid ImageAsset, log a warning.
+                # Provide context: which asset is being updated and what the 
+                # invalid type was:
+                logging.warning(
+                    f"Skipping invalid item for asset '{self.id}'. "
+                    f"Expected ImageAsset, but got {type(asset).__name__}."
+                )
+
+        # If found any valid assets, extend the main list:
+        if valid_assets_to_add:
+            self.image_assets.extend(valid_assets_to_add)
+
+
+    
+    def get_attributes(self, *keys: str) -> dict[str, Any]:
+        """
+        Safely retrieves one or more descriptive attributes from the asset.
+
+        If a requested key does not exist, a warning is logged and the key
+        is omitted from the returned dictionary.
+
+        Args:
+            *keys: A variable number of string keys to retrieve.
+
+        Returns:
+            A dictionary containing the keys that were found and their values.
+        """
+        found_attributes = {}
+        for key in keys:
+            # Check if the key exists in the asset's attributes
+            if key in self.attributes:
+                found_attributes[key] = self.attributes[key]
+            else:
+                # If not, log a warning with helpful context (the asset ID)
+                logging.warning(
+                    f"Attribute key '{key}' not found for asset '{self.id}'." 
+                )
+        return found_attributes
 
     @classmethod
-    def from_geojson_feature(cls, geojson_feature: dict[str, Any]) -> "InfrastructureAsset":
-        """
-        A factory method to create an InfrastructureAsset object from a GeoJSON Feature dictionary.
-        """
-        if BaseGeometry is None:
-            raise ImportError("Shapely library is required. Please run 'pip install shapely'.")
+    def from_geojson_feature(
+            cls, 
+            geojson_feature: dict[str, Any]
+            ) -> 'InfrastructureAsset':
+        '''
+       Create an InfrastructureAsset object from a GeoJSON Feature dictionary.
+        '''        
+        if geojson_feature.get('type') != 'Feature':
+            raise ValueError(
+                'Input dictionary must be a valid GeoJSON Feature.'
+            )
         
-        if geojson_feature.get("type") != "Feature":
-            raise ValueError("Input dictionary must be a valid GeoJSON Feature.")
-            
-        asset_id = geojson_feature.get("id") or str(geojson_feature.get("properties", {}).get("id", "no_id"))
+        # Try to get the ID from the top-level 'id' field:
+        asset_id = geojson_feature.get('id')
+        
+        # If not found, try to get it from the 'properties' dictionary:
+        if asset_id is None:
+            properties = geojson_feature.get('properties', {})
+            asset_id = properties.get('id')
+        
+        # If still not found, issue a warning and use a placeholder.
+        if asset_id is None:
+            # This message will be displayed because its level (WARNING) is >= INFO
+            props = geojson_feature.get('properties', {})
+            logging.warning(
+                "GeoJSON feature is missing an 'id'. Using placeholder "
+                f"'no_id'. Properties: {props}"
+            )
+            asset_id = 'no_id'
         
         return cls(
-            id=asset_id,
-            geometry=shape(geojson_feature["geometry"]),
-            attributes=geojson_feature.get("properties", {})
+            id=str(asset_id),  # Ensure the ID is a string
+            geometry=shape(geojson_feature['geometry']),
+            attributes=geojson_feature.get('properties', {})
         )
 
+    def print_info(self) -> None:
+        """
+        Prints a formatted, human-readable summary of the asset's contents
+        to the console.
+        """
+        # Use a helper to pretty-print dictionaries
+        def pretty_dict(d: dict) -> str:
+            return json.dumps(d, indent=4)
+
+        print("\n--- Infrastructure Asset Summary ---")
+        print(f"ID:          {self.id}")
+        print(f"Asset Type:  {self.asset_type or 'N/A'}")
+        print(f"Geometry:    {self.geometry.wkt}")  # WKT is a readable format
+
+        # Display Attributes
+        attr_count = len(self.attributes)
+        print(f"Attributes ({attr_count}):")
+        if self.attributes:
+            print(pretty_dict(self.attributes))
+        else:
+            print("  (No attributes)")
+
+        # Display Image Assets
+        img_count = len(self.image_assets)
+        print(f"Image Assets ({img_count}):")
+        if self.image_assets:
+            for img in self.image_assets:
+                # Assumes ImageAsset has a nice __repr__
+                print(f"  - {img!r}")
+        else:
+            print("  (No image assets)")
+
+        print("------------------------------------\n")
+
+    def to_geojson_feature(self) -> dict[str, Any]:
+        """
+        Converts the InfrastructureAsset into a GeoJSON Feature dictionary.
+
+        The asset's 'id' becomes the feature's 'id'. The asset's 'attributes'
+        are used as the base for the feature's 'properties'. The list of
+        'image_assets' is serialized and added to the 'properties' as well.
+
+        Returns:
+            A dictionary representing a valid GeoJSON Feature.
+        """
+        # Start with a copy of the attributes for the properties dictionary
+        properties = self.attributes.copy()
+        
+        # Serialize image_assets into a list of dictionaries and add to properties
+        # This assumes ImageAsset is a dataclass, making asdict a perfect tool.
+        if self.image_assets:
+            properties['image_assets'] = [asdict(img) for img in self.image_assets]
+
+        return {
+            'type': 'Feature',
+            'id': self.id,
+            'geometry': mapping(self.geometry),  # Convert shapely to GeoJSON
+            'properties': properties
+        }
 
 @dataclass
 class InfrastructureAssetCollection:
@@ -206,3 +406,21 @@ class InfrastructureAssetCollection:
             for feature_geojson in geojson_data.get("features", [])
         ]
         return cls(assets=assets)
+    
+    def to_geojson(self, indent: int | None = None) -> str:
+        """
+        Serializes the entire collection into a GeoJSON FeatureCollection string.
+    
+        Args:
+            indent (int | None): The number of spaces to use for indentation
+                for pretty-printing. If None, the output will be compact.
+                Defaults to None.
+    
+        Returns:
+            A string containing the GeoJSON FeatureCollection.
+        """
+        feature_collection = {
+            'type': 'FeatureCollection',
+            'features': [asset.to_geojson_feature() for asset in self.assets]
+        }
+        return json.dumps(feature_collection, indent=indent)
