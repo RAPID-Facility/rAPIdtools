@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 11-13-2025
+# 11-25-2025
 
 import logging
 from dataclasses import dataclass, field
@@ -66,51 +66,118 @@ class ImageAsset:
         _segmentation_mask (Any | None): A placeholder for future segmentation data.
     """
     path: Path | str
+    id: str | None = field(default=None) 
     properties: dict[str, Any] = field(default_factory=dict)
     
-    # Private attributes for lazily-loaded data
-    _pil_image: PillowImage.Image | None = field(default=None, repr=False, init=False)
-    _segmentation_mask: Any | None = field(default=None, repr=False, init=False)
+    _pil_image: PillowImage.Image | None = field(
+        default=None, 
+        repr=False, 
+        init=False
+    )
+    _segmentation_mask: Any | None = field(
+        default=None, 
+        repr=False, 
+        init=False
+    )
 
     def __post_init__(self):
         """
-        Validates and normalizes input after the object has been initialized.
+        Validate and normalize initialization arguments.
+
+        Behavior:
+        - Converts a string path to a pathlib.Path instance.
+        - Resolves the path to an absolute path if it is relative, logging
+          a warning when resolution is needed.
+        - Verifies that the file exists at the resolved path; raises an error
+          if it does not.
+        - If id is not provided, sets it to the filename stem.
+        
+        Raises:
+            ValueError: If the image file does not exist at the specified path.
         """
-        # 2. Add logic to convert a string path into a Path object.
-        # This ensures that self.path is ALWAYS a Path object for the rest of the class methods.
+        # Ensure that self.path is ALWAYS a Path object:
         if isinstance(self.path, str):
             self.path = Path(self.path)
         
-        # The rest of the validation logic can now safely assume self.path is a Path object.
         if not self.path.is_absolute():
-            logging.warning(f"ImageAsset path is not absolute: '{self.path}'. Resolving to absolute path.")
+            logging.warning(
+                f"ImageAsset path is not absolute: '{self.path}'. Resolving to"
+                ' absolute path.'
+                )
             self.path = self.path.resolve()
         
         if not self.path.exists():
-            raise ValueError(f"Image file does not exist at the specified path: {self.path}")
-
-    @property
-    def filename(self) -> str:
-        """The name of the image file, including its extension (e.g., 'image.jpg')."""
-        return self.path.name
-
-    @property
-    def stem(self) -> str:
-        """The filename without the extension (e.g., 'image')."""
-        return self.path.stem
+            raise ValueError(
+                'Image file does not exist at the specified path: '
+                f'{self.path}'
+                )
+            
+        # If no ID was provided, default to the filename without extension:
+        if self.id is None:
+            self.id = self.path.stem    
 
     @property
     def directory(self) -> Path:
-        """The parent directory of the image file."""
+        """
+        The parent directory of the image file.
+    
+        Returns:
+            Path: The directory containing the image as a Path object.
+        """
         return self.path.parent
+    
+    @property
+    def filename(self) -> str:
+        """
+        The filename of the image, including its extension.
+    
+        Examples:
+            'photo.jpg', 'satellite_image.tif'
+    
+        Returns:
+            str: The image filename as a string.
+        """
+        return self.path.name
+    
+    @property
+    def segmentation_mask(self) -> Any | None:
+        """
+        The segmentation mask associated with this image, if any.
+    
+        This property exposes the current value of the internal
+        _segmentation_mask attribute, which can be used to store
+        arbitrary mask representations (e.g., an array, another image
+        object, or a custom mask type).
+    
+        Returns:
+            The segmentation mask object if set, otherwise ``None``.
+        """
+        return self._segmentation_mask
+    
+    @property
+    def stem(self) -> str:
+        """
+        The filename of the image without its extension.
+    
+        Examples:
+            For 'photo.jpg' -> 'photo'
+            For '/data/images/scene_01.tif' -> 'scene_01'
+    
+        Returns:
+            str: The filename stem as a string.
+        """
+        return self.path.stem
+
 
     def get_property(self, key: str, default: Any = None) -> Any:
         """
         Safely retrieves a metadata property from the asset.
 
         Args:
-            key (str): The name of the property to retrieve (e.g., 'compass_angle').
-            default (Any, optional): The value to return if the key is not found.
+            key (str): 
+                The name of the property to retrieve (e.g., 'compass_angle').
+            default (Any, optional): 
+                The value to return if the key is not found.
 
         Returns:
             The value of the property, or the default value.
@@ -122,7 +189,8 @@ class ImageAsset:
         Loads the image data using the Pillow library and caches it.
 
         This method uses lazy loading: the image is only loaded from disk the
-        first time this method is called. Subsequent calls return the cached object.
+        first time this method is called. Subsequent calls return the cached 
+        object.
 
         Returns:
             PillowImage.Image: The loaded image object.
@@ -157,7 +225,3 @@ class ImageAsset:
         logging.info(f"Attaching segmentation mask to {self.filename}")
         self._segmentation_mask = mask_data
     
-    @property
-    def segmentation_mask(self) -> Any | None:
-        """Returns the attached segmentation mask, if it exists."""
-        return self._segmentation_mask
