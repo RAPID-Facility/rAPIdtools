@@ -341,6 +341,10 @@ class MapillaryClient:
             )
             split_threshold = self.API_FEATURE_LIMIT
 
+        # Format the dates so that they work with the API:
+        formatted_start = self._format_date(start_date, is_end_date=False)
+        formatted_end = self._format_date(end_date, is_end_date=True)
+
         # Perform initial tiling of the specified bounding box using the 
         # specified maximum area:
         logging.info(
@@ -382,9 +386,9 @@ class MapillaryClient:
                       if creator_username:
                           params['creator_username'] = creator_username
                       if start_date:
-                          params['start_captured_at'] = start_date
+                          params['start_captured_at'] = formatted_start
                       if end_date:
-                          params['end_captured_at'] = end_date
+                          params['end_captured_at'] = formatted_end
                       
                       
                       response = self.session.get(api_endpoint, params=params)
@@ -464,6 +468,51 @@ class MapillaryClient:
         except requests.exceptions.RequestException as e:
             logging.error(f"Download failed for {url}: {e}")
             return False
+
+    def _format_date(self, date_str: str, is_end_date: bool = False) -> str:
+        """
+        Normalize a date string to ISO 8601 format with a UTC suffix (Z).
+        
+        This helper ensures that date strings used in API queries include a
+        full timestamp and an explicit UTC timezone (Z). It supports:
+        - Plain dates: "YYYY-MM-DD"
+          - Start date (default): "2025-06-01" -> "2025-06-01T00:00:00Z"
+          - End date: "2025-06-01" -> "2025-06-01T23:59:59Z"
+        - Date-times without timezone:
+          - "2025-06-01T12:00:00" -> "2025-06-01T12:00:00Z"
+        - Date-times that already include "Z" or a "+/-offset" are returned
+          unchanged.
+        
+        Args:
+            date_str (str):
+                The input date or datetime string to normalize. If empty or
+                falsy, an empty string is returned.
+            is_end_date (bool):
+                Whether the date represents an end-of-range boundary. If True
+                and the input is a plain date (YYYY-MM-DD), the time
+                component is set to 23:59:59; otherwise, it is set to 00:00:00.
+                Defaults to False.
+        
+        Returns:
+            str:
+                The normalized ISO 8601 datetime string with a "Z" timezone
+                suffix, or an empty string if the input was empty.
+        """
+        if not date_str:
+            return ''
+            
+        # If the date  input is a simple date (YYYY-MM-DD), append time and Z
+        if len(date_str) == 10 and date_str.count('-') == 2:
+            # If it is an end date, grab the very end of that day:
+            suffix = "T23:59:59Z" if is_end_date else "T00:00:00Z"
+            return f"{date_str}{suffix}"
+            
+        # If the date has time but is missing timezone info (no Z or +offset)
+        # e.g. "2025-06-01T12:00:00" -> "2025-06-01T12:00:00Z":
+        if 'Z' not in date_str and '+' not in date_str:
+            return f"{date_str}Z"
+
+        return date_str
 
     def _validate_fields(
             self, 
