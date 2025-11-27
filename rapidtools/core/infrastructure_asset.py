@@ -35,12 +35,12 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 11-25-2025
+# 11-26-2025
 
 from dataclasses import dataclass, field, asdict
 import json
 import logging
-from typing import Any, Iterator
+from typing import Any, ClassVar, Iterator
 
 from shapely.geometry.base import BaseGeometry
 from shapely.geometry import shape, mapping
@@ -48,11 +48,6 @@ from shapely.ops import unary_union
 
 from .image_asset import ImageAsset
 from .bounding_box import BoundingBox
-
-logging.basicConfig(
-    level=logging.INFO, 
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
 
 @dataclass(kw_only=True, repr=False)
 class InfrastructureAsset:
@@ -69,9 +64,9 @@ class InfrastructureAsset:
     image_assets: list[ImageAsset] = field(default_factory=list)
 
     # Define the keys to search as a class attribute for easy configuration:
-    _ASSET_TYPE_KEYS: list[str] = [
+    _ASSET_TYPE_KEYS: ClassVar[list[str]] = [
         'asset_type', 'type', 'category', 'feature_type'
-        ]
+    ]
 
     def __post_init__(self):
         """
