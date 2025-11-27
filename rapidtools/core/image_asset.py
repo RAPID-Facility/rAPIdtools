@@ -98,13 +98,9 @@ class ImageAsset:
         # Ensure that self.path is ALWAYS a Path object:
         if isinstance(self.path, str):
             self.path = Path(self.path)
-        
-        if not self.path.is_absolute():
-            logging.warning(
-                f"ImageAsset path is not absolute: '{self.path}'. Resolving to"
-                ' absolute path.'
-                )
-            self.path = self.path.resolve()
+
+        # Resolve the path to a full path:
+        self.path = self.path.resolve()
         
         if not self.path.exists():
             raise ValueError(
