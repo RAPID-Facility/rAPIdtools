@@ -39,9 +39,23 @@
 
 """Initializations and metadata for the rapidtools package."""
 
+import logging
+import sys
 
 # Package metadata:
 name = 'rapidtools'
 __version__ = '0.1.0'
 __copyright__ = 'Copyright (c) 2025, The University of Washington'
 __license__ = 'BSD 3-Clause License'
+
+# Logger formatting:
+_LOG_FORMAT = '%(asctime)s- %(levelname)s: %(message)s'
+_DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
+
+logging.basicConfig(
+    level=logging.INFO,
+    format=_LOG_FORMAT,
+    datefmt=_DATE_FORMAT,
+    stream=sys.stdout,
+    force=True
+)
