@@ -35,39 +35,27 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 11-25-2025
+# 11-28-2025
 
 import logging
+import requests
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-# Pillow is an optional dependency for image loading
-try:
-    from PIL import Image as PillowImage
-except ImportError:
-    PillowImage = None
+from PIL import Image as PillowImage
 
 
 @dataclass(kw_only=True)
 class ImageAsset:
     """
-    Represents a single image asset, including its location, metadata,
-    and potentially related data like segmentation masks.
-
-    This class uses pathlib.Path for robust and OS-agnostic path handling.
-
-    Attributes:
-        path (Path): The full, absolute path to the image file.
-        properties (dict[str, Any]): A flexible dictionary to hold optional metadata
-            such as 'compass_angle', 'altitude', 'timestamp', etc.
-        _pil_image (PillowImage.Image | None): A private attribute to hold the
-            lazily-loaded image data from the Pillow library.
-        _segmentation_mask (Any | None): A placeholder for future segmentation data.
+    A single image asset, including its location and metadata.
     """
     path: Path | str
     id: str | None = field(default=None) 
     properties: dict[str, Any] = field(default_factory=dict)
+    
+    allow_missing_file: bool = field(default=False, repr=False)
     
     _pil_image: PillowImage.Image | None = field(
         default=None, 
@@ -102,11 +90,12 @@ class ImageAsset:
         # Resolve the path to a full path:
         self.path = self.path.resolve()
         
-        if not self.path.exists():
+        # Only check existence of the iamge if we are NOT allowing missing
+        # files:
+        if not self.allow_missing_file and not self.path.exists():
             raise ValueError(
-                'Image file does not exist at the specified path: '
-                f'{self.path}'
-                )
+                f'Image file does not exist at: {self.path}'
+            )
             
         # If no ID was provided, default to the filename without extension:
         if self.id is None:
@@ -136,6 +125,27 @@ class ImageAsset:
         return self.path.name
     
     @property
+    def is_downloaded(self) -> bool:
+        """
+        Check whether the image file exists on disk and is non-empty.
+
+        This property verifies that:
+        - The path exists.
+        - The path points to a regular file (not a directory).
+        - The file size is greater than zero bytes.
+
+        Returns:
+            bool: 
+                ``True`` if a non-empty image file exists at image path, 
+                otherwise ``False``.
+        """
+        return (
+            self.path.exists()
+            and self.path.is_file()
+            and self.path.stat().st_size > 0
+        )
+    
+    @property
     def segmentation_mask(self) -> Any | None:
         """
         The segmentation mask associated with this image, if any.
@@ -163,6 +173,79 @@ class ImageAsset:
             str: The filename stem as a string.
         """
         return self.path.stem
+
+    def download(
+            self, 
+            url: str | None = None, 
+            url_key: str = 'thumb_original_url',
+            overwrite: bool = False, 
+            session: requests.Session | None = None
+        ):
+        """
+        Downloads the image file to self.path.
+
+        Args:
+            url (str, optional): 
+                The direct download link. If provided, this takes precedence 
+                over properties.
+            url_key (str): 
+                The key in self.properties to look for if 'url' is None.
+                Defaults to 'thumb_original_url'. 
+                Useful for downloading specific sizes (e.g. 'thumb_2048_url').
+            overwrite (bool): 
+                If True, forces download even if file exists.
+            session (requests.Session, optional): 
+                An existing requests session to speed up connections.
+        
+        Raises:
+            ValueError: If no URL is provided or found in properties.
+            IOError: If the download fails.
+        """
+        # Check if the image needs to be downloaded:
+        if self.is_downloaded and not overwrite:
+            logging.info(
+                f'Skipping download, file already exists: {self.filename}'
+            )
+            return
+
+        # Determine the image URL:
+        # Priority: Explicit URL arg -> Property lookup -> Fail
+        target_url = url or self.properties.get(url_key)
+        
+        # Check if a valid URL is found, if not Show available keys for
+        # debugging:
+        if not target_url:
+            available_keys = ", ".join(k for k in self.properties.keys() if 'url' in k)
+            raise ValueError(
+                f"Cannot download {self.id}: URL not provided and property "
+                f"'{url_key}' not found.\nAvailable URL-like keys: "
+                f'{available_keys}'
+            )
+
+        # Download image:
+        try:
+            logging.info(f"Downloading {self.id}...")
+            
+            # Ensure directory exists:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Use provided session or create a temporary one:
+            requester = session if session else requests
+            
+            with requester.get(target_url, stream=True, timeout=30) as r:
+                r.raise_for_status()
+                with open(self.path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+            
+            logging.info(f"Successfully downloaded: {self.filename}")
+            
+        except Exception as e:
+            # If download fails (e.g., partial file), clean up:
+            if self.path.exists():
+                self.path.unlink() 
+            logging.error(f"Download failed for {self.id}: {e}")
+            raise
 
 
     def get_property(self, key: str, default: Any = None) -> Any:
@@ -198,13 +281,15 @@ class ImageAsset:
         if self._pil_image:
             return self._pil_image
 
-        if PillowImage is None:
-            raise ImportError("Pillow library is required to load image data. Please run 'pip install Pillow'.")
+        if not self.is_downloaded:
+            raise FileNotFoundError(
+                f'File {self.path} not found. Please call the download method '
+                'to retrieve the image file.'
+            )
         
         try:
             logging.info(f"Loading image data from: {self.path}")
             self._pil_image = PillowImage.open(self.path)
-            # You might want to load it into memory to close the file handle
             self._pil_image.load() 
             return self._pil_image
         except IOError as e:
