@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 12-03-2025
+# 12-04-2025
 
 import math
 from datetime import datetime, timezone
@@ -118,31 +118,38 @@ class TileUtils:
             - ``lat`` is latitude in degrees (WGS84).
         """
         n = 2.0 ** tile_z
+        
+        # Calculate global X/Y in Tile Space:
         x_val = tile_x + (shape_x / extent)
         y_val = tile_y + (shape_y / extent)
-
+        
+        # Calculate the longitude:
         lon = (x_val / n) * 360.0 - 180.0
+        
+        # Latitude involves the inverse Mercator projection:
         lat_rad = math.atan(math.sinh(math.pi * (1 - 2 * y_val / n)))
         lat = math.degrees(lat_rad)
+        
         return lon, lat
 
     @staticmethod
-    def ms_to_date_utc(timestamp_ms: int) -> datetime.date:
-        """
-        Convert a millisecond UNIX timestamp to a UTC date.
-
-        The input is interpreted as milliseconds since the Unix epoch
-        (1970-01-01T00:00:00Z). Time-of-day information is discarded and a
-        ``datetime.date`` in UTC is returned.
-
+    def ms_to_date_utc(timestamp_ms: int) -> str:
+        """Convert a millisecond UNIX timestamp to a UTC date string.
+    
+        The input timestamp is interpreted as milliseconds since the Unix epoch
+        (1970-01-01T00:00:00Z). The function converts it to a UTC date and
+        returns an ISO 8601 formatted string (YYYY-MM-DD).
+    
         Args:
-            timestamp_ms: Milliseconds since Unix epoch in UTC.
-
+            timestamp_ms: Timestamp in milliseconds since Unix epoch (UTC).
+    
         Returns:
-            A ``datetime.date`` representing the corresponding UTC calendar date.
+            A Unicode string representing the UTC date in ISO format 
+            (YYYY-MM-DD).
         """
         seconds = timestamp_ms / 1000.0
-        return datetime.fromtimestamp(seconds, tz=timezone.utc).date()
+        dt_object = datetime.fromtimestamp(seconds, tz=timezone.utc)
+        return dt_object.date().isoformat()
 
     @staticmethod
     def get_enclosing_zoom(bbox: "BoundingBox") -> int:
@@ -168,12 +175,21 @@ class TileUtils:
         """
         min_lon, min_lat, max_lon, max_lat = bbox.shapely.bounds
 
+        # Iterate from high zoom (22) down to 14 (inclusive)
         for z in range(22, 13, -1):
+            # Calculate tile coords for Top-Left (North-West):
             x1, y1 = TileUtils.latlon_to_tile(max_lat, min_lon, z)
+            
+            # Calculate tile coords for Bottom-Right (South-East):
             x2, y2 = TileUtils.latlon_to_tile(min_lat, max_lon, z)
-
+            
+            # Check if the integer parts are the same, i.e., they are in the
+            # same tile:
             if int(x1) == int(x2) and int(y1) == int(y2):
                 return z
+                
+        # If it crosses a tile boundary even at zoom 14, return the lowest 
+        # allowed zoom.
         return 14
 
     @staticmethod
@@ -205,17 +221,28 @@ class TileUtils:
             including all integer tiles from ``min_x..max_x`` and
             ``min_y..max_y`` inclusive.
         """
+        # Extract the WGS84 bounds from the Shapely geometry:
+        # min/max longitude (x), min/max latitude (y)
         min_lon, min_lat, max_lon, max_lat = bbox.shapely.bounds
 
+        # If no zoom is provided, pick the highest zoom at which the entire
+        # bbox fits into a single tile. This usually yields 1 tile:
         if zoom is None:
             zoom = TileUtils.get_enclosing_zoom(bbox)
 
+        # Convert the north-west (max_lat, min_lon) and south-east
+        # (min_lat, max_lon) corners of the bbox into fractional tile
+        # coordinates at the chosen zoom:
         min_x_float, min_y_float = TileUtils.latlon_to_tile(max_lat, min_lon, zoom)
         max_x_float, max_y_float = TileUtils.latlon_to_tile(min_lat, max_lon, zoom)
 
+        # Take the integer parts to get the tile index range that covers the 
+        # bbox:
         min_x, min_y = int(min_x_float), int(min_y_float)
         max_x, max_y = int(max_x_float), int(max_y_float)
 
+        # Build the full list of tiles in the inclusive [min_x..max_x] x
+        # [min_y..max_y] range:
         tiles: list[tuple[int, int, int]] = []
         for x in range(min_x, max_x + 1):
             for y in range(min_y, max_y + 1):
