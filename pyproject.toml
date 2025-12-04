@@ -41,7 +41,9 @@ keywords = ["gis", "geospatial", "damage detection", "computer vision", "shapely
 # --- Core Dependencies ---
 # These are the libraries your application ALWAYS needs to run.
 dependencies = [
+    "mapbox_vector_tile",
     "numpy",
+    "pandas",
     "pillow",
     "rasterio",
     "requests",
