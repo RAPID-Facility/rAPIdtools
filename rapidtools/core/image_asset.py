@@ -35,15 +35,26 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 11-28-2025
+# 12-03-2025
 
+from __future__ import annotations
+
+import json
 import logging
-import requests
+from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+import pandas as pd
+import requests
 from PIL import Image as PillowImage
+
+if TYPE_CHECKING:
+    # This import ONLY happens when type checking.
+    # It is ignored when the code actually runs.
+    from .bounding_box import BoundingBox 
 
 
 @dataclass(kw_only=True)
@@ -306,3 +317,231 @@ class ImageAsset:
         logging.info(f"Attaching segmentation mask to {self.filename}")
         self._segmentation_mask = mask_data
     
+class ImageCollection:
+    """
+    A container class for managing a group of ImageAsset objects.
+
+    This class provides utilities for filtering, batch downloading, and 
+    exporting metadata for a collection of images.
+    """
+
+    def __init__(self, assets: list[ImageAsset] | None = None) -> None:
+        """
+        Initializes the ImageCollection.
+
+        Args:
+            assets: An optional list of ImageAsset objects to initialize the 
+                collection with. Defaults to an empty list.
+        """
+        self._assets: list[ImageAsset] = assets if assets else []
+
+    def __repr__(self) -> str:
+        return f"<ImageCollection containing {len(self)} image assets>"
+
+    def __len__(self) -> int:
+        return len(self._assets)
+
+    def __iter__(self) -> Iterator[ImageAsset]:
+        return iter(self._assets)
+
+    def __getitem__(self, index: int) -> ImageAsset:
+        return self._assets[index]
+
+    def add(
+        self, 
+        items: ImageAsset | list[ImageAsset], 
+        overwrite: bool = False
+    ) -> None:
+        """
+        Adds one or more assets to the collection.
+
+        This method accepts either a single ImageAsset object or a list of 
+        objects. It checks for duplicates based on the asset ID.
+
+        Args:
+            items: A single ImageAsset object or a list of ImageAsset objects
+                to add.
+            overwrite: If True, existing assets with the same ID will be 
+                replaced by the new ones. If False, duplicates are ignored 
+                (the existing asset is kept). Defaults to False.
+        """
+        # Normalize input to a list for uniform processing:
+        assets_to_add = items if isinstance(items, list) else [items]
+        
+        # Create a lookup map of {id: index} for the current collection:
+        id_map = {asset.id: i for i, asset in enumerate(self._assets)}
+
+        for asset in assets_to_add:
+            # Handle assets with no ID (append without checking):
+            if asset.id is None:
+                self._assets.append(asset)
+                continue
+
+            if asset.id in id_map:
+                if overwrite:
+                    # Replace the element at the specific index:
+                    index = id_map[asset.id]
+                    self._assets[index] = asset
+                else:
+                    # Log that we are ignoring the duplicate:
+                    logging.info(
+                        f'Skipping duplicate asset with ID: {asset.id}'
+                    )
+            else:
+                # Add new asset:
+                self._assets.append(asset)
+                # Update map to handle duplicates within the input list itself:
+                id_map[asset.id] = len(self._assets) - 1
+
+    def filter(self, func: Callable[[ImageAsset], bool]) -> ImageCollection:
+        """
+        Filters the collection using a custom function.
+
+        Args:
+            func: A callable that takes an ImageAsset as input and returns 
+                True if the asset should be kept, or False otherwise.
+
+        Returns:
+            A new ImageCollection instance containing only the assets for 
+            which the function returned True.
+
+        Example:
+            >>> subset = collection.filter(lambda x: x.properties.get('damage') == 'High')
+        """
+        filtered_assets = [asset for asset in self._assets if func(asset)]
+        return ImageCollection(filtered_assets)
+
+    def filter_by_property(self, key: str, value: Any) -> ImageCollection:
+        """
+        Filters assets where a specific property matches a given value.
+
+        Args:
+            key: The property key to check (e.g., 'event_name').
+            value: The value the property must match.
+
+        Returns:
+            A new ImageCollection containing the matching assets.
+        """
+        return self.filter(lambda a: a.properties.get(key) == value)
+
+    def filter_downloaded(self) -> ImageCollection:
+        """
+        Filters for assets that currently exist on disk.
+
+        Returns:
+            A new ImageCollection containing only assets where 
+            `is_downloaded` is True.
+        """
+        return self.filter(lambda a: a.is_downloaded)
+
+    def filter_by_bbox(self, bbox: BoundingBox) -> ImageCollection:
+        """
+        Filters images that fall within a geographic bounding box.
+
+        This method filters the collection to include only images whose 
+        coordinates (longitude/latitude) fall within the provided BoundingBox.
+
+        Args:
+            bbox: The BoundingBox object defining the geographic area.
+
+        Returns:
+            A new ImageCollection containing only the assets within the bounds.
+        """
+        # Extract bounds from the internal shapely geometry of the BoundingBox:
+        min_lon, min_lat, max_lon, max_lat = bbox.shapely.bounds
+
+        def inside_box(asset: ImageAsset) -> bool:
+            lat = asset.properties.get('latitude')
+            lon = asset.properties.get('longitude')
+            
+            # If coordinates are missing, exclude the image
+            if lat is None or lon is None:
+                return False
+                
+            return (min_lat <= lat <= max_lat) and (min_lon <= lon <= max_lon)
+
+        return self.filter(inside_box)
+
+    def download_all(self, max_workers: int = 5, overwrite: bool = False) -> None:
+        """
+        Downloads all images in the collection using multi-threading.
+
+        Args:
+            max_workers: The maximum number of parallel download threads. 
+                Defaults to 5.
+            overwrite: If True, existing files will be re-downloaded and 
+                overwritten. Defaults to False.
+        """
+        total = len(self)
+        logging.info(
+            f'Starting batch download for {total} images with {max_workers} '
+            'workers.'
+            )
+
+        # Create a single session to reuse TCP connections
+        with requests.Session() as session:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Map futures to assets for error reporting
+                future_to_asset = {
+                    executor.submit(
+                        asset.download,
+                        overwrite=overwrite,
+                        session=session
+                    ): asset
+                    for asset in self._assets
+                }
+
+                for i, future in enumerate(as_completed(future_to_asset)):
+                    asset = future_to_asset[future]
+                    try:
+                        future.result()
+                    except Exception as e:
+                        logging.error(f"Failed to download {asset.id}: {e}")
+
+                    # Optional: Print progress every 10 images
+                    if (i + 1) % 10 == 0:
+                        logging.info(f"Progress: {i + 1}/{total} completed.")
+
+    def to_dataframe(self) -> Any:
+        """
+        Converts the collection metadata to a Pandas DataFrame.
+
+        Returns:
+            pd.DataFrame: A DataFrame where each row represents an asset.
+                Columns include 'id', 'path', 'is_downloaded', and all keys
+                found in the asset properties.
+
+        Raises:
+            ImportError: If the pandas library is not installed.
+        """
+        data = []
+        for asset in self._assets:
+            # Flattens structure: ID, Path + all Properties
+            row = {
+                'id': asset.id,
+                'path': str(asset.path),
+                'is_downloaded': asset.is_downloaded,
+                **asset.properties
+            }
+            data.append(row)
+
+        return pd.DataFrame(data)
+
+    def to_json(self, filepath: str | Path) -> None:
+        """
+        Exports the collection metadata to a JSON file.
+
+        Args:
+            filepath: The path where the JSON file will be saved.
+        """
+        data = [
+            {
+                'id': a.id,
+                'path': str(a.path),
+                'properties': a.properties
+            }
+            for a in self._assets
+        ]
+        with open(filepath, 'w') as f:
+            json.dump(data, f, indent=2, default=str)
+
