@@ -35,25 +35,50 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 11-26-2025
+# 12-09-2025
 
-from collections import deque
+import gzip
 import logging
-import requests
-import concurrent.futures
-from pathlib import Path
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date, datetime
+from pathlib import Path
+from typing import Any
 
-from rapidtools.core import BoundingBox, ImageAsset
+import mapbox_vector_tile
+import requests
+from requests.adapters import HTTPAdapter, Retry
+from tqdm import tqdm
+
+from rapidtools.core import BoundingBox, ImageAsset, ImageCollection
+from .tile_utils import TileUtils
+
+# Mapillary Required API data:
+BASE_URL = 'https://graph.mapillary.com'
+TILE_URL_TEMPLATE = (
+    "https://tiles.mapillary.com/maps/vtp/mly1_public/2/"
+    "{z}/{x}/{y}?access_token={token}"
+)
+RAPID_CREATOR_ID = 107708041466249
+
+# Requests download strategy:
+REQUESTS_TIMEOUT_VAL = 30
+REQUESTS_RETRY_STRATEGY = Retry(
+    total=5,
+    backoff_factor=1,
+    status_forcelist=[429, 500, 502, 503, 504],
+)
+REQUESTS_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                  'AppleWebKit/537.36 (KHTML, like Gecko) '
+                  'Chrome/131.0.0.0 Safari/537.36'
+}
 
 class MapillaryClient:
     """
     Fetches and stores Mapillary images for given geo-coordinates, bounding boxes, or image IDs.
     Requires a Mapillary API access token.
-    """
-
-    BASE_URL = 'https://graph.mapillary.com'
-
+    """    
     AVAILABLE_IMAGE_FIELDS = frozenset([
         'altitude', 'atomic_scale', 'camera_parameters', 'camera_type',
         'captured_at', 'compass_angle', 'computed_altitude', 
@@ -64,29 +89,29 @@ class MapillaryClient:
         'sequence', 'sfm_cluster', 'width', 'detections'
     ])
 
-    # --- Class constants for API limitations ---
-    # The hard limit for the number of image features the API will return:
-    API_FEATURE_LIMIT = 2000
-    
-    # The area limit (in sq. degrees) for a bbox query to be accepted by the 
-    # API:
-    API_MAX_TILE_AREA = 0.01
-
-
     def __init__(self, access_token: str, save_dir: str = 'mapillary_images'):
         if not access_token:
             raise ValueError('Mapillary access token is required.')
         self.access_token = access_token
         self.save_dir = Path(save_dir)
-        self.session = requests.Session()
+        
+        # Create a session with the Retry strategy and the default headers:
+        self.session = requests.Session()                
+        
+        adapter = HTTPAdapter(max_retries=REQUESTS_RETRY_STRATEGY)
+        self.session.mount('http://', adapter)
+        self.session.mount('https://', adapter)
+        
+        self.session.headers.update(REQUESTS_HEADERS)
 
     def fetch_image(
             self, 
             image_id: str, 
-            fields: list[str] | None
+            fields: list[str] | None,
+            save_to_disk: bool = True
             )-> ImageAsset | None:
         """
-        Fetch image and its metadata using it Mapillary ID.
+        Fetch image metadata using it Mapillary ID and optionally download it.
         
         This method:
         - Validates the requested metadata fields.
@@ -103,6 +128,9 @@ class MapillaryClient:
                 Optional list of metadata fields to request. If ``None``, a 
                 default set of fields (as defined by ``_validate_fields``)
                 will be used. Invalid fields are ignored with a warning.
+            save_to_disk (bool): 
+                If ``True``, downloads the image to the configured save 
+                directory. Defaults to ``True``.
         
         Returns:
             ImageAsset | None:
@@ -121,115 +149,129 @@ class MapillaryClient:
         if not fields_to_request:
             return None
 
-        # Fetch Metadata:
-        url = f'{self.BASE_URL}/{image_id}'
-        params = {
-            'access_token': self.access_token, 
-            'fields': ','.join(fields_to_request)
-        }
-
-        try:
-            resp = self.session.get(url, params=params, timeout=10)
-            resp.raise_for_status()
-            props = resp.json()
-        except requests.exceptions.RequestException as e:
-            logging.error(f'Failed to fetch metadata for {image_id}: {e}')
+        # Get metadata:
+        props = self._get_image_metadata(image_id, fields_to_request)
+        if not props:
             return None
 
+        # Extract the download URL:
         image_url = props.get('thumb_original_url')
         if not image_url:
             logging.error(f"No download URL found for {image_id}")
             return None
 
-        # Download Image:
+        # Prepare an image path:
         prop_id = props.pop('id', image_id)
         file_path = self.save_dir / f"{prop_id}.jpg"
         
-        # Package the downloaded image and metadata as an ImageAsset and 
-        # return it:
-        if self._download_image(image_url, file_path):
-            return ImageAsset(
-                path=str(file_path), 
-                id=prop_id, 
-                properties=props
-            )
-        return None
+        # Determine if the ImageAsset should allow a missing file path.
+        # If we are not saving to disk, the file will be missing:
+        allow_missing = not save_to_disk
+        
+        # Create the ImageAsset:
+        image_asset = ImageAsset(
+            path=str(file_path),
+            id=prop_id,
+            properties=props,
+            allow_missing_file=allow_missing
+        )
+        
+        # Optionally download the image to disk:
+        if save_to_disk:
+            self.save_dir.mkdir(parents=True, exist_ok=True)
+            if not self._download_image(image_url, file_path):
+                return None  # Download failed
+
+        return image_asset
+
 
     def fetch_images_by_ids(
             self, 
             image_ids: list[str], 
-            fields: list[str] | None
-            ) -> list[ImageAsset]:
+            fields: list[str] | None,
+            save_to_disk: bool = True,
+            max_workers: int = 10
+        ) -> ImageCollection:
         """
-        Concurrently donwload multiple images by ID.
-        
+        Get multiple images by ID and return them as a collection.
+    
         This method:
         - Submits one fetch task per image ID to a thread pool.
         - Fetches metadata and downloads each image (via fetch_image).
         - Aggregates successfully fetched ImageAsset objects into a list.
-        - Logs any exceptions that occur per image without aborting the entire batch.
+        - Logs any exceptions that occur per image without aborting the 
+          entire batch.
         
         Args:
             image_ids (list[str]):
-                A list of image IDs to fetch and download.
+                A list of image IDs to fetch and download
             fields (list[str] | None):
                 Optional list of metadata fields to request for each image.
-                If ``None``, a default set of fields (as determined by
-                ``_validate_fields``) will be used.
-        
+                If ``None``, a default set of fields will be used
+            save_to_disk (bool): 
+                If ``True``, downloads image files to ``self.save_dir``.
+                If ``False``, only metadata is retrieved. Defaults to ``True``.
+            max_workers:
+                Maximum number of parallel worker threads used for fetching
+                images. Defaults to ``10``.
+
         Returns:
-            list[ImageAsset]:
-                A list of ImageAsset instances for all images that were
-                successfully fetched and downloaded. Images that fail are
-                omitted from the result list.
+            ImageCollection: 
+                An ``ImageCollection`` containing all successfully fetched
+                ``ImageAsset`` instances. Any images that fail to download or
+                process are excluded; errors are logged per image ID.
         """
-        results = []
+        # Create the save_dir folder if the user requests downloading images:
+        if save_to_disk:
+           self.save_dir.mkdir(parents=True, exist_ok=True) 
         
+        assets = []  
         # Use ThreadPoolExecutor to download in parallel:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Create a dictionary to map futures to IDs:
             future_to_id = {
-                executor.submit(self.fetch_image, img_id, fields): img_id 
+                executor.submit(
+                    self.fetch_image, 
+                    img_id, 
+                    fields,
+                    save_to_disk): img_id 
                 for img_id in image_ids
             }
             
             # Iterate over futures as they complete (in the order they finish,
             # not necessarily the order submitted):
-            for future in concurrent.futures.as_completed(future_to_id):
+            for future in tqdm(as_completed(future_to_id), 
+                               total=len(image_ids), 
+                               desc="Downloading Images", 
+                               unit="img"):
+                
                 img_id = future_to_id[future]
                 try:
                     asset = future.result()
                     # Only append successfully created ImageAsset objects:
                     if asset:
-                        results.append(asset)
+                        assets.append(asset)
                 except Exception as e:
                     logging.error(f"Exception for image {img_id}: {e}")
-        
-        return results
+
+        final_collection = ImageCollection()
+        final_collection.add(assets)
+
+        return final_collection
 
     def fetch_images_in_bbox(
-        self, 
-        bbox: BoundingBox, 
-        fields: list[str] | None = None,
-        creator_username: str = 'uwrapid',
-        start_date: str = '',
-        end_date: str = ''
-    ) -> list[ImageAsset]:
+            self,
+            bbox: BoundingBox,
+            fields: list[str] | None = None,
+            save_to_disk: bool = True,
+            start_date = '',
+            end_date = '',
+            filter_rapid_only: bool = True,
+            max_workers: int = 10
+        ) -> ImageCollection:
         """
-        Get all Mapillary images within a geographic bounding box.
-
-        This method acts as a high-level orchestrator to ensure complete 
-        data coverage over large or dense areas. It performs two main 
-        operations:
-
-        1.  **Adaptive ID Search:** It queries the Mapillary API using a 
-            recursive tiling strategy (quadtree). If a specific tile hits
-            the API's limit  (2000 features), it automatically subdivides
-            the area to ensure no image IDs are missed.
-        2.  **Concurrent Download:** Once all unique IDs are gathered, it
-            downloads the image files and their associated metadata in
-            parallel.
-
+        Download and parse Mapillary Vector Tiles covering a bbox in parallel.
+    
         Args:
             bbox (BoundingBox):
                 The geographic rectangular area to search. Must be an 
@@ -239,204 +281,97 @@ class MapillaryClient:
                 ``['captured_at', 'compass_angle']``). If ``None``, 
                 defaults to all available fields. Note: The download URL is
                 always fetched internally.
-            creator_username (str):
-                The Mapillary username to filter by. Only images uploaded 
-                by this user will be retrieved. Defaults to ``'uwrapid'``.
-            start_date (str):
-                Filter for images captured on or after this date. 
-                Format: 'YYYY-MM-DD' or ISO 8601 (e.g., '2023-01-01'). 
-                Defaults to ``''`` (no filter).
-            end_date (str):
-                Filter for images captured on or before this date. 
-                Format: 'YYYY-MM-DD' or ISO 8601 (e.g., '2023-12-31'). 
-                Defaults to ``''`` (no filter).
-
+            fields (list[str] | None):
+                A list of specific metadata fields to fetch (e.g., 
+                ``['captured_at', 'compass_angle']``). If ``None``, 
+                defaults to all available fields. Note: The download URL is
+                always fetched internally.
+            save_to_disk (bool): 
+                If ``True``, downloads the images to the configured save 
+                directory. Defaults to ``True``.   
+            filter_rapid_only: 
+                If True, filters for RAPID facility images.
+            max_workers: 
+                Number of parallel download threads (default: 10).
+    
         Returns:
-            list[ImageAsset]:
-                A list of ``ImageAsset`` objects containing the local file path, 
-                image ID, and requested metadata properties. Returns an empty 
-                list if no images are found.
+            A new ImageCollection populated with assets from ALL tiles.
         """
-        # Get the list of image IDs for the bounding box:
-        ids = self.fetch_image_ids_for_bbox(
-            bbox, 
-            creator_username=creator_username,
-            start_date=start_date,
-            end_date=end_date
-        )
+        # Get a list of tiles that cover the bounding box area:
+        tiles_list = TileUtils.bbox_to_mapbox_tiles(bbox)
         
-        if not ids:
-            logging.info("No images found in the specified bounding box.")
-            return []
-
-        logging.info(f"Starting download of {len(ids)} images...")
-
-        # Download the ImageAssets:
-        return self.fetch_images_by_ids(ids, fields)
-
-    def fetch_image_ids_for_bbox(
-        self, 
-        bbox: BoundingBox,
-        creator_username: str = 'uwrapid',
-        start_date: str = '',
-        end_date: str = '',
-        initial_tile_area: float = API_MAX_TILE_AREA,
-        max_retries: int = 5,
-        split_threshold: int = API_FEATURE_LIMIT
-        
-    ) -> list[str]:
-        """
-        Get unique IDs within a bounding, using a two-stage tiling strategy.
-        
-        This method queries the Mapillary Images API over the given bounding 
-        box using a two-stage, adaptive tiling strategy to avoid hitting API 
-        feature limits and to reduce missed results in dense areas.
-        
-        The process is:
-        - Tile the input bounding box into initial tiles with a maximum area
-          (initial_tile_area).
-        - For each tile, request image IDs up to a limit (split_threshold).
-        - If a tile returns exactly split_threshold features (i.e., is 
-          "saturated"), subdivide it into 4 smaller tiles and re-queue them for
-          processing.
-        - Repeat until all tiles are processed or skipped after max_retries.
-        - Collect and return the set of unique image IDs found across all tiles.
-        
-        Args:
-            bbox (BoundingBox):
-                The geographic area of interest to search within.
-            creator_username (str):
-                Mapillary username used to filter images. Only images created
-                by this user will be returned. Defaults to ``'uwrapid'``.
-            start_date (str, optional):
-                Filter for images captured after this date. 
-                Format: 'YYYY-MM-DD' or ISO 8601 'YYYY-MM-DDTHH:MM:SS'.
-            end_date (str, optional):
-                Filter for images captured before this date. 
-                Format: 'YYYY-MM-DD' or ISO 8601 'YYYY-MM-DDTHH:MM:SS'.    
-            initial_tile_area (float):
-                Maximum area (in square degrees) for the initial tiling of the
-                bounding box. Smaller values create more, smaller tiles and may
-                provide more balanced queries at the cost of more API calls.
-            max_retries (int):
-                Maximum number of retry attempts for a failed API request on
-                a single tile. Retries use exponential backoff (1, 2, 4, ... 
-                seconds).
-            split_threshold (int):
-                Maximum number of features (image records) to request per tile.
-                If a tile returns exactly this number, it is assumed to be
-                saturated and is split into 4 sub-tiles for finer querying.
-        
-        Returns:
-            list[str]:
-                A list of unique image IDs found within the bounding box after
-                processing all tiles. Order is not guaranteed.
-        """
-        # Validate the user-specified threshold against the fixed API limit:
-        if split_threshold > self.API_FEATURE_LIMIT:
+        total_tiles = len(tiles_list)
+        if total_tiles == 0:
             logging.warning(
-                f'split_threshold ({split_threshold}) cannot exceed the API '
-                'limit of {self.API_FEATURE_LIMIT}. Capping at '
-                '{self.API_FEATURE_LIMIT}.'
+                'No tiles found. Bounding box is too small or invalid'
             )
-            split_threshold = self.API_FEATURE_LIMIT
-
-        # Format the dates so that they work with the API:
-        formatted_start = self._format_date(start_date, is_end_date=False)
-        formatted_end = self._format_date(end_date, is_end_date=True)
-
-        # Perform initial tiling of the specified bounding box using the 
-        # specified maximum area:
-        logging.info(
-            f'Performing initial tiling with max area of {initial_tile_area} '
-            'square degrees...'
+            return ImageCollection()
+        
+        logging.info(f"Scanning {total_tiles} tiles for images...")
+    
+        # Download/process tiles in parallel:
+        final_collection = ImageCollection()
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_tile = {
+                executor.submit(
+                    self._get_tile_image_data, 
+                    tile, 
+                    start_date,
+                    end_date,
+                    filter_rapid_only
+                ): tile 
+                for tile in tiles_list
+            }
+    
+            for future in tqdm(
+                as_completed(future_to_tile), 
+                total=total_tiles, 
+                desc="Downloading Tiles",
+                unit="tile"
+            ):
+                tile = future_to_tile[future]
+                try:
+                    assets = future.result()
+                    # Add found assets to the main collection
+                    if assets:
+                        final_collection.add(assets)
+                except Exception as e:
+                    logging.error(f'Critical error in tile thread {tile}: {e}')
+    
+        # Exit early if no images are returned:
+        unique_count = len(final_collection)
+        logging.info(f'Scan complete. Found {unique_count} unique images.')
+        
+        if unique_count == 0:
+            return final_collection
+        
+        # If we need specific metadata OR we need to save files to disk, 
+        # we must hit the API for the specific IDs found:
+        if fields or save_to_disk: 
+            ids = final_collection.get_ids()
+        
+            logging.info(
+                'Starting to download the data for detected images...'
             )
-        initial_tiles = bbox.tile_by_area(max_area=initial_tile_area)
-        tiles_to_process = deque(initial_tiles)
-
-        # Define the API endpoint and initialize the set of image IDs:
-        api_endpoint = f'{self.BASE_URL}/images'
-        unique_ids = set()
-        
-        # Process the queue of tiles:
-        logging.info(
-            f'Starting adaptive fetch with {len(tiles_to_process)} '
-            'initial tile(s).'
+            
+            # Retrieve rich data (and optionally download files):
+            rich_collection = self.fetch_images_by_ids(
+                image_ids=ids, 
+                fields=fields, 
+                save_to_disk=save_to_disk
             )
-        logging.info(
-            f'Will split any tile returning the maximum of {split_threshold}'
-            ' features.'
+            logging.info('Downloaded data for all detected images.')
+            
+            # Merge the rich data back into our tile-based collection:
+            final_collection.combine_with(
+               rich_collection,
+               overwrite_properties = True,
+               overwrite_path = save_to_disk,
+               add_new=False
             )
-        while tiles_to_process:
-              tile = tiles_to_process.popleft()
-              
-              for attempt in range(max_retries):
-                  try:
-                      min_lon, min_lat, max_lon, max_lat = tile.shapely.bounds
-                      bbox_str = f'{min_lon},{min_lat},{max_lon},{max_lat}'
-                      
-                      params = {
-                          'access_token': self.access_token,
-                          'bbox': bbox_str,
-                          'fields': 'id',
-                          'limit': str(split_threshold)
-                      }
-                      
-                      # Apply optional filters:
-                      if creator_username:
-                          params['creator_username'] = creator_username
-                      if start_date:
-                          params['start_captured_at'] = formatted_start
-                      if end_date:
-                          params['end_captured_at'] = formatted_end
-                      
-                      
-                      response = self.session.get(api_endpoint, params=params)
-                      response.raise_for_status() # Raises HTTPError
-                      data = response.json() # Raises ValueError if bad JSON
-                      
-                      # If we get here, the request was successful
-                      ids_for_tile = [img['id'] for img in data.get('data', [])]
-                      num_found = len(ids_for_tile)
         
-                      if num_found == split_threshold:
-                          logging.warning(
-                              f'Tile saturated ({num_found} features). '
-                              'Splitting into 4 sub-tiles.'
-                              )
-                          sub_tiles = tile.split()
-                          tiles_to_process.extend(sub_tiles)
-                      else:
-                          logging.info(
-                              f'Found {num_found} images in this tile.'
-                              )
-                          unique_ids.update(ids_for_tile)
-                      
-                      break
-        
-                  except (requests.exceptions.RequestException, ValueError) as e:
-                      logging.warning(
-                          f'Attempt {attempt + 1} of {max_retries} failed for '
-                          f'a tile: {e}.'
-                          )
-                      if attempt < max_retries - 1:
-                          # Wait before retrying (e.g., 1, 2, 4, 8 seconds):
-                          wait_time = 2 ** attempt 
-                          logging.info(f'Retrying in {wait_time} second(s)...')
-                          time.sleep(wait_time)
-                      else:
-                          # This was the last attempt:
-                          logging.error(
-                              f'All {max_retries} attempts failed for the tile'
-                              f'. Skipping.'
-                              )
-
-        logging.info(
-            'Finished processing. Total unique image IDs found: '
-            f'{len(unique_ids)}'
-        )
-        
-        return list(unique_ids)
+        return final_collection
 
     def _download_image(self, url: str, destination: Path) -> bool:
         """
@@ -459,7 +394,11 @@ class MapillaryClient:
                 written to disk; False if an error occurred.
         """
         try:
-            with self.session.get(url, stream=True, timeout=20) as r:
+            with self.session.get(
+                    url, 
+                    stream=True, 
+                    timeout=REQUESTS_TIMEOUT_VAL
+                ) as r:
                 r.raise_for_status()
                 with open(destination, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
@@ -469,50 +408,314 @@ class MapillaryClient:
             logging.error(f"Download failed for {url}: {e}")
             return False
 
-    def _format_date(self, date_str: str, is_end_date: bool = False) -> str:
+    def _get_tile_image_data(
+            self,
+            tile_coords: tuple[int, int, int], 
+            start_date='',
+            end_date='',
+            filter_rapid_only: bool = True
+        ) -> list[ImageAsset]:
         """
-        Normalize a date string to ISO 8601 format with a UTC suffix (Z).
-        
-        This helper ensures that date strings used in API queries include a
-        full timestamp and an explicit UTC timezone (Z). It supports:
-        - Plain dates: "YYYY-MM-DD"
-          - Start date (default): "2025-06-01" -> "2025-06-01T00:00:00Z"
-          - End date: "2025-06-01" -> "2025-06-01T23:59:59Z"
-        - Date-times without timezone:
-          - "2025-06-01T12:00:00" -> "2025-06-01T12:00:00Z"
-        - Date-times that already include "Z" or a "+/-offset" are returned
-          unchanged.
-        
-        Args:
-            date_str (str):
-                The input date or datetime string to normalize. If empty or
-                falsy, an empty string is returned.
-            is_end_date (bool):
-                Whether the date represents an end-of-range boundary. If True
-                and the input is a plain date (YYYY-MM-DD), the time
-                component is set to 23:59:59; otherwise, it is set to 00:00:00.
-                Defaults to False.
-        
-        Returns:
-            str:
-                The normalized ISO 8601 datetime string with a "Z" timezone
-                suffix, or an empty string if the input was empty.
-        """
-        if not date_str:
-            return ''
-            
-        # If the date  input is a simple date (YYYY-MM-DD), append time and Z
-        if len(date_str) == 10 and date_str.count('-') == 2:
-            # If it is an end date, grab the very end of that day:
-            suffix = "T23:59:59Z" if is_end_date else "T00:00:00Z"
-            return f"{date_str}{suffix}"
-            
-        # If the date has time but is missing timezone info (no Z or +offset)
-        # e.g. "2025-06-01T12:00:00" -> "2025-06-01T12:00:00Z":
-        if 'Z' not in date_str and '+' not in date_str:
-            return f"{date_str}Z"
+        Extracts image assets from a single Mapillary vector tile.
 
-        return date_str
+        This helper retrieves a single tile from the Mapillary tiles API,
+        decodes its vector data, filters images by source and optional
+        capture-date range, converts tile coordinates to WGS84, and
+        returns a list of corresponding ``ImageAsset`` objects.
+
+        The method:
+            * Downloads and (if needed) decompresses the Mapillary tile.
+            * Decodes the Mapbox Vector Tile into layers/features.
+            * Reads image features from the ``"image"`` layer.
+            * Optionally filters out images not created by the RAPID creator.
+            * Optionally filters images outside the requested capture date
+              range.
+            * Converts tile-based coordinates to latitude/longitude (WGS84).
+            * Cleans up properties and builds ``ImageAsset`` instances.
+
+        Args:
+            tile_coords: 
+                The tile coordinates as ``(x, y, z)`` in Web Mercator/XYZ 
+                tiling scheme, where:
+                    * ``x``: Tile column index.
+                    * ``y``: Tile row index.
+                    * ``z``: Zoom level.
+            start_date: 
+                Optional inclusive lower bound for the image
+                capture date filter. Expected in ``"YYYY-MM-DD"`` format
+                or empty string for no lower bound.
+            end_date: 
+                Optional inclusive upper bound for the image
+                capture date filter. Expected in ``"YYYY-MM-DD"`` format
+                or empty string for no upper bound.
+            filter_rapid_only: 
+                If ``True``, only images whose
+                ``creator_id`` matches ``RAPID_CREATOR_ID`` are included.
+                If ``False``, all creators are allowed.
+
+        Returns:
+            list[ImageAsset]: 
+                A list of ``ImageAsset`` instances found within the specified
+                tile that satisfy all filtering conditions. Returns an empty
+                list if:
+                    * The tile has no ``"image"`` layer or no image features,
+                    * No images satisfy the RAPID/date filters, or
+                    * The tile download/decoding fails (a warning is logged).
+
+        Notes:
+            * The method silently skips images with invalid or missing
+              dates when a date filter is active.
+            * Gzip-compressed tiles are automatically decompressed based
+              on the Gzip magic header.
+            * The resulting ``ImageAsset.path`` uses the image ID as the
+              filename with a ``.jpg`` extension, stored under
+              ``self.save_dir``.
+        """
+        x, y, z = tile_coords
+        found_assets = []
+    
+        # Construct tile URL:
+        tile_url = TILE_URL_TEMPLATE.format(
+            z=z, x=x, y=y, token=self.access_token
+        )
+    
+        try:
+            # Download the tile data:
+            response = self.session.get(tile_url, timeout=REQUESTS_TIMEOUT_VAL)
+            response.raise_for_status()
+            raw_data = response.content
+    
+            # Gzip compression check (Mapillary tiles may be compressed):
+            if raw_data.startswith(b'\x1f\x8b'):
+                raw_data = gzip.decompress(raw_data)
+    
+            # Decode tile data:
+            decoded_tile = mapbox_vector_tile.decode(raw_data)
+            
+            # Get image data:
+            image_layer = decoded_tile.get('image')
+            if not image_layer:
+                return [] # No images in this tile
+                
+            # Get the tile extent defined in the data (defaults to 4096 if
+            # missing):
+            tile_extent = image_layer.get('extent', 4096)
+            images = image_layer.get('features', [])
+            
+            for image in images:
+                props = image['properties']
+    
+                # Extract creator and image IDs:
+                creator_id = props.pop('creator_id', None)
+                prop_id = props.pop('id', None)
+    
+                # Depending on filter_rapid_only check if creator ID matches
+                # RAPID's ID:
+                if filter_rapid_only and creator_id != RAPID_CREATOR_ID:
+                    continue
+    
+                # Convert geometry data from tile coordinates to WGS84:
+                shape_xy = image['geometry']['coordinates']
+                lon, lat = TileUtils.mvt_to_wgs84(
+                    shape_xy[0], 
+                    tile_extent - shape_xy[1],
+                    x, y, z, 
+                    extent=tile_extent
+                )
+    
+                # Save latitude & longitude data in image properties:
+                props['longitude'] = lon
+                props['latitude'] = lat
+    
+                # Extract raw image timestamp and remove it from image props:
+                timestamp_ms = props.pop('captured_at', None)
+    
+                if timestamp_ms:
+                    # Convert image timestamp from UTC date to ISO format 
+                    # (YYYY-MM-DD):
+                    img_date = TileUtils.ms_to_date_utc(timestamp_ms)
+    
+                    # Skip if date falls outside the requested range:
+                    if not self._is_date_in_range(
+                            img_date, 
+                            start_date, 
+                            end_date
+                        ):
+                        continue
+    
+                    # Assign the clean date object to properties:
+                    props['capture_date'] = img_date
+                
+                # If a date filter is active, but the image has NO date, 
+                # skip the image.
+                elif start_date or end_date:
+                    continue
+    
+                # Remove 'organization_id' and 'sequence_id' from image props:
+                for key in ['organization_id', 'sequence_id']:
+                    props.pop(key, None)
+    
+                # Create and ImageAsset and add it to the list output:
+                asset = ImageAsset(
+                    path=self.save_dir / f"{prop_id}.jpg",
+                    id=prop_id,
+                    properties=props,
+                    allow_missing_file=True
+                )
+                found_assets.append(asset)
+        
+        # If tile data cannot be downloaded log error:
+        except Exception as e:
+            logging.warning(f"Failed to process tile {z}/{x}/{y}: {e}")
+    
+        return found_assets
+
+    def _is_date_in_range(
+        self,
+        check_date: date | datetime | str | None,
+        start_date: date | datetime | str | None,
+        end_date: date | datetime | str | None
+    ) -> bool:
+        """Checks whether a date falls within an inclusive date range.
+    
+        This method is robust to different input types and missing values. It
+        accepts `date`, `datetime`, string (in ``YYYY-MM-DD`` format), or
+        ``None`` for all parameters, and normalizes them to ``datetime.date`` 
+        objects before comparison.
+    
+        The check is inclusive of both ``start_date`` and ``end_date``. If
+        ``check_date`` is missing or invalid and at least one of
+        ``start_date`` or ``end_date`` is provided (i.e., filters exist),
+        the method returns ``False``. If all three inputs are missing or
+        invalid (i.e., no filters), the method returns ``True``.
+    
+        Args:
+            check_date: The date to be tested. May be a ``datetime.date``,
+                ``datetime.datetime``, a string in ``"YYYY-MM-DD"`` format,
+                or ``None``.
+            start_date: The inclusive lower bound of the date range. May be a
+                ``datetime.date``, ``datetime.datetime``, a string in
+                ``"YYYY-MM-DD"`` format, or ``None``. If ``None``, there is
+                no lower bound.
+            end_date: The inclusive upper bound of the date range. May be a
+                ``datetime.date``, ``datetime.datetime``, a string in
+                ``"YYYY-MM-DD"`` format, or ``None``. If ``None``, there is
+                no upper bound.
+    
+        Returns:
+            bool: 
+                ``True`` if ``check_date`` is within the inclusive range 
+                defined by ``start_date`` and ``end_date`` (after 
+                normalization), or if all three values are missing/invalid
+                (no filters). ``False`` if ``check_date`` is outside the range,
+                invalid, or missing while at least one of ``start_date`` or 
+                ``end_date`` is provided.
+    
+        Notes:
+            * String inputs must be in ``"YYYY-MM-DD"`` format; otherwise
+              they are treated as invalid.
+            * ``datetime.datetime`` inputs are converted to dates by
+              discarding the time component.
+            * Invalid or unparsable date strings are treated as ``None``.
+        """
+    
+        def to_date(date_input):
+            """Normalizes various date-like inputs to a ``datetime.date``."""
+            if not date_input:
+                return None
+            if isinstance(date_input, datetime):
+                return date_input.date()
+            if isinstance(date_input, date):
+                return date_input
+            if isinstance(date_input, str):
+                try:
+                    return datetime.strptime(
+                        date_input.strip(), "%Y-%m-%d"
+                    ).date()
+                except ValueError:
+                    return None
+            return None
+    
+        # Normalize inputs:
+        current = to_date(check_date)
+        start = to_date(start_date)
+        end = to_date(end_date)
+    
+        # If the input date is invalid/missing:
+        if current is None:
+            # If filters exist, reject. If no filters exist, accept.
+            return False if (start or end) else True
+    
+        # Check Range (Inclusive):
+        if start and current < start:
+            return False
+        if end and current > end:
+            return False
+    
+        return True
+
+    def _get_image_metadata(
+        self,
+        image_id: str,
+        fields: list[str],
+        retries: int = 3,
+        backoff_factor: float = 0.5
+    ) -> dict[str, Any] | None:
+        """Retrieve metadata for a specific image from the API.
+    
+        This method issues a GET request to the configured API endpoint using
+        the provided image ID and list of field names. On success, the JSON
+        response is returned as a dictionary. If any network or HTTP error
+        occurs, the error is logged and ``None`` is returned.
+    
+        Args:
+            image_id: 
+                The unique identifier of the image whose metadata should be
+                fetched.
+            fields:
+                Field names to request from the API. These are sent as a 
+                comma-separated list via the ``fields`` query parameter.
+    
+        Returns:
+            A dictionary containing the JSON metadata returned by the API if 
+            the request succeeds; otherwise ``None``.
+        """
+        url = f"{self.BASE_URL}/{image_id}"
+        params = {
+            "access_token": self.access_token,
+            "fields": ",".join(fields),
+        }
+    
+        for attempt in range(retries):
+            try:
+                resp = self.session.get(
+                    url, 
+                    params=params, 
+                    timeout=REQUESTS_TIMEOUT_VAL
+                )
+                resp.raise_for_status()  # Will raise for 4xx/5xx responses
+                return resp.json()
+            
+            except requests.exceptions.RequestException as e:
+                # Log the failed attempt:
+                logging.warning(
+                    "Attempt %d/%d failed for image %s: %s",
+                    attempt + 1, retries, image_id, e
+                )
+                
+                # If on the last attempt, break out of the loop:
+                if attempt + 1 == retries:
+                    break
+                
+                # Calculate wait time and sleep:
+                wait_time = backoff_factor * (2 ** attempt)
+                time.sleep(wait_time)
+    
+        # This part is reached only if all retries fail
+        logging.error(
+            f'All {retries} attempts to fetch metadata for {image_id} failed.'
+            )
+        return None
 
     def _validate_fields(
             self, 
