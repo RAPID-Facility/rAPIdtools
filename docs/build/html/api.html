@@ -73,18 +73,101 @@ data-aria-dark="Switch to auto color mode">
 <li><a class="reference internal" href="#rapidtools.core.BoundingBox"><code class="docutils literal notranslate"><span class="pre">BoundingBox</span></code></a><ul>
 <li><a class="reference internal" href="#rapidtools.core.BoundingBox.get_bounding_box"><code class="docutils literal notranslate">get_bounding_box()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.BoundingBox.height"><code class="docutils literal notranslate">height</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.BoundingBox.split"><code class="docutils literal notranslate">split()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.BoundingBox.tile_by_area"><code class="docutils literal notranslate">tile_by_area()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.BoundingBox.width"><code class="docutils literal notranslate">width</span></code></a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#rapidtools.core.Polygon"><code class="docutils literal notranslate"><span class="pre">Polygon</span></code></a><ul>
-<li><a class="reference internal" href="#rapidtools.core.Polygon.get_bounding_box"><code class="docutils literal notranslate">get_bounding_box()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.ImageAsset"><code class="docutils literal notranslate"><span class="pre">ImageAsset</span></code></a><ul>
+<li><a class="reference internal" href="#rapidtools.core.ImageAsset.add_segmentation_mask"><code class="docutils literal notranslate">add_segmentation_mask()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.ImageAsset.combine_with"><code class="docutils literal notranslate">combine_with()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.ImageAsset.directory"><code class="docutils literal notranslate">directory</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.ImageAsset.download"><code class="docutils literal notranslate">download()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.ImageAsset.filename"><code class="docutils literal notranslate">filename</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.ImageAsset.get_property"><code class="docutils literal notranslate">get_property()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.ImageAsset.is_downloaded"><code class="docutils literal notranslate">is_downloaded</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.ImageAsset.load_image_data"><code class="docutils literal notranslate">load_image_data()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.ImageAsset.segmentation_mask"><code class="docutils literal notranslate">segmentation_mask</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.ImageAsset.stem"><code class="docutils literal notranslate">stem</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#rapidtools.core.ImageCollection"><code class="docutils literal notranslate"><span class="pre">ImageCollection</span></code></a><ul>
+<li><a class="reference internal" href="#rapidtools.core.ImageCollection.add"><code class="docutils literal notranslate">add()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.ImageCollection.combine_with"><code class="docutils literal notranslate">combine_with()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.ImageCollection.download_all"><code class="docutils literal notranslate">download_all()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.ImageCollection.filter"><code class="docutils literal notranslate">filter()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.ImageCollection.filter_by_bbox"><code class="docutils literal notranslate">filter_by_bbox()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.ImageCollection.filter_by_property"><code class="docutils literal notranslate">filter_by_property()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.ImageCollection.filter_downloaded"><code class="docutils literal notranslate">filter_downloaded()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.ImageCollection.get_ids"><code class="docutils literal notranslate">get_ids()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.ImageCollection.to_dataframe"><code class="docutils literal notranslate">to_dataframe()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.ImageCollection.to_json"><code class="docutils literal notranslate">to_json()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#rapidtools.core.InfrastructureAsset"><code class="docutils literal notranslate"><span class="pre">InfrastructureAsset</span></code></a><ul>
+<li><a class="reference internal" href="#rapidtools.core.InfrastructureAsset.add_attributes"><code class="docutils literal notranslate">add_attributes()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.InfrastructureAsset.add_image_assets"><code class="docutils literal notranslate">add_image_assets()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.InfrastructureAsset.asset_type"><code class="docutils literal notranslate">asset_type</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.InfrastructureAsset.from_geojson_feature"><code class="docutils literal notranslate">from_geojson_feature()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.InfrastructureAsset.get_attributes"><code class="docutils literal notranslate">get_attributes()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.InfrastructureAsset.print_info"><code class="docutils literal notranslate">print_info()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.InfrastructureAsset.remove_attributes"><code class="docutils literal notranslate">remove_attributes()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.InfrastructureAsset.remove_image_assets"><code class="docutils literal notranslate">remove_image_assets()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.InfrastructureAsset.to_geojson_feature"><code class="docutils literal notranslate">to_geojson_feature()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#rapidtools.core.InfrastructureAssetCollection"><code class="docutils literal notranslate"><span class="pre">InfrastructureAssetCollection</span></code></a><ul>
+<li><a class="reference internal" href="#rapidtools.core.InfrastructureAssetCollection.append"><code class="docutils literal notranslate">append()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.InfrastructureAssetCollection.combined_bounding_box"><code class="docutils literal notranslate">combined_bounding_box</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.InfrastructureAssetCollection.filter_by_attribute"><code class="docutils literal notranslate">filter_by_attribute()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.InfrastructureAssetCollection.from_geojson"><code class="docutils literal notranslate">from_geojson()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.InfrastructureAssetCollection.get_asset_by_id"><code class="docutils literal notranslate">get_asset_by_id()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.InfrastructureAssetCollection.to_geojson"><code class="docutils literal notranslate">to_geojson()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#rapidtools.core.PolygonRegion"><code class="docutils literal notranslate"><span class="pre">PolygonRegion</span></code></a><ul>
+<li><a class="reference internal" href="#rapidtools.core.PolygonRegion.get_bounding_box"><code class="docutils literal notranslate">get_bounding_box()</span></code></a></li>
 </ul>
 </li>
 </ul>
 </li>
-<li><a class="reference internal" href="#data-sources">Data Sources</a></li>
-<li><a class="reference internal" href="#inference">Inference</a></li>
+<li><a class="reference internal" href="#module-rapidtools.data_sources">Data Sources</a><ul>
+<li><a class="reference internal" href="#rapidtools.data_sources.MapillaryClient"><code class="docutils literal notranslate"><span class="pre">MapillaryClient</span></code></a><ul>
+<li><a class="reference internal" href="#rapidtools.data_sources.MapillaryClient.fetch_image"><code class="docutils literal notranslate">fetch_image()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.data_sources.MapillaryClient.fetch_images_by_ids"><code class="docutils literal notranslate">fetch_images_by_ids()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.data_sources.MapillaryClient.fetch_images_in_bbox"><code class="docutils literal notranslate">fetch_images_in_bbox()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#rapidtools.data_sources.tile_utils.TileUtils"><code class="docutils literal notranslate"><span class="pre">TileUtils</span></code></a><ul>
+<li><a class="reference internal" href="#rapidtools.data_sources.tile_utils.TileUtils.bbox_to_mapbox_tiles"><code class="docutils literal notranslate">bbox_to_mapbox_tiles()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.data_sources.tile_utils.TileUtils.get_enclosing_zoom"><code class="docutils literal notranslate">get_enclosing_zoom()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.data_sources.tile_utils.TileUtils.latlon_to_tile"><code class="docutils literal notranslate">latlon_to_tile()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.data_sources.tile_utils.TileUtils.ms_to_date_utc"><code class="docutils literal notranslate">ms_to_date_utc()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.data_sources.tile_utils.TileUtils.mvt_to_wgs84"><code class="docutils literal notranslate">mvt_to_wgs84()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#module-rapidtools.inference">Inference</a><ul>
+<li><a class="reference internal" href="#rapidtools.inference.ClaudeClient"><code class="docutils literal notranslate"><span class="pre">ClaudeClient</span></code></a><ul>
+<li><a class="reference internal" href="#rapidtools.inference.ClaudeClient.batch_describe_directory"><code class="docutils literal notranslate">batch_describe_directory()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.inference.ClaudeClient.describe_image"><code class="docutils literal notranslate">describe_image()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#rapidtools.inference.GeminiClient"><code class="docutils literal notranslate"><span class="pre">GeminiClient</span></code></a><ul>
+<li><a class="reference internal" href="#rapidtools.inference.GeminiClient.describe_image"><code class="docutils literal notranslate">describe_image()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.inference.GeminiClient.process_single_file"><code class="docutils literal notranslate">process_single_file()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.inference.GeminiClient.run"><code class="docutils literal notranslate">run()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.inference.GeminiClient.show_supported_models"><code class="docutils literal notranslate">show_supported_models()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#rapidtools.inference.OpenAIClient"><code class="docutils literal notranslate"><span class="pre">OpenAIClient</span></code></a><ul>
+<li><a class="reference internal" href="#rapidtools.inference.OpenAIClient.batch_describe_directory"><code class="docutils literal notranslate">batch_describe_directory()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.inference.OpenAIClient.describe_image"><code class="docutils literal notranslate">describe_image()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
 </ul>
 </div><div id="ethical-ad-placement" data-ea-publisher="readthedocs"></div></div>
   </aside>
@@ -139,6 +222,22 @@ specialized behavior, such as tiling.</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.BoundingBox.split">
+<span class="sig-name descname"><span class="pre">split</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">Self</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/rapidtools/core/bounding_box.html#BoundingBox.split"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.BoundingBox.split" title="Link to this definition">¶</a></dt>
+<dd><p>Splits the bounding box into four equal-sized quadrants.</p>
+<p>This method is used by the API client for adaptive tiling when a tile
+is too dense with features and needs to be subdivided.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>[bottom-left, bottom-right, top-left, top-right].</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>A list of four new BoundingBox objects for the quadrants</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="rapidtools.core.BoundingBox.tile_by_area">
 <span class="sig-name descname"><span class="pre">tile_by_area</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">max_area</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.01</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">Self</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/rapidtools/core/bounding_box.html#BoundingBox.tile_by_area"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.BoundingBox.tile_by_area" title="Link to this definition">¶</a></dt>
 <dd><p>A custom method to split this BoundingBox into a grid of smaller
@@ -154,12 +253,580 @@ BoundingBox objects, each with an area less than or equal to max_area.</p>
 </dd></dl>
 
 <dl class="py class">
-<dt class="sig sig-object py" id="rapidtools.core.Polygon">
-<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">rapidtools.core.</span></span><span class="sig-name descname"><span class="pre">Polygon</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vertices</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/core/polygon.html#Polygon"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.Polygon" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="rapidtools.core.ImageAsset">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">rapidtools.core.</span></span><span class="sig-name descname"><span class="pre">ImageAsset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path:</span> <span class="pre">~pathlib.Path</span> <span class="pre">|</span> <span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">id:</span> <span class="pre">str</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">properties:</span> <span class="pre">dict[str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">~typing.Any]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">allow_missing_file:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset" title="Link to this definition">¶</a></dt>
+<dd><p>A single image asset, including its location and metadata.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.ImageAsset.add_segmentation_mask">
+<span class="sig-name descname"><span class="pre">add_segmentation_mask</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mask_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.add_segmentation_mask"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.add_segmentation_mask" title="Link to this definition">¶</a></dt>
+<dd><p>Attaches segmentation mask data to this image asset.</p>
+<p>The ‘mask_data’ can be any format you choose (e.g., a NumPy array).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.ImageAsset.combine_with">
+<span class="sig-name descname"><span class="pre">combine_with</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">other</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#rapidtools.core.ImageAsset" title="rapidtools.core.image_asset.ImageAsset"><span class="pre">ImageAsset</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_id_mismatch</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite_properties</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.combine_with"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.combine_with" title="Link to this definition">¶</a></dt>
+<dd><p>Merges data from another ImageAsset into this one.</p>
+<p>By default, this method ensures IDs match before merging to prevent
+accidental data corruption.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>other</strong> (<a class="reference internal" href="#rapidtools.core.ImageAsset" title="rapidtools.core.ImageAsset"><em>ImageAsset</em></a>) – The source asset to merge data from.</p></li>
+<li><p><strong>ignore_id_mismatch</strong> (<em>bool</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, allows merging even if self.id != other.id.
+Defaults to <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+<li><p><strong>overwrite_path</strong> (<em>bool</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, updates self.path with other.path.
+Defaults to <code class="docutils literal notranslate"><span class="pre">False</span></code> (preserves original path).</p></li>
+<li><p><strong>overwrite_properties</strong> (<em>bool</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, other.properties will overwrite existing keys in
+self.properties. If <code class="docutils literal notranslate"><span class="pre">False</span></code>, only new keys are added.
+Defaults to <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If IDs do not match and <code class="docutils literal notranslate"><span class="pre">ignore_id_mismatch</span></code> is <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="rapidtools.core.ImageAsset.directory">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">directory</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Path</span></em><a class="headerlink" href="#rapidtools.core.ImageAsset.directory" title="Link to this definition">¶</a></dt>
+<dd><p>The parent directory of the image file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The directory containing the image as a Path object.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Path</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.ImageAsset.download">
+<span class="sig-name descname"><span class="pre">download</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">url_key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'thumb_original_url'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">session</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Session</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.download"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.download" title="Link to this definition">¶</a></dt>
+<dd><p>Downloads the image file to self.path.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>url</strong> (<em>str</em><em>, </em><em>optional</em>) – The direct download link. If provided, this takes precedence
+over properties.</p></li>
+<li><p><strong>url_key</strong> (<em>str</em>) – The key in self.properties to look for if ‘url’ is None.
+Defaults to ‘thumb_original_url’.
+Useful for downloading specific sizes (e.g. ‘thumb_2048_url’).</p></li>
+<li><p><strong>overwrite</strong> (<em>bool</em>) – If True, forces download even if file exists.</p></li>
+<li><p><strong>session</strong> (<em>requests.Session</em><em>, </em><em>optional</em>) – An existing requests session to speed up connections.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>ValueError</strong> – If no URL is provided or found in properties.</p></li>
+<li><p><strong>IOError</strong> – If the download fails.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="rapidtools.core.ImageAsset.filename">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">filename</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#rapidtools.core.ImageAsset.filename" title="Link to this definition">¶</a></dt>
+<dd><p>The filename of the image, including its extension.</p>
+<p class="rubric">Examples</p>
+<p>‘photo.jpg’, ‘satellite_image.tif’</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The image filename as a string.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.ImageAsset.get_property">
+<span class="sig-name descname"><span class="pre">get_property</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.get_property"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.get_property" title="Link to this definition">¶</a></dt>
+<dd><p>Safely retrieves a metadata property from the asset.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>key</strong> (<em>str</em>) – The name of the property to retrieve (e.g., ‘compass_angle’).</p></li>
+<li><p><strong>default</strong> (<em>Any</em><em>, </em><em>optional</em>) – The value to return if the key is not found.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The value of the property, or the default value.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="rapidtools.core.ImageAsset.is_downloaded">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">is_downloaded</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="headerlink" href="#rapidtools.core.ImageAsset.is_downloaded" title="Link to this definition">¶</a></dt>
+<dd><p>Check whether the image file exists on disk and is non-empty.</p>
+<p>This property verifies that:
+- The path exists.
+- The path points to a regular file (not a directory).
+- The file size is greater than zero bytes.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">True</span></code> if a non-empty image file exists at image path,
+otherwise <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.ImageAsset.load_image_data">
+<span class="sig-name descname"><span class="pre">load_image_data</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Image</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.load_image_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.load_image_data" title="Link to this definition">¶</a></dt>
+<dd><p>Loads the image data using the Pillow library and caches it.</p>
+<p>This method uses lazy loading: the image is only loaded from disk the
+first time this method is called. Subsequent calls return the cached
+object.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The loaded image object.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>PillowImage.Image</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ImportError</strong> – If the Pillow library is not installed.</p></li>
+<li><p><strong>IOError</strong> – If the image file cannot be opened or read.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="rapidtools.core.ImageAsset.segmentation_mask">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">segmentation_mask</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Any</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#rapidtools.core.ImageAsset.segmentation_mask" title="Link to this definition">¶</a></dt>
+<dd><p>The segmentation mask associated with this image, if any.</p>
+<p>This property exposes the current value of the internal
+_segmentation_mask attribute, which can be used to store
+arbitrary mask representations (e.g., an array, another image
+object, or a custom mask type).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The segmentation mask object if set, otherwise <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="rapidtools.core.ImageAsset.stem">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">stem</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#rapidtools.core.ImageAsset.stem" title="Link to this definition">¶</a></dt>
+<dd><p>The filename of the image without its extension.</p>
+<p class="rubric">Examples</p>
+<p>For ‘photo.jpg’ -&gt; ‘photo’
+For ‘/data/images/scene_01.tif’ -&gt; ‘scene_01’</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The filename stem as a string.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="rapidtools.core.ImageCollection">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">rapidtools.core.</span></span><span class="sig-name descname"><span class="pre">ImageCollection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">assets</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#rapidtools.core.ImageAsset" title="rapidtools.core.image_asset.ImageAsset"><span class="pre">ImageAsset</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageCollection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageCollection" title="Link to this definition">¶</a></dt>
+<dd><p>A container class for managing a group of ImageAsset objects.</p>
+<p>This class provides utilities for filtering, batch downloading, and
+exporting metadata for a collection of images.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.ImageCollection.add">
+<span class="sig-name descname"><span class="pre">add</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">items</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#rapidtools.core.ImageAsset" title="rapidtools.core.image_asset.ImageAsset"><span class="pre">ImageAsset</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#rapidtools.core.ImageAsset" title="rapidtools.core.image_asset.ImageAsset"><span class="pre">ImageAsset</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageCollection.add"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageCollection.add" title="Link to this definition">¶</a></dt>
+<dd><p>Adds one or more assets to the collection.</p>
+<p>This method accepts either a single ImageAsset object or a list of
+objects. It checks for duplicates based on the asset ID.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>items</strong> – A single ImageAsset object or a list of ImageAsset objects
+to add.</p></li>
+<li><p><strong>overwrite</strong> – If True, existing assets with the same ID will be
+replaced by the new ones. If False, duplicates are ignored
+(the existing asset is kept). Defaults to False.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.ImageCollection.combine_with">
+<span class="sig-name descname"><span class="pre">combine_with</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">other</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#rapidtools.core.ImageCollection" title="rapidtools.core.image_asset.ImageCollection"><span class="pre">ImageCollection</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite_properties</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">add_new</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageCollection.combine_with"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageCollection.combine_with" title="Link to this definition">¶</a></dt>
+<dd><p>Merge with another ImageCollection.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>other</strong> (<a class="reference internal" href="#rapidtools.core.ImageCollection" title="rapidtools.core.ImageCollection"><em>ImageCollection</em></a>) – The collection to merge.</p></li>
+<li><p><strong>overwrite_path</strong> (<em>bool</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, existing assets will update their file paths
+to match the incoming assets.</p></li>
+<li><p><strong>overwrite_properties</strong> (<em>bool</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, incoming properties overwrite existing ones.</p></li>
+<li><p><strong>add_new</strong> (<em>bool</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, assets in <code class="docutils literal notranslate"><span class="pre">other</span></code> that do not share an ID
+with any asset in will be added to the collection.
+If False, they are ignored. Defaults to False.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.ImageCollection.download_all">
+<span class="sig-name descname"><span class="pre">download_all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">max_workers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageCollection.download_all"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageCollection.download_all" title="Link to this definition">¶</a></dt>
+<dd><p>Downloads all images in the collection using multi-threading.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>max_workers</strong> – The maximum number of parallel download threads.
+Defaults to 5.</p></li>
+<li><p><strong>overwrite</strong> – If True, existing files will be re-downloaded and
+overwritten. Defaults to False.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.ImageCollection.filter">
+<span class="sig-name descname"><span class="pre">filter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">func</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#rapidtools.core.ImageAsset" title="rapidtools.core.image_asset.ImageAsset"><span class="pre">ImageAsset</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.ImageCollection" title="rapidtools.core.image_asset.ImageCollection"><span class="pre">ImageCollection</span></a></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageCollection.filter"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageCollection.filter" title="Link to this definition">¶</a></dt>
+<dd><p>Filters the collection using a custom function.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>func</strong> – A callable that takes an ImageAsset as input and returns
+True if the asset should be kept, or False otherwise.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A new ImageCollection instance containing only the assets for
+which the function returned True.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">subset</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;damage&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="s1">&#39;High&#39;</span><span class="p">)</span>
+</span></pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.ImageCollection.filter_by_bbox">
+<span class="sig-name descname"><span class="pre">filter_by_bbox</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#rapidtools.core.BoundingBox" title="rapidtools.core.BoundingBox"><span class="pre">BoundingBox</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.ImageCollection" title="rapidtools.core.ImageCollection"><span class="pre">ImageCollection</span></a></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageCollection.filter_by_bbox"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageCollection.filter_by_bbox" title="Link to this definition">¶</a></dt>
+<dd><p>Filters images that fall within a geographic bounding box.</p>
+<p>This method filters the collection to include only images whose
+coordinates (longitude/latitude) fall within the provided BoundingBox.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>bbox</strong> – The BoundingBox object defining the geographic area.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A new ImageCollection containing only the assets within the bounds.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.ImageCollection.filter_by_property">
+<span class="sig-name descname"><span class="pre">filter_by_property</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.ImageCollection" title="rapidtools.core.image_asset.ImageCollection"><span class="pre">ImageCollection</span></a></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageCollection.filter_by_property"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageCollection.filter_by_property" title="Link to this definition">¶</a></dt>
+<dd><p>Filters assets where a specific property matches a given value.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>key</strong> – The property key to check (e.g., ‘event_name’).</p></li>
+<li><p><strong>value</strong> – The value the property must match.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A new ImageCollection containing the matching assets.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.ImageCollection.filter_downloaded">
+<span class="sig-name descname"><span class="pre">filter_downloaded</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.ImageCollection" title="rapidtools.core.image_asset.ImageCollection"><span class="pre">ImageCollection</span></a></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageCollection.filter_downloaded"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageCollection.filter_downloaded" title="Link to this definition">¶</a></dt>
+<dd><p>Filters for assets that currently exist on disk.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A new ImageCollection containing only assets where
+<cite>is_downloaded</cite> is True.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.ImageCollection.get_ids">
+<span class="sig-name descname"><span class="pre">get_ids</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ignore_none</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageCollection.get_ids"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageCollection.get_ids" title="Link to this definition">¶</a></dt>
+<dd><p>Retrieves a list of IDs for all assets in the collection.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ignore_none</strong> – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, assets with no ID (None) are excluded
+from the list. Defaults to <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A list of IDs corresponding to the assets.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.ImageCollection.to_dataframe">
+<span class="sig-name descname"><span class="pre">to_dataframe</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageCollection.to_dataframe"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageCollection.to_dataframe" title="Link to this definition">¶</a></dt>
+<dd><p>Converts the collection metadata to a Pandas DataFrame.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><dl class="simple">
+<dt>A DataFrame where each row represents an asset.</dt><dd><p>Columns include ‘id’, ‘path’, ‘is_downloaded’, and all keys
+found in the asset properties.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>pd.DataFrame</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ImportError</strong> – If the pandas library is not installed.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.ImageCollection.to_json">
+<span class="sig-name descname"><span class="pre">to_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filepath</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Path</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageCollection.to_json"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageCollection.to_json" title="Link to this definition">¶</a></dt>
+<dd><p>Exports the collection metadata to a JSON file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>filepath</strong> – The path where the JSON file will be saved.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="rapidtools.core.InfrastructureAsset">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">rapidtools.core.</span></span><span class="sig-name descname"><span class="pre">InfrastructureAsset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">id:</span> <span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">geometry:</span> <span class="pre">~shapely.geometry.base.BaseGeometry</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attributes:</span> <span class="pre">dict[str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">~typing.Any]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">image_assets:</span> <span class="pre">list[~rapidtools.core.image_asset.ImageAsset]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/core/infrastructure_asset.html#InfrastructureAsset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.InfrastructureAsset" title="Link to this definition">¶</a></dt>
+<dd><p>Represents a real-world, built-environment asset, such as a building, etc.</p>
+<p>An InfrastructureAsset combines geometric information (its location and
+shape), a set of descriptive attributes, and a list of related image
+assets.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.InfrastructureAsset.add_attributes">
+<span class="sig-name descname"><span class="pre">add_attributes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">new_attributes</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/infrastructure_asset.html#InfrastructureAsset.add_attributes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.InfrastructureAsset.add_attributes" title="Link to this definition">¶</a></dt>
+<dd><p>Add or update attributes on the asset from a dictionary.</p>
+<p>By default, existing keys are not overwritten. Set <code class="docutils literal notranslate"><span class="pre">overwrite=True</span></code>
+to replace existing values.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>new_attributes</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – A mapping of attribute names to values to add.</p></li>
+<li><p><strong>overwrite</strong> (<em>bool</em>) – If True, existing attributes with the same keys
+will be overwritten. If False, existing keys will be left
+unchanged and a log message will be emitted.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If new_attributes is not a dictionary.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.InfrastructureAsset.add_image_assets">
+<span class="sig-name descname"><span class="pre">add_image_assets</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">image_assets</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/infrastructure_asset.html#InfrastructureAsset.add_image_assets"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.InfrastructureAsset.add_image_assets" title="Link to this definition">¶</a></dt>
+<dd><p>Associate one or more ImageAsset instances with this asset.</p>
+<p>Any argument that is not an instance of ImageAsset is ignored and
+a warning is logged. Valid ImageAsset instances are appended to
+the image_assets list.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>*image_assets</strong> (<em>Any</em>) – One or more objects, of which only ImageAsset
+instances will be added.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="rapidtools.core.InfrastructureAsset.asset_type">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">asset_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#rapidtools.core.InfrastructureAsset.asset_type" title="Link to this definition">¶</a></dt>
+<dd><p>A convenience property to get the asset type from attributes.</p>
+<p>It searches a predefined list of keys (e.g., ‘asset_type’, ‘type’)
+and returns the value of the first key found. Returns None if none
+of the keys are present.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.InfrastructureAsset.from_geojson_feature">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_geojson_feature</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">geojson_feature</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.InfrastructureAsset" title="rapidtools.core.infrastructure_asset.InfrastructureAsset"><span class="pre">InfrastructureAsset</span></a></span></span><a class="reference internal" href="_modules/rapidtools/core/infrastructure_asset.html#InfrastructureAsset.from_geojson_feature"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.InfrastructureAsset.from_geojson_feature" title="Link to this definition">¶</a></dt>
+<dd><p>Create an InfrastructureAsset from a GeoJSON Feature dictionary.</p>
+<p>The method expects a GeoJSON object of type “Feature” with at least:
+- a “geometry” field containing a valid GeoJSON geometry, and
+- an optional “id” field, or an “id” inside “properties”.</p>
+<p>If no id is found at the top level or in properties, a warning is
+logged and the id ‘no_id’ is used as a placeholder.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>geojson_feature</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – A dictionary representing a GeoJSON Feature.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>An initialized InfrastructureAsset instance.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ValueError</strong> – If geojson_feature is not a valid GeoJSON Feature
+    (i.e., its “type” is not “Feature”).</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.InfrastructureAsset.get_attributes">
+<span class="sig-name descname"><span class="pre">get_attributes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">keys</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/rapidtools/core/infrastructure_asset.html#InfrastructureAsset.get_attributes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.InfrastructureAsset.get_attributes" title="Link to this definition">¶</a></dt>
+<dd><p>Safely retrieves one or more descriptive attributes from the asset.</p>
+<p>If a requested key does not exist, a warning is logged and the key
+is omitted from the returned dictionary.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>*keys</strong> (<em>str</em>) – A variable number of keys to retrieve.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A dictionary containing the keys that were found and their values.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.InfrastructureAsset.print_info">
+<span class="sig-name descname"><span class="pre">print_info</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/infrastructure_asset.html#InfrastructureAsset.print_info"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.InfrastructureAsset.print_info" title="Link to this definition">¶</a></dt>
+<dd><p>Print a human-readable summary of the asset to stdout.</p>
+<p>The summary includes:
+- id,
+- inferred asset type,
+- geometry (in WKT format),
+- all attributes (pretty-printed as JSON), and
+- a list of associated image assets.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.InfrastructureAsset.remove_attributes">
+<span class="sig-name descname"><span class="pre">remove_attributes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">keys</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/infrastructure_asset.html#InfrastructureAsset.remove_attributes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.InfrastructureAsset.remove_attributes" title="Link to this definition">¶</a></dt>
+<dd><p>Remove one or more attributes by key.</p>
+<p>For each key:
+- If the key exists, it is removed.
+- If the key does not exist, a warning is logged.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>*keys</strong> (<em>str</em>) – One or more attribute names to remove.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.InfrastructureAsset.remove_image_assets">
+<span class="sig-name descname"><span class="pre">remove_image_assets</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">image_ids</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#rapidtools.core.ImageAsset" title="rapidtools.core.image_asset.ImageAsset"><span class="pre">ImageAsset</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/rapidtools/core/infrastructure_asset.html#InfrastructureAsset.remove_image_assets"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.InfrastructureAsset.remove_image_assets" title="Link to this definition">¶</a></dt>
+<dd><p>Removes image assets identified by their unique string ID or filename.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>*image_ids</strong> – A variable number of string IDs (or filenames) to remove.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A list of the actual ImageAsset objects that were
+successfully removed.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list[<a class="reference internal" href="#rapidtools.core.ImageAsset" title="rapidtools.core.ImageAsset">ImageAsset</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.InfrastructureAsset.to_geojson_feature">
+<span class="sig-name descname"><span class="pre">to_geojson_feature</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/rapidtools/core/infrastructure_asset.html#InfrastructureAsset.to_geojson_feature"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.InfrastructureAsset.to_geojson_feature" title="Link to this definition">¶</a></dt>
+<dd><p>Converts the InfrastructureAsset into a GeoJSON Feature dictionary.</p>
+<p>The asset’s ‘id’ becomes the feature’s ‘id’. The asset’s ‘attributes’
+are used as the base for the feature’s ‘properties’. The list of
+‘image_assets’ is serialized and added to the ‘properties’ as well.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A dictionary representing a valid GeoJSON Feature.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="rapidtools.core.InfrastructureAssetCollection">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">rapidtools.core.</span></span><span class="sig-name descname"><span class="pre">InfrastructureAssetCollection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">assets:</span> <span class="pre">list[~rapidtools.core.infrastructure_asset.InfrastructureAsset]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/core/infrastructure_asset.html#InfrastructureAssetCollection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.InfrastructureAssetCollection" title="Link to this definition">¶</a></dt>
+<dd><p>Represents a collection of InfrastructureAsset objects.</p>
+<p>This class acts as a “smart list,” providing methods to manage and analyze
+a group of assets as a whole. It supports list-like operations such as
+iteration, len(), and indexing.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.InfrastructureAssetCollection.append">
+<span class="sig-name descname"><span class="pre">append</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">asset</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#rapidtools.core.InfrastructureAsset" title="rapidtools.core.infrastructure_asset.InfrastructureAsset"><span class="pre">InfrastructureAsset</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/core/infrastructure_asset.html#InfrastructureAssetCollection.append"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.InfrastructureAssetCollection.append" title="Link to this definition">¶</a></dt>
+<dd><p>Adds a new InfrastructureAsset to the collection, checking for a unique ID.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="rapidtools.core.InfrastructureAssetCollection.combined_bounding_box">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">combined_bounding_box</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#rapidtools.core.BoundingBox" title="rapidtools.core.bounding_box.BoundingBox"><span class="pre">BoundingBox</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#rapidtools.core.InfrastructureAssetCollection.combined_bounding_box" title="Link to this definition">¶</a></dt>
+<dd><p>Calculates the total bounding box that encloses all assets in the collection.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.InfrastructureAssetCollection.filter_by_attribute">
+<span class="sig-name descname"><span class="pre">filter_by_attribute</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">attribute_key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attribute_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.InfrastructureAssetCollection" title="rapidtools.core.infrastructure_asset.InfrastructureAssetCollection"><span class="pre">InfrastructureAssetCollection</span></a></span></span><a class="reference internal" href="_modules/rapidtools/core/infrastructure_asset.html#InfrastructureAssetCollection.filter_by_attribute"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.InfrastructureAssetCollection.filter_by_attribute" title="Link to this definition">¶</a></dt>
+<dd><p>Filters the collection and returns a new InfrastructureAssetCollection.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.InfrastructureAssetCollection.from_geojson">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_geojson</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">geojson_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.InfrastructureAssetCollection" title="rapidtools.core.infrastructure_asset.InfrastructureAssetCollection"><span class="pre">InfrastructureAssetCollection</span></a></span></span><a class="reference internal" href="_modules/rapidtools/core/infrastructure_asset.html#InfrastructureAssetCollection.from_geojson"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.InfrastructureAssetCollection.from_geojson" title="Link to this definition">¶</a></dt>
+<dd><p>A factory method to create a collection from a GeoJSON FeatureCollection dictionary.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.InfrastructureAssetCollection.get_asset_by_id">
+<span class="sig-name descname"><span class="pre">get_asset_by_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">asset_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.InfrastructureAsset" title="rapidtools.core.infrastructure_asset.InfrastructureAsset"><span class="pre">InfrastructureAsset</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/infrastructure_asset.html#InfrastructureAssetCollection.get_asset_by_id"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.InfrastructureAssetCollection.get_asset_by_id" title="Link to this definition">¶</a></dt>
+<dd><p>Finds and returns an asset by its unique ID.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.InfrastructureAssetCollection.to_geojson">
+<span class="sig-name descname"><span class="pre">to_geojson</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">indent</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="reference internal" href="_modules/rapidtools/core/infrastructure_asset.html#InfrastructureAssetCollection.to_geojson"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.InfrastructureAssetCollection.to_geojson" title="Link to this definition">¶</a></dt>
+<dd><p>Serializes the entire collection into a GeoJSON FeatureCollection string.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>indent</strong> (<em>int</em><em> | </em><em>None</em>) – The number of spaces to use for indentation
+for pretty-printing. If None, the output will be compact.
+Defaults to None.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A string containing the GeoJSON FeatureCollection.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="rapidtools.core.PolygonRegion">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">rapidtools.core.</span></span><span class="sig-name descname"><span class="pre">PolygonRegion</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vertices</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/core/polygon_region.html#PolygonRegion"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PolygonRegion" title="Link to this definition">¶</a></dt>
 <dd><p>Represents a geographical region defined by a list of vertices.</p>
 <dl class="py method">
-<dt class="sig sig-object py" id="rapidtools.core.Polygon.get_bounding_box">
-<span class="sig-name descname"><span class="pre">get_bounding_box</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.BoundingBox" title="rapidtools.core.bounding_box.BoundingBox"><span class="pre">BoundingBox</span></a></span></span><a class="reference internal" href="_modules/rapidtools/core/polygon.html#Polygon.get_bounding_box"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.Polygon.get_bounding_box" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="rapidtools.core.PolygonRegion.get_bounding_box">
+<span class="sig-name descname"><span class="pre">get_bounding_box</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.BoundingBox" title="rapidtools.core.bounding_box.BoundingBox"><span class="pre">BoundingBox</span></a></span></span><a class="reference internal" href="_modules/rapidtools/core/polygon_region.html#PolygonRegion.get_bounding_box"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PolygonRegion.get_bounding_box" title="Link to this definition">¶</a></dt>
 <dd><p>Calculates the smallest bounding box that encloses the polygon.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
@@ -174,11 +841,602 @@ BoundingBox objects, each with an area less than or equal to max_area.</p>
 </dd></dl>
 
 </section>
-<section id="data-sources">
-<h2>Data Sources<a class="headerlink" href="#data-sources" title="Link to this heading">¶</a></h2>
+<section id="module-rapidtools.data_sources">
+<span id="data-sources"></span><h2>Data Sources<a class="headerlink" href="#module-rapidtools.data_sources" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="rapidtools.data_sources.MapillaryClient">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">rapidtools.data_sources.</span></span><span class="sig-name descname"><span class="pre">MapillaryClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">access_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'mapillary_images'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/data_sources/mapillary_client.html#MapillaryClient"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.data_sources.MapillaryClient" title="Link to this definition">¶</a></dt>
+<dd><p>Fetches and stores Mapillary images for given geo-coordinates, bounding boxes, or image IDs.
+Requires a Mapillary API access token.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.data_sources.MapillaryClient.fetch_image">
+<span class="sig-name descname"><span class="pre">fetch_image</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">image_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fields</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save_to_disk</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.ImageAsset" title="rapidtools.core.image_asset.ImageAsset"><span class="pre">ImageAsset</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/data_sources/mapillary_client.html#MapillaryClient.fetch_image"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.data_sources.MapillaryClient.fetch_image" title="Link to this definition">¶</a></dt>
+<dd><p>Fetch image metadata using it Mapillary ID and optionally download it.</p>
+<dl class="simple">
+<dt>This method:</dt><dd><ul class="simple">
+<li><p>Validates the requested metadata fields.</p></li>
+<li><p>Fetches image metadata from the API.</p></li>
+<li><p>Extracts the download URL from the metadata.</p></li>
+<li><p>Downloads the image file to the configured save directory.</p></li>
+<li><p>Returns an ImageAsset containing the file path, ID, and
+remaining  metadata.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>image_id</strong> (<em>str</em>) – The identifier of the image to fetch from the API.</p></li>
+<li><p><strong>fields</strong> (<em>list</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>) – Optional list of metadata fields to request. If <code class="docutils literal notranslate"><span class="pre">None</span></code>, a
+default set of fields (as defined by <code class="docutils literal notranslate"><span class="pre">_validate_fields</span></code>)
+will be used. Invalid fields are ignored with a warning.</p></li>
+<li><p><strong>save_to_disk</strong> (<em>bool</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, downloads the image to the configured save
+directory. Defaults to <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>An ImageAsset instance containing:</dt><dd><ul class="simple">
+<li><dl class="simple">
+<dt>path (str):</dt><dd><p>Local path to the downloaded image file.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="simple">
+<dt>id (str):</dt><dd><p>The image ID (API <code class="docutils literal notranslate"><span class="pre">id</span></code> if present, otherwise the
+requested <code class="docutils literal notranslate"><span class="pre">image_id</span></code>).</p>
+</dd>
+</dl>
+</li>
+<li><dl class="simple">
+<dt>properties (dict):</dt><dd><p>Remaining metadata fields returned by the API
+(excluding the file <code class="docutils literal notranslate"><span class="pre">id</span></code> and used download URL).</p>
+</dd>
+</dl>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">None</span></code> if validation fails, metadata retrieval fails, no
+download URL is present, or the download itself fails.</p></li>
+</ul>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#rapidtools.core.ImageAsset" title="rapidtools.core.ImageAsset">ImageAsset</a> | None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.data_sources.MapillaryClient.fetch_images_by_ids">
+<span class="sig-name descname"><span class="pre">fetch_images_by_ids</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">image_ids</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fields</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save_to_disk</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_workers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.ImageCollection" title="rapidtools.core.image_asset.ImageCollection"><span class="pre">ImageCollection</span></a></span></span><a class="reference internal" href="_modules/rapidtools/data_sources/mapillary_client.html#MapillaryClient.fetch_images_by_ids"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.data_sources.MapillaryClient.fetch_images_by_ids" title="Link to this definition">¶</a></dt>
+<dd><p>Get multiple images by ID and return them as a collection.</p>
+<dl class="simple">
+<dt>This method:</dt><dd><ul class="simple">
+<li><p>Submits one fetch task per image ID to a thread pool.</p></li>
+<li><p>Fetches metadata and downloads each image (via fetch_image).</p></li>
+<li><p>Aggregates successfully fetched ImageAsset objects into a list.</p></li>
+<li><p>Logs any exceptions that occur per image without aborting the
+entire batch.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>image_ids</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – A list of image IDs to fetch and download</p></li>
+<li><p><strong>fields</strong> (<em>list</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>) – Optional list of metadata fields to request for each image.
+If <code class="docutils literal notranslate"><span class="pre">None</span></code>, a default set of fields will be used</p></li>
+<li><p><strong>save_to_disk</strong> (<em>bool</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, downloads image files to <code class="docutils literal notranslate"><span class="pre">self.save_dir</span></code>.
+If <code class="docutils literal notranslate"><span class="pre">False</span></code>, only metadata is retrieved. Defaults to <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+<li><p><strong>max_workers</strong> – Maximum number of parallel worker threads used for fetching
+images. Defaults to <code class="docutils literal notranslate"><span class="pre">10</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>An <code class="docutils literal notranslate"><span class="pre">ImageCollection</span></code> containing all successfully fetched
+<code class="docutils literal notranslate"><span class="pre">ImageAsset</span></code> instances. Any images that fail to download or
+process are excluded; errors are logged per image ID.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#rapidtools.core.ImageCollection" title="rapidtools.core.ImageCollection">ImageCollection</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.data_sources.MapillaryClient.fetch_images_in_bbox">
+<span class="sig-name descname"><span class="pre">fetch_images_in_bbox</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#rapidtools.core.BoundingBox" title="rapidtools.core.bounding_box.BoundingBox"><span class="pre">BoundingBox</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">fields</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save_to_disk</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start_date</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">end_date</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_rapid_only</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_workers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.ImageCollection" title="rapidtools.core.image_asset.ImageCollection"><span class="pre">ImageCollection</span></a></span></span><a class="reference internal" href="_modules/rapidtools/data_sources/mapillary_client.html#MapillaryClient.fetch_images_in_bbox"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.data_sources.MapillaryClient.fetch_images_in_bbox" title="Link to this definition">¶</a></dt>
+<dd><p>Download and parse Mapillary Vector Tiles covering a bbox in parallel.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>bbox</strong> (<a class="reference internal" href="#rapidtools.core.BoundingBox" title="rapidtools.core.BoundingBox"><em>BoundingBox</em></a>) – The geographic rectangular area to search. Must be an
+instance of <code class="docutils literal notranslate"><span class="pre">rapidtools.core.BoundingBox</span></code>.</p></li>
+<li><p><strong>fields</strong> (<em>list</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>) – A list of specific metadata fields to fetch (e.g.,
+<code class="docutils literal notranslate"><span class="pre">['captured_at',</span> <span class="pre">'compass_angle']</span></code>). If <code class="docutils literal notranslate"><span class="pre">None</span></code>,
+defaults to all available fields. Note: The download URL is
+always fetched internally.</p></li>
+<li><p><strong>fields</strong> – A list of specific metadata fields to fetch (e.g.,
+<code class="docutils literal notranslate"><span class="pre">['captured_at',</span> <span class="pre">'compass_angle']</span></code>). If <code class="docutils literal notranslate"><span class="pre">None</span></code>,
+defaults to all available fields. Note: The download URL is
+always fetched internally.</p></li>
+<li><p><strong>save_to_disk</strong> (<em>bool</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, downloads the images to the configured save
+directory. Defaults to <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+<li><p><strong>filter_rapid_only</strong> – If True, filters for RAPID facility images.</p></li>
+<li><p><strong>max_workers</strong> – Number of parallel download threads (default: 10).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A new ImageCollection populated with assets from ALL tiles.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class" id="module-rapidtools.data_sources.tile_utils">
+<dt class="sig sig-object py" id="rapidtools.data_sources.tile_utils.TileUtils">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">rapidtools.data_sources.tile_utils.</span></span><span class="sig-name descname"><span class="pre">TileUtils</span></span><a class="reference internal" href="_modules/rapidtools/data_sources/tile_utils.html#TileUtils"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.data_sources.tile_utils.TileUtils" title="Link to this definition">¶</a></dt>
+<dd><p>Utility methods for Web Mercator/Mapbox Vector Tile operations.</p>
+<p>This class provides static helpers for:
+- Converting between WGS84 (lat/lon) and XYZ tile coordinates
+- Converting Mapbox Vector Tile (MVT) local coordinates to WGS84
+- Determining zoom levels and tile coverage for bounding boxes
+- Converting millisecond timestamps to UTC dates</p>
+<p>All geographic coordinates are assumed to be:
+- Latitude in degrees, in the range [-85.05112878, 85.05112878]
+- Longitude in degrees, in the range [-180, 180]</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.data_sources.tile_utils.TileUtils.bbox_to_mapbox_tiles">
+<em class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">bbox_to_mapbox_tiles</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#rapidtools.core.BoundingBox" title="rapidtools.core.BoundingBox"><span class="pre">BoundingBox</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">zoom</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/rapidtools/data_sources/tile_utils.html#TileUtils.bbox_to_mapbox_tiles"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.data_sources.tile_utils.TileUtils.bbox_to_mapbox_tiles" title="Link to this definition">¶</a></dt>
+<dd><p>Compute XYZ tiles that cover a bounding box.</p>
+<p>The bounding box is given in WGS84 coordinates via the
+<code class="docutils literal notranslate"><span class="pre">bbox.shapely.bounds</span></code> attribute. Tiles are computed using the
+standard Web Mercator XYZ scheme.</p>
+<p>If <code class="docutils literal notranslate"><span class="pre">zoom</span></code> is not provided, the highest zoom at which the entire
+bounding box fits into a single tile (as returned by
+<a class="reference internal" href="#rapidtools.data_sources.tile_utils.TileUtils.get_enclosing_zoom" title="rapidtools.data_sources.tile_utils.TileUtils.get_enclosing_zoom"><code class="xref py py-meth docutils literal notranslate"><span class="pre">get_enclosing_zoom()</span></code></a>) is used. In that case the result is often
+a single tile.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>bbox</strong> – Bounding box object with a <code class="docutils literal notranslate"><span class="pre">shapely</span></code> geometry exposing a
+<code class="docutils literal notranslate"><span class="pre">.bounds</span></code> attribute in the order
+<code class="docutils literal notranslate"><span class="pre">(min_lon,</span> <span class="pre">min_lat,</span> <span class="pre">max_lon,</span> <span class="pre">max_lat)</span></code>.</p></li>
+<li><p><strong>zoom</strong> – Zoom level at which to compute coverage. If <code class="docutils literal notranslate"><span class="pre">None</span></code>, the
+zoom level is determined by <a class="reference internal" href="#rapidtools.data_sources.tile_utils.TileUtils.get_enclosing_zoom" title="rapidtools.data_sources.tile_utils.TileUtils.get_enclosing_zoom"><code class="xref py py-meth docutils literal notranslate"><span class="pre">get_enclosing_zoom()</span></code></a>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A list of tile coordinates <code class="docutils literal notranslate"><span class="pre">(x,</span> <span class="pre">y,</span> <span class="pre">z)</span></code> covering the bounding box,
+including all integer tiles from <code class="docutils literal notranslate"><span class="pre">min_x..max_x</span></code> and
+<code class="docutils literal notranslate"><span class="pre">min_y..max_y</span></code> inclusive.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.data_sources.tile_utils.TileUtils.get_enclosing_zoom">
+<em class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_enclosing_zoom</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#rapidtools.core.BoundingBox" title="rapidtools.core.BoundingBox"><span class="pre">BoundingBox</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span></span></span><a class="reference internal" href="_modules/rapidtools/data_sources/tile_utils.html#TileUtils.get_enclosing_zoom"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.data_sources.tile_utils.TileUtils.get_enclosing_zoom" title="Link to this definition">¶</a></dt>
+<dd><p>Find the highest zoom where the bounding box fits inside one tile.</p>
+<p>This method searches zoom levels from 22 down to 14 and returns the
+maximum zoom level at which the entire bounding box is contained within
+a single XYZ tile. If the bounding box spans multiple tiles at all
+zooms in that range, 14 is returned.</p>
+<p>The bounding box is expected to provide Shapely-like bounds in
+the order <code class="docutils literal notranslate"><span class="pre">(min_lon,</span> <span class="pre">min_lat,</span> <span class="pre">max_lon,</span> <span class="pre">max_lat)</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>bbox</strong> – Bounding box object with a <code class="docutils literal notranslate"><span class="pre">shapely</span></code> geometry exposing a
+<code class="docutils literal notranslate"><span class="pre">.bounds</span></code> attribute.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The highest integer zoom level in the range [14, 22] at which
+the bounding box fits into a single tile. Returns 14 if no higher
+zoom level satisfies this condition.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.data_sources.tile_utils.TileUtils.latlon_to_tile">
+<em class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">latlon_to_tile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lat</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lon</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/rapidtools/data_sources/tile_utils.html#TileUtils.latlon_to_tile"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.data_sources.tile_utils.TileUtils.latlon_to_tile" title="Link to this definition">¶</a></dt>
+<dd><p>Convert latitude/longitude to fractional XYZ tile coordinates.</p>
+<p>Uses the Web Mercator tiling scheme where: at zoom level <code class="docutils literal notranslate"><span class="pre">z</span></code> there
+are <code class="docutils literal notranslate"><span class="pre">2^z</span></code> tiles in both X and Y.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>lat</strong> – Latitude in degrees.</p></li>
+<li><p><strong>lon</strong> – Longitude in degrees.</p></li>
+<li><p><strong>z</strong> – Zoom level (e.g., 0–22).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tuple <code class="docutils literal notranslate"><span class="pre">(xtile,</span> <span class="pre">ytile)</span></code> of fractional tile coordinates at
+zoom <code class="docutils literal notranslate"><span class="pre">z</span></code>. The integer parts <code class="docutils literal notranslate"><span class="pre">floor(xtile)</span></code> and
+<code class="docutils literal notranslate"><span class="pre">floor(ytile)</span></code> are the tile indices; the fractional parts
+represent the position within that tile.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.data_sources.tile_utils.TileUtils.ms_to_date_utc">
+<em class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ms_to_date_utc</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">timestamp_ms</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="reference internal" href="_modules/rapidtools/data_sources/tile_utils.html#TileUtils.ms_to_date_utc"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.data_sources.tile_utils.TileUtils.ms_to_date_utc" title="Link to this definition">¶</a></dt>
+<dd><p>Convert a millisecond UNIX timestamp to a UTC date string.</p>
+<p>The input timestamp is interpreted as milliseconds since the Unix epoch
+(1970-01-01T00:00:00Z). The function converts it to a UTC date and
+returns an ISO 8601 formatted string (YYYY-MM-DD).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>timestamp_ms</strong> – Timestamp in milliseconds since Unix epoch (UTC).</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A Unicode string representing the UTC date in ISO format
+(YYYY-MM-DD).</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.data_sources.tile_utils.TileUtils.mvt_to_wgs84">
+<em class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">mvt_to_wgs84</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">shape_x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shape_y</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tile_x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tile_y</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tile_z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extent</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">4096</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/rapidtools/data_sources/tile_utils.html#TileUtils.mvt_to_wgs84"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.data_sources.tile_utils.TileUtils.mvt_to_wgs84" title="Link to this definition">¶</a></dt>
+<dd><p>Convert MVT local tile coordinates to WGS84 (longitude, latitude).</p>
+<p>The local coordinates <code class="docutils literal notranslate"><span class="pre">shape_x</span></code> and <code class="docutils literal notranslate"><span class="pre">shape_y</span></code> are integers in the
+coordinate space of a single Mapbox Vector Tile (commonly
+<code class="docutils literal notranslate"><span class="pre">0..extent</span></code>). The enclosing tile is specified by global XYZ tile
+indices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>shape_x</strong> – X coordinate in the MVT local coordinate space
+(0 to <code class="docutils literal notranslate"><span class="pre">extent</span></code>).</p></li>
+<li><p><strong>shape_y</strong> – Y coordinate in the MVT local coordinate space
+(0 to <code class="docutils literal notranslate"><span class="pre">extent</span></code>).</p></li>
+<li><p><strong>tile_x</strong> – Global tile X index at zoom <code class="docutils literal notranslate"><span class="pre">tile_z</span></code>.</p></li>
+<li><p><strong>tile_y</strong> – Global tile Y index at zoom <code class="docutils literal notranslate"><span class="pre">tile_z</span></code>.</p></li>
+<li><p><strong>tile_z</strong> – Zoom level of the tile.</p></li>
+<li><p><strong>extent</strong> – Resolution of the local tile coordinate grid. Defaults
+to 4096 (typical for Mapbox Vector Tiles).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">lon</span></code> is longitude in degrees (WGS84).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">lat</span></code> is latitude in degrees (WGS84).</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A tuple <code class="docutils literal notranslate"><span class="pre">(lon,</span> <span class="pre">lat)</span></code> where</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
 </section>
-<section id="inference">
-<h2>Inference<a class="headerlink" href="#inference" title="Link to this heading">¶</a></h2>
+<section id="module-rapidtools.inference">
+<span id="inference"></span><h2>Inference<a class="headerlink" href="#module-rapidtools.inference" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="rapidtools.inference.ClaudeClient">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">rapidtools.inference.</span></span><span class="sig-name descname"><span class="pre">ClaudeClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">api_key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'claude-3-5-sonnet-20240620'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_workers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_retries</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">3</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/inference/claude_client.html#ClaudeClient"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.inference.ClaudeClient" title="Link to this definition">¶</a></dt>
+<dd><p>Client for interacting with Anthropic’s Claude 3 Vision API.</p>
+<dl class="simple">
+<dt>This class provides convenience methods for:</dt><dd><ul class="simple">
+<li><p>Encoding local image files as base64.</p></li>
+<li><p>Sending single-image vision requests to the Claude API.</p></li>
+<li><p>Running concurrent, batched description tasks over a directory of
+images with automatic retries and progress reporting.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.inference.ClaudeClient.batch_describe_directory">
+<span class="sig-name descname"><span class="pre">batch_describe_directory</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">image_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prompt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">results_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/rapidtools/inference/claude_client.html#ClaudeClient.batch_describe_directory"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.inference.ClaudeClient.batch_describe_directory" title="Link to this definition">¶</a></dt>
+<dd><p>Describe all images in a directory concurrently, with retries.</p>
+<dl class="simple">
+<dt>This method:</dt><dd><ul class="simple">
+<li><p>Scans the specified input directory for image files.</p></li>
+<li><p>Spawns a thread pool with up to <code class="xref py py-attr docutils literal notranslate"><span class="pre">max_workers</span></code> workers.</p></li>
+<li><p>For each image, calls <code class="xref py py-meth docutils literal notranslate"><span class="pre">_process_and_save()</span></code> to generate a
+description and write it to a corresponding <code class="docutils literal notranslate"><span class="pre">.txt</span></code> file in the
+results directory.</p></li>
+<li><p>Retries failed images up to <code class="xref py py-attr docutils literal notranslate"><span class="pre">max_retries</span></code> times.</p></li>
+<li><p>Returns a mapping from image filename to a status string.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>image_dir</strong> – Path to the directory containing images (<code class="docutils literal notranslate"><span class="pre">.png</span></code>,
+<code class="docutils literal notranslate"><span class="pre">.jpg</span></code>, or <code class="docutils literal notranslate"><span class="pre">.jpeg</span></code>) to be processed.</p></li>
+<li><p><strong>prompt</strong> – Text prompt to pass to <a class="reference internal" href="#rapidtools.inference.ClaudeClient.describe_image" title="rapidtools.inference.ClaudeClient.describe_image"><code class="xref py py-meth docutils literal notranslate"><span class="pre">describe_image()</span></code></a> for each
+image.</p></li>
+<li><p><strong>results_dir</strong> – Directory where per-image description text files
+will be written. The directory is created if it does not
+already exist.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A dictionary mapping each image filename to a
+status string. A status of <code class="docutils literal notranslate"><span class="pre">&quot;ok&quot;</span></code> indicates success; other
+values (e.g., <code class="docutils literal notranslate"><span class="pre">&quot;error:</span> <span class="pre">...&quot;</span></code>) describe failure reasons.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict[str, str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.inference.ClaudeClient.describe_image">
+<span class="sig-name descname"><span class="pre">describe_image</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">image_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prompt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1024</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="reference internal" href="_modules/rapidtools/inference/claude_client.html#ClaudeClient.describe_image"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.inference.ClaudeClient.describe_image" title="Link to this definition">¶</a></dt>
+<dd><p>Generate a text description for a single image using Claude Vision.</p>
+<dl class="simple">
+<dt>This method:</dt><dd><ul class="simple">
+<li><p>Encodes the specified image as base64.</p></li>
+<li><p>Builds a Claude API request that includes both the image and the
+provided text prompt.</p></li>
+<li><p>Sends the request and returns the resulting text description.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>image_path</strong> – Path to the input image file to be described.</p></li>
+<li><p><strong>prompt</strong> – Natural-language prompt that guides how the model should
+describe the image (e.g., instructions, detail level, focus).</p></li>
+<li><p><strong>max_tokens</strong> – Maximum number of tokens to generate in the model’s
+response. Defaults to <code class="docutils literal notranslate"><span class="pre">1024</span></code>.</p></li>
+<li><p><strong>model_id</strong> – Optional override for the model identifier to use. If
+<code class="docutils literal notranslate"><span class="pre">None</span></code>, the client’s default <code class="xref py py-attr docutils literal notranslate"><span class="pre">model_id</span></code> is used.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The model-generated text description for the image.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>ImageEncodingError</strong> – If the image cannot be read or base64-encoded.</p></li>
+<li><p><strong>APIRequestError</strong> – If the HTTP request fails (network/HTTP error) or the API
+    returns an unexpected response format.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="rapidtools.inference.GeminiClient">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">rapidtools.inference.</span></span><span class="sig-name descname"><span class="pre">GeminiClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">api_key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'gemini-2.5-pro'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_workers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_retries</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">3</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/inference/gemini_client.html#GeminiClient"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.inference.GeminiClient" title="Link to this definition">¶</a></dt>
+<dd><p>Handles batch processing of images using the Google Gemini API.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.inference.GeminiClient.describe_image">
+<span class="sig-name descname"><span class="pre">describe_image</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">image_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prompt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/inference/gemini_client.html#GeminiClient.describe_image"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.inference.GeminiClient.describe_image" title="Link to this definition">¶</a></dt>
+<dd><p>Generate a text description for a single image via the Gemini API.</p>
+<dl class="simple">
+<dt>This method:</dt><dd><ul class="simple">
+<li><p>Encodes the image as base64.</p></li>
+<li><p>Constructs the appropriate API request payload using the
+provided prompt and the encoded image.</p></li>
+<li><p>Sends the request to the Gemini API.</p></li>
+<li><p>Parses and returns the first candidate text description.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>image_path</strong> – Path to the image file to be described.</p></li>
+<li><p><strong>prompt</strong> – Text prompt that guides the description the model should
+generate (e.g., task instructions or desired style).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The generated text description if the request
+succeeds and the response can be parsed; otherwise <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Optional[str]</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Logs:</dt><dd><ul class="simple">
+<li><p>Errors for network issues, unexpected response formats, or any
+other runtime exceptions, tagged with the image path.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.inference.GeminiClient.process_single_file">
+<span class="sig-name descname"><span class="pre">process_single_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filename</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prompt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/rapidtools/inference/gemini_client.html#GeminiClient.process_single_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.inference.GeminiClient.process_single_file" title="Link to this definition">¶</a></dt>
+<dd><p>Process a single image file and writes its description to disk.</p>
+<dl class="simple">
+<dt>This worker method:</dt><dd><ul class="simple">
+<li><p>Builds full input and output paths based on the configured
+<code class="docutils literal notranslate"><span class="pre">input_dir</span></code> and <code class="docutils literal notranslate"><span class="pre">output_dir</span></code>.</p></li>
+<li><p>Calls <a class="reference internal" href="#rapidtools.inference.GeminiClient.describe_image" title="rapidtools.inference.GeminiClient.describe_image"><code class="xref py py-meth docutils literal notranslate"><span class="pre">describe_image()</span></code></a> to obtain a description.</p></li>
+<li><p>Writes the description to a <code class="docutils literal notranslate"><span class="pre">.txt</span></code> file next to the output
+directory.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>filename</strong> – Name of the image file (relative to <code class="docutils literal notranslate"><span class="pre">input_dir</span></code>) to
+be processed.</p></li>
+<li><p><strong>prompt</strong> – Text prompt to use when requesting the image description
+from the Gemini API.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl>
+<dt>A tuple of <code class="docutils literal notranslate"><span class="pre">(filename,</span> <span class="pre">status_message)</span></code> where</dt><dd><p><code class="docutils literal notranslate"><span class="pre">status_message</span></code> is one of:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">ok</span></code>:</dt><dd><p>The description was successfully generated and saved.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">api_error</span></code>:</dt><dd><p>The API call failed or produced no text.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">write_error:</span> <span class="pre">&lt;details&gt;</span></code>:</dt><dd><p>The description could not be written to disk.</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[str, str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.inference.GeminiClient.run">
+<span class="sig-name descname"><span class="pre">run</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prompt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/inference/gemini_client.html#GeminiClient.run"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.inference.GeminiClient.run" title="Link to this definition">¶</a></dt>
+<dd><p>Run batch processing over all images in the input directory.</p>
+<dl class="simple">
+<dt>This is the main entry point for using the client. It:</dt><dd><ol class="arabic simple">
+<li><p>Scans the configured <code class="docutils literal notranslate"><span class="pre">input_dir</span></code> for supported image files.</p></li>
+<li><p>Runs an initial batch processing pass for all images.</p></li>
+<li><p>Retries failed images up to <code class="docutils literal notranslate"><span class="pre">max_retries</span> <span class="pre">-</span> <span class="pre">1</span></code> additional times.</p></li>
+<li><p>Logs a final summary including success count and elapsed time.</p></li>
+</ol>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>prompt</strong> – Text prompt to provide to the Gemini model for every image
+in the input directory.</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Logs:</dt><dd><ul class="simple">
+<li><p>An error if the input directory does not exist.</p></li>
+<li><p>A warning if no image files are found.</p></li>
+<li><p>Information about the total number of images, retries, and
+final success statistics including elapsed time.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.inference.GeminiClient.show_supported_models">
+<em class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">show_supported_models</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/inference/gemini_client.html#GeminiClient.show_supported_models"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.inference.GeminiClient.show_supported_models" title="Link to this definition">¶</a></dt>
+<dd><p>Print all supported Gemini models.</p>
+<p>This method iterates over the internally defined <code class="docutils literal notranslate"><span class="pre">SUPPORTED_MODELS</span></code>
+mapping and prints each model ID alongside its human-readable name.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="rapidtools.inference.OpenAIClient">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">rapidtools.inference.</span></span><span class="sig-name descname"><span class="pre">OpenAIClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">api_key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'gpt-4o'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_workers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_retries</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">3</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/inference/openai_client.html#OpenAIClient"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.inference.OpenAIClient" title="Link to this definition">¶</a></dt>
+<dd><p>Client for interacting with the OpenAI GPT‑4 Vision API to describe images.</p>
+<dl class="simple">
+<dt>This class provides utilities for:</dt><dd><ul class="simple">
+<li><p>Encoding local image files as base64.</p></li>
+<li><p>Sending single‑image vision requests to the OpenAI Chat Completions
+API.</p></li>
+<li><p>Running concurrent, batched description tasks over a directory of
+images with automatic retries and progress reporting.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.inference.OpenAIClient.batch_describe_directory">
+<span class="sig-name descname"><span class="pre">batch_describe_directory</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">image_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prompt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">results_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/rapidtools/inference/openai_client.html#OpenAIClient.batch_describe_directory"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.inference.OpenAIClient.batch_describe_directory" title="Link to this definition">¶</a></dt>
+<dd><p>Process all images in a directory concurrently, with retries.</p>
+<dl class="simple">
+<dt>This method:</dt><dd><ul class="simple">
+<li><p>Scans the specified input directory for image files.</p></li>
+<li><p>Spawns a thread pool with up to <code class="xref py py-attr docutils literal notranslate"><span class="pre">max_workers</span></code> workers.</p></li>
+<li><p>For each image, calls <code class="xref py py-meth docutils literal notranslate"><span class="pre">_process_and_save()</span></code> to generate a
+description and write it to a corresponding <code class="docutils literal notranslate"><span class="pre">.txt</span></code> file in the
+results directory.</p></li>
+<li><p>Retries failed images up to <code class="xref py py-attr docutils literal notranslate"><span class="pre">max_retries</span></code> times.</p></li>
+<li><p>Returns a mapping from image filename to status string.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>image_dir</strong> – Path to the directory containing images (<code class="docutils literal notranslate"><span class="pre">.png</span></code>,
+<code class="docutils literal notranslate"><span class="pre">.jpg</span></code>, or <code class="docutils literal notranslate"><span class="pre">.jpeg</span></code>) to be processed.</p></li>
+<li><p><strong>prompt</strong> – Text prompt to use for all images in the directory.</p></li>
+<li><p><strong>results_dir</strong> – Directory where per‑image description text files
+will be written. The directory is created if it does not
+already exist.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A dictionary mapping each image filename to a
+status string. A status of <code class="docutils literal notranslate"><span class="pre">&quot;ok&quot;</span></code> indicates success; other
+values (e.g., <code class="docutils literal notranslate"><span class="pre">&quot;error:</span> <span class="pre">...&quot;</span></code>) describe failure reasons.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict[str, str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.inference.OpenAIClient.describe_image">
+<span class="sig-name descname"><span class="pre">describe_image</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">image_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prompt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">300</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="reference internal" href="_modules/rapidtools/inference/openai_client.html#OpenAIClient.describe_image"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.inference.OpenAIClient.describe_image" title="Link to this definition">¶</a></dt>
+<dd><p>Generate a text description for a single image using the OpenAI API.</p>
+<dl class="simple">
+<dt>This method:</dt><dd><ul class="simple">
+<li><p>Encodes the specified image as base64.</p></li>
+<li><p>Builds a Chat Completions request that includes both the image
+and the provided text prompt.</p></li>
+<li><p>Sends the request and returns the resulting text description.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>image_path</strong> – Path to the input image file to be described.</p></li>
+<li><p><strong>prompt</strong> – Natural‑language prompt that guides how the model should
+describe the image (e.g., instructions, detail level, focus).</p></li>
+<li><p><strong>max_tokens</strong> – Maximum number of tokens to generate in the model’s
+response. Defaults to <code class="docutils literal notranslate"><span class="pre">300</span></code>.</p></li>
+<li><p><strong>model_id</strong> – Optional override for the model identifier to use. If
+<code class="docutils literal notranslate"><span class="pre">None</span></code>, the client’s default <code class="xref py py-attr docutils literal notranslate"><span class="pre">model_id</span></code> is used.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The model‑generated text description for the image.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>ImageEncodingError</strong> – If the image cannot be read or base64‑encoded.</p></li>
+<li><p><strong>APIRequestError</strong> – If the HTTP request fails (network/HTTP error) or the API
+    returns an unexpected response format.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
 </section>
 </section>
 

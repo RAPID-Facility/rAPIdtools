@@ -7,16 +7,18 @@ Core Objects
 ------------
 
 .. automodule:: rapidtools.core
-   :members: BoundingBox, Polygon
+   :members: BoundingBox, PolygonRegion, ImageAsset, ImageCollection, InfrastructureAsset, InfrastructureAssetCollection
 
 Data Sources
 ------------
 
 .. automodule:: rapidtools.data_sources
    :members: MapillaryClient, RAPIDUtils
+.. automodule:: rapidtools.data_sources.tile_utils
+   :members: TileUtils
 
 Inference
 ---------
 
 .. automodule:: rapidtools.inference
-   :members: ClaudeClient, ChatGPTClient, GeminiClient
+   :members: ClaudeClient, OpenAIClient, GeminiClient
