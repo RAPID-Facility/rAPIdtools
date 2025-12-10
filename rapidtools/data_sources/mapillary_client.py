@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 12-09-2025
+# 12-10-2025
 
 import gzip
 import logging
@@ -105,21 +105,21 @@ class MapillaryClient:
         self.session.headers.update(REQUESTS_HEADERS)
 
     def fetch_image(
-            self, 
-            image_id: str, 
-            fields: list[str] | None,
-            save_to_disk: bool = True
-            )-> ImageAsset | None:
+        self, 
+        image_id: str, 
+        fields: list[str] | None,
+        save_to_disk: bool = True
+    )-> ImageAsset | None:
         """
         Fetch image metadata using it Mapillary ID and optionally download it.
         
         This method:
-        - Validates the requested metadata fields.
-        - Fetches image metadata from the API.
-        - Extracts the download URL from the metadata.
-        - Downloads the image file to the configured save directory.
-        - Returns an ImageAsset containing the file path, ID, and remaining 
-          metadata.
+            - Validates the requested metadata fields.
+            - Fetches image metadata from the API.
+            - Extracts the download URL from the metadata.
+            - Downloads the image file to the configured save directory.
+            - Returns an ImageAsset containing the file path, ID, and 
+              remaining  metadata.
         
         Args:
             image_id (str):
@@ -134,14 +134,17 @@ class MapillaryClient:
         
         Returns:
             ImageAsset | None:
-                - An ImageAsset instance containing:
-                  - path (str): Local path to the downloaded image file.
-                  - id (str): The image ID (API `id` if present, otherwise the
-                    requested `image_id`).
-                  - properties (dict): Remaining metadata fields returned by
-                    the API (excluding the file `id` and used download URL).
-                - None if validation fails, metadata retrieval fails, no 
-                  download URL is present, or the download itself fails.
+                An ImageAsset instance containing:
+                    - path (str): 
+                        Local path to the downloaded image file.
+                    - id (str): 
+                        The image ID (API ``id`` if present, otherwise the
+                        requested ``image_id``).
+                    - properties (dict): 
+                        Remaining metadata fields returned by the API 
+                        (excluding the file ``id`` and used download URL).
+                    - ``None`` if validation fails, metadata retrieval fails, no 
+                      download URL is present, or the download itself fails.
         """
         
         # Validate requested fields:
@@ -186,21 +189,21 @@ class MapillaryClient:
 
 
     def fetch_images_by_ids(
-            self, 
-            image_ids: list[str], 
-            fields: list[str] | None,
-            save_to_disk: bool = True,
-            max_workers: int = 10
-        ) -> ImageCollection:
+        self, 
+        image_ids: list[str], 
+        fields: list[str] | None,
+        save_to_disk: bool = True,
+        max_workers: int = 10
+    ) -> ImageCollection:
         """
         Get multiple images by ID and return them as a collection.
     
         This method:
-        - Submits one fetch task per image ID to a thread pool.
-        - Fetches metadata and downloads each image (via fetch_image).
-        - Aggregates successfully fetched ImageAsset objects into a list.
-        - Logs any exceptions that occur per image without aborting the 
-          entire batch.
+            - Submits one fetch task per image ID to a thread pool.
+            - Fetches metadata and downloads each image (via fetch_image).
+            - Aggregates successfully fetched ImageAsset objects into a list.
+            - Logs any exceptions that occur per image without aborting the 
+              entire batch.
         
         Args:
             image_ids (list[str]):
@@ -260,15 +263,15 @@ class MapillaryClient:
         return final_collection
 
     def fetch_images_in_bbox(
-            self,
-            bbox: BoundingBox,
-            fields: list[str] | None = None,
-            save_to_disk: bool = True,
-            start_date = '',
-            end_date = '',
-            filter_rapid_only: bool = True,
-            max_workers: int = 10
-        ) -> ImageCollection:
+        self,
+        bbox: BoundingBox,
+        fields: list[str] | None = None,
+        save_to_disk: bool = True,
+        start_date = '',
+        end_date = '',
+        filter_rapid_only: bool = True,
+        max_workers: int = 10
+    ) -> ImageCollection:
         """
         Download and parse Mapillary Vector Tiles covering a bbox in parallel.
     
@@ -409,12 +412,12 @@ class MapillaryClient:
             return False
 
     def _get_tile_image_data(
-            self,
-            tile_coords: tuple[int, int, int], 
-            start_date='',
-            end_date='',
-            filter_rapid_only: bool = True
-        ) -> list[ImageAsset]:
+        self,
+        tile_coords: tuple[int, int, int], 
+        start_date='',
+        end_date='',
+        filter_rapid_only: bool = True
+    ) -> list[ImageAsset]:
         """
         Extracts image assets from a single Mapillary vector tile.
 
@@ -718,10 +721,10 @@ class MapillaryClient:
         return None
 
     def _validate_fields(
-            self, 
-            fields: list[str]|None, 
-            image_id: str = "batch"
-        ) -> list[str]|None:
+        self, 
+        fields: list[str]|None, 
+        image_id: str = "batch"
+    ) -> list[str]|None:
         """
         Validate and normalize requested image fields for API requests.
         
