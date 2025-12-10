@@ -1,9 +1,49 @@
+# Copyright (c) 2025 The University of Washington
+#
+# This file is part of rapidtools.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice,
+# this list of conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+# this list of conditions and the following disclaimer in the documentation
+# and/or other materials provided with the distribution.
+#
+# 3. Neither the name of the copyright holder nor the names of its contributors
+# may be used to endorse or promote products derived from this software without
+# specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+#
+# You should have received a copy of the BSD 3-Clause License along with
+# rapidtools. If not, see <http://www.opensource.org/licenses/>.
+#
+# Contributors:
+# Barbaros Cetiner
+#
+# Last updated:
+# 12-10-2025
+
 import base64
 import os
-import requests
-from typing import List, Optional, Tuple
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
+import requests
+import logging
+from typing import List, Optional, Tuple, Dict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 
 # API URL Information:
@@ -11,7 +51,7 @@ API_BASE_URL = "https://generativelanguage.googleapis.com/v1/models/"
 API_SUFFIX = ":generateContent?key="
 
 # Supported Gemini Models:
-SUPPORTED_GEMINI_MODELS = {
+SUPPORTED_MODELS = {
     "gemini-2.5-pro": "Gemini 2.5 Pro",
     "gemini-2.5-flash": "Gemini 2.5 Flash",
     "gemini-2.5-flash-lite-preview-06-17": "Gemini 2.5 Flash‑Lite (preview)",
@@ -40,193 +80,321 @@ SUPPORTED_GEMINI_MODELS = {
 MAX_WORKERS = 10
 MAX_RETRIES = 3
 
-def show_supported_gemini_models() -> None:
-    """
-    Print all supported Gemini models with their IDs and names.
-    """
-    print("Supported Gemini Models:\n")
-    for model_id, model_name in sorted(SUPPORTED_GEMINI_MODELS.items()):
-        print(f"- {model_id}: {model_name}")
+class GeminiClient:
+    """Handles batch processing of images using the Google Gemini API."""
 
-def encode_image(image_path: str) -> str:
-    """
-    Read an image file from and return its base64-encoded string.
+    def __init__(
+        self,
+        api_key: str,
+        input_dir: str,
+        output_dir: str,
+        model_id: str = "gemini-2.5-pro",
+        max_workers: int = 10,
+        max_retries: int = 3,
+    ):
+        """Initializes the GeminiClient.
 
-    Args:
-        image_path (str): The path to the image file (e.g., JPEG or PNG).
+        Args:
+            api_key: 
+                Google Gemini API key used for authentication.
+            input_dir: 
+                Path to the directory containing source image files.
+            output_dir: 
+                Path to the directory where text descriptions will be
+                saved. The directory is created if it does not exist.
+            model_id: 
+                Identifier of the Gemini model to use for image
+                description. Defaults to ``"gemini-2.5-pro"``.
+            max_workers: 
+                Maximum number of parallel worker threads to use when
+                processing images in batch. Defaults to ``10``.
+            max_retries: 
+                Maximum number of retry attempts for failed image
+                requests in batch processing. Defaults to ``3``.
+        """
+        self.api_key = api_key
+        self.input_dir = input_dir
+        self.output_dir = output_dir
+        self.model_id = model_id
+        self.max_workers = max_workers
+        self.max_retries = max_retries
 
-    Returns:
-        str: The base64-encoded string representation of the image.
+        # Ensure output directory exists
+        os.makedirs(self.output_dir, exist_ok=True)
 
-    Raises:
-        RuntimeError: If the image cannot be read or encoded.
-    """
-    try:
-        with open(image_path, "rb") as f:
-            return base64.b64encode(f.read()).decode("utf-8")
-    except Exception as e:
-        raise RuntimeError(f"Failed to load image: {e}")
+    @staticmethod
+    def show_supported_models() -> None:
+        """
+        Print all supported Gemini models.
 
-def build_model_url(model_id: str, api_key: str) -> str:
-    """
-    Construct the full Gemini API URL for a given model and API key.
+        This method iterates over the internally defined ``SUPPORTED_MODELS``
+        mapping and prints each model ID alongside its human-readable name.
+        """
+        print("Supported Gemini Models:\n")
+        for model_id, model_name in sorted(SUPPORTED_MODELS.items()):
+            print(f"- {model_id}: {model_name}")
 
-    Args:
-        model_id (str): The Gemini model identifier (e.g., "gemini-2.5-pro").
-        api_key (str): The Google API key for authenticating requests.
+    def _encode_image(self, image_path: str) -> str:
+        """
+        Read an image file and encodes it as a base64 string.
 
-    Returns:
-        str: The complete URL to call the Gemini model's generateContent endpoint.
-    """
-    return f"{API_BASE_URL}{model_id}{API_SUFFIX}{api_key}"
+        Args:
+            image_path: Path to the image file to be encoded.
 
+        Returns:
+            str: Base64-encoded string representation of the image content.
 
-def describe_image(
-    image_path: str,
-    prompt: str,
-    model_id: str,
-    api_key: str
-) -> Optional[str]:
-    """
-    Get text description for an image from the specified Gemini model.
+        Raises:
+            RuntimeError: If the image file cannot be opened or read.
+        """
+        try:
+            with open(image_path, "rb") as f:
+                return base64.b64encode(f.read()).decode("utf-8")
+        except Exception as e:
+            raise RuntimeError(f"Failed to load image: {e}")
 
-    Args:
-        image_path (str): Path to the image file to be sent for description.
-        prompt (str): Natural language prompt guiding the model's output,
-                      e.g., "Describe the damage in this image."
-        model_id (str): The Gemini model identifier to use for generation.
-        api_key (str): Your Google Gemini API key for authentication.
+    def _build_url(self) -> str:
+        """
+        Construct the full Gemini API URL for the configured model.
 
-    Returns:
-        Optional[str]: The text response from the Gemini model, or None if
-                       the request failed or the response was invalid.
+        Returns:
+            str: The fully qualified API endpoint URL including model ID
+            and API key query parameter.
+        """
+        return f"{self.API_BASE_URL}{self.model_id}{self.API_SUFFIX}{self.api_key}"
 
-    Notes:
-        - This function handles HTTP and response parsing errors internally,
-          printing error messages and returning None on failure.
-        - Assumes the image is a JPEG; modify mime_type if using other formats.
-    """
-    encoded_image = encode_image(image_path)
-    api_url = build_model_url(model_id, api_key)
+    def describe_image(self, image_path: str, prompt: str) -> Optional[str]:
+        """
+        Generate a text description for a single image via the Gemini API.
 
-    payload = {
-        "contents": [
-            {
-                "role": "user",
-                "parts": [
-                    {"text": prompt},
+        This method:
+            * Encodes the image as base64.
+            * Constructs the appropriate API request payload using the
+              provided prompt and the encoded image.
+            * Sends the request to the Gemini API.
+            * Parses and returns the first candidate text description.
+
+        Args:
+            image_path: Path to the image file to be described.
+            prompt: Text prompt that guides the description the model should
+                generate (e.g., task instructions or desired style).
+
+        Returns:
+            Optional[str]: The generated text description if the request
+            succeeds and the response can be parsed; otherwise ``None``.
+
+        Logs:
+            - Errors for network issues, unexpected response formats, or any
+              other runtime exceptions, tagged with the image path.
+        """
+        try:
+            encoded_image = self._encode_image(image_path)
+            api_url = self._build_url()
+
+            payload = {
+                "contents": [
                     {
-                        "inline_data": {
-                            "mime_type": "image/jpeg",
-                            "data": encoded_image
-                        }
+                        "role": "user",
+                        "parts": [
+                            {"text": prompt},
+                            {
+                                "inline_data": {
+                                    "mime_type": "image/jpeg",
+                                    "data": encoded_image,
+                                }
+                            },
+                        ],
                     }
                 ]
             }
-        ]
-    }
 
-    headers = {"Content-Type": "application/json"}
+            headers = {"Content-Type": "application/json"}
+            response = requests.post(api_url, headers=headers, json=payload)
+            response.raise_for_status()
 
-    try:
-        response = requests.post(api_url, headers=headers, json=payload)
-        response.raise_for_status()
-        return response.json()["candidates"][0]["content"]["parts"][0]["text"]
-    except requests.exceptions.RequestException as e:
-        print(f"Request failed: {e}")
-    except KeyError:
-        print("Unexpected response format:", response.json())
-    return None
+            return response.json()["candidates"][0]["content"]["parts"][0]["text"]
 
-def process_image(
-        image_filename: str,
-        prompts: str,
-        api_key:str
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Request failed for {image_path}: {e}")
+        except KeyError:
+            logging.error(
+                f"Unexpected response format for {image_path}: {response.json()}"
+            )
+        except Exception as e:
+            logging.error(f"General error for {image_path}: {e}")
+
+        return None
+
+    def process_single_file(
+        self, 
+        filename: str, 
+        prompt: str
     ) -> Tuple[str, str]:
-    """Describe one image and save the description to a text file."""
-    try:
-        image_path = os.path.join(image_dir, image_filename)
-        description = describe_image(
-            image_path=image_path,
-            prompt=prompts,
-            model_id='gemini-2.5-pro',
-            api_key=api_key
-        )
+        """
+        Process a single image file and writes its description to disk.
 
-        description_output = os.path.join(
-            api_results_dir,
-            image_filename.split('.')[0] + '_description.txt'
-        )
+        This worker method:
+            * Builds full input and output paths based on the configured
+              ``input_dir`` and ``output_dir``.
+            * Calls :meth:`describe_image` to obtain a description.
+            * Writes the description to a ``.txt`` file next to the output
+              directory.
 
-        with open(description_output, "w", encoding="utf-8") as f:
-            f.write(description)
+        Args:
+            filename: 
+                Name of the image file (relative to ``input_dir``) to
+                be processed.
+            prompt: 
+                Text prompt to use when requesting the image description
+                from the Gemini API.
 
-        return image_filename, "ok"
-    except Exception as e:
-        return image_filename, f"error: {e}"
+        Returns:
+            Tuple[str, str]: A tuple of ``(filename, status_message)`` where
+                ``status_message`` is one of:
 
-def run_batch(
-        image_list: List[str],
-        prompts: str,
-        api_key:str,
-        attempt=1
-    ):
-    """Run one batch of image processing; returns dict of results."""
-    results = {}
-    with ThreadPoolExecutor(max_workers=num_workers) as executor, \
-         tqdm(total=len(image_list),
-              desc=f"Processing images (Attempt {attempt})") as pbar:
+                ``ok``:
+                    The description was successfully generated and saved.
+                ``api_error``:
+                    The API call failed or produced no text.
+                ``write_error: <details>``:
+                    The description could not be written to disk.
+        """
+        image_path = os.path.join(self.input_dir, filename)
+        output_filename = os.path.splitext(filename)[0] + "_description.txt"
+        output_path = os.path.join(self.output_dir, output_filename)
 
-        futures = {
-            executor.submit(process_image, img, prompts, api_key): img
-            for img in image_list
-        }
+        description = self.describe_image(image_path, prompt)
 
-        for future in as_completed(futures):
-            img = futures[future]
+        if description:
             try:
-                _, status = future.result()
-            except Exception as e:
-                status = f"error: {e}"
-            results[img] = status
-            pbar.update(1)
-    return results
+                with open(output_path, "w", encoding="utf-8") as f:
+                    f.write(description)
+                return filename, "ok"
+            except IOError as e:
+                return filename, f"write_error: {e}"
+        else:
+            return filename, "api_error"
 
-# File and directory paths:
-prompt_file = 'orthomosaic_prompts.txt'
-api_key_file = 'rapid_gemini_api_key3.txt'
-image_dir = 'eaton_aerial_images_feb25/overlaid_imagery'
-api_results_dir = 'gemini_outputs/eaton'
+    def _run_batch(
+            self, 
+            files: List[str], 
+            prompt: str, 
+            attempt: int
+        ) -> Dict[str, str]:
+        """
+        Execute a batch of image description tasks using a thread pool.
 
-# Prepare output directory:
-os.makedirs(api_results_dir, exist_ok=True)
+        Each file in ``files`` is processed in parallel via
+        :meth:`process_single_file`. Progress is tracked using a ``tqdm``
+        progress bar.
 
-# Load prompt text and API key:
-with open(prompt_file, "r", encoding="utf-8") as f:
-    prompts = f.read().strip()
+        Args:
+            files: 
+                List of image filenames (relative to ``input_dir``) to be
+                processed in this batch.
+            prompt: 
+                Text prompt to pass to :meth:`describe_image` for each image.
+            attempt: 
+                Current attempt number, used only for display in the progress
+                bar and logging (e.g., for retries).
 
-with open(api_key_file, "r", encoding="utf-8") as f:
-    api_key = f.read().strip()
+        Returns:
+            Dict[str, str]: 
+                A mapping from filename to status message, where
+                the status values follow the same convention as
+                :meth:`process_single_file` (e.g., ``"ok"``, ``"api_error"``,
+                ``"write_error: ..."`` or ``"crash: ..."`` for uncaught 
+                errors).
+        """
+        results: Dict[str, str] = {}
 
-# Gather image files and set worker count:
-image_files = os.listdir(image_dir)
-num_workers = min(MAX_WORKERS, max(1, len(image_files)))
+        # Adjust workers if we have fewer files than max_workers
+        current_workers = min(self.max_workers, max(1, len(files)))
 
-# Get descriptions for each image:
-start_time = time.perf_counter()
-#results = run_batch(image_files, prompts, api_key, attempt=1)
+        with ThreadPoolExecutor(max_workers=current_workers) as executor:
+            with tqdm(total=len(files), desc=f"Processing (Attempt {attempt})") as pbar:
 
-# Retry failed images up to MAX_RETRIES times
-for attempt in range(2, MAX_RETRIES + 1):
-    failed = [img for img, status in results.items() if not status.startswith('ok')]
-    if not failed:
-        break  # all done
-    print(f'\nRetrying {len(failed)} failed images (attempt {attempt})...')
-    retry_results = run_batch(failed, prompts, api_key, attempt=attempt)
-    results.update(retry_results)
+                # Submit tasks
+                future_to_file = {
+                    executor.submit(self.process_single_file, f, prompt): f
+                    for f in files
+                }
 
-end_time = time.perf_counter()
-elapsed = end_time - start_time
+                for future in as_completed(future_to_file):
+                    file_name = future_to_file[future]
+                    try:
+                        _, status = future.result()
+                    except Exception as e:
+                        status = f"crash: {e}"
 
-minutes, seconds = divmod(elapsed, 60)
-print(f'\nTotal processing time: {int(minutes)} min {seconds:.1f} sec')
+                    results[file_name] = status
+                    pbar.update(1)
+
+        return results
+
+    def run(self, prompt: str) -> None:
+        """
+        Run batch processing over all images in the input directory.
+
+        This is the main entry point for using the client. It:
+            1. Scans the configured ``input_dir`` for supported image files.
+            2. Runs an initial batch processing pass for all images.
+            3. Retries failed images up to ``max_retries - 1`` additional times.
+            4. Logs a final summary including success count and elapsed time.
+
+        Args:
+            prompt: Text prompt to provide to the Gemini model for every image
+                in the input directory.
+
+        Logs:
+            - An error if the input directory does not exist.
+            - A warning if no image files are found.
+            - Information about the total number of images, retries, and
+              final success statistics including elapsed time.
+        """
+        # 1. Gather files
+        try:
+            all_files = [
+                f
+                for f in os.listdir(self.input_dir)
+                if f.lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
+            ]
+        except FileNotFoundError:
+            logging.error(f"Input directory not found: {self.input_dir}")
+            return
+
+        if not all_files:
+            logging.warning("No image files found in input directory.")
+            return
+
+        logging.info(f"Found {len(all_files)} images to process.")
+        start_time = time.perf_counter()
+
+        # 2. Initial Run
+        results = self._run_batch(all_files, prompt, attempt=1)
+
+        # 3. Retry Logic
+        for attempt in range(2, self.max_retries + 1):
+            failed_files = [f for f, status in results.items() if status != "ok"]
+
+            if not failed_files:
+                break
+
+            logging.info(f"Retrying {len(failed_files)} failed images...")
+            time.sleep(2)  # Brief pause before retrying
+
+            retry_results = self._run_batch(failed_files, prompt, attempt)
+            results.update(retry_results)
+
+        # 4. Final Report
+        end_time = time.perf_counter()
+        elapsed = end_time - start_time
+
+        success_count = sum(1 for s in results.values() if s == "ok")
+        minutes, seconds = divmod(elapsed, 60)
+
+        logging.info("-" * 40)
+        logging.info("Processing Complete.")
+        logging.info(f"Success: {success_count}/{len(all_files)}")
+        logging.info(f"Time: {int(minutes)} min {seconds:.1f} sec")
+        logging.info("-" * 40)

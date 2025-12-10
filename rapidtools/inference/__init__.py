@@ -35,8 +35,8 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 11-11-2025
+# 12-10-2025
 
 from .claude_client import ClaudeClient
-from .openai_client import ChatGPTClient
+from .openai_client import OpenAIClient
 from .gemini_client import GeminiClient
