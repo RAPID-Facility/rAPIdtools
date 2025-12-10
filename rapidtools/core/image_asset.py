@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 12-03-2025
+# 12-09-2025
 
 from __future__ import annotations
 
@@ -101,7 +101,7 @@ class ImageAsset:
         # Resolve the path to a full path:
         self.path = self.path.resolve()
         
-        # Only check existence of the iamge if we are NOT allowing missing
+        # Only check existence of the image if we are NOT allowing missing
         # files:
         if not self.allow_missing_file and not self.path.exists():
             raise ValueError(
@@ -184,6 +184,71 @@ class ImageAsset:
             str: The filename stem as a string.
         """
         return self.path.stem
+
+    def combine_with(
+            self, 
+            other: ImageAsset, 
+            ignore_id_mismatch: bool = False, 
+            overwrite_path: bool = False,
+            overwrite_properties: bool = True
+        ) -> None:
+        """
+        Merges data from another ImageAsset into this one.
+
+        By default, this method ensures IDs match before merging to prevent 
+        accidental data corruption.
+
+        Args:
+            other (ImageAsset): 
+                The source asset to merge data from.
+            ignore_id_mismatch (bool): 
+                If ``True``, allows merging even if self.id != other.id.
+                Defaults to ``False``.
+            overwrite_path (bool): 
+                If ``True``, updates self.path with other.path. 
+                Defaults to ``False`` (preserves original path).
+            overwrite_properties (bool): 
+                If ``True``, other.properties will overwrite existing keys in 
+                self.properties. If ``False``, only new keys are added.
+                Defaults to ``True``.
+
+        Raises:
+            ValueError: 
+                If IDs do not match and ``ignore_id_mismatch`` is ``False``.
+        """
+        # Check asset ID correspondence:
+        if self.id != other.id and not ignore_id_mismatch:
+            raise ValueError(
+                f"Cannot combine assets: IDs do not match ('{self.id}' vs "
+                f"'{other.id}'). Set ignore_id_mismatch=True to bypass this"
+                'requirement.'
+            )
+
+        # Merge asset roperties:
+        if overwrite_properties:
+            # Update existing keys and add new ones:
+            self.properties.update(other.properties)
+        else:
+            # Only add keys that do not exist:
+            for key, value in other.properties.items():
+                self.properties.setdefault(key, value)
+
+        # Merge asset path:
+        if overwrite_path:
+            self.path = other.path
+            if isinstance(self.path, str):
+                self.path = Path(self.path)
+            self.path = self.path.resolve()
+            
+            # Since the path changed, the old cache is invalid. Either adopt
+            # the other's cache (if it exists) or reset to None:
+            self._pil_image = other._pil_image
+            
+            # Similarly, if the path changed, the old mask likely does not
+            # apply. Adopt the other's mask (whether it is data or None):
+            self._segmentation_mask = other._segmentation_mask
+            
+        logging.info(f"Merged asset data from {other.id} into {self.id}")
 
     def download(
             self, 
@@ -393,6 +458,71 @@ class ImageCollection:
                 # Update map to handle duplicates within the input list itself:
                 id_map[asset.id] = len(self._assets) - 1
 
+    def combine_with(
+            self, 
+            other: 'ImageCollection', 
+            overwrite_path: bool = False,
+            overwrite_properties: bool = True,
+            add_new: bool = False
+        ) -> None:
+            """
+            Merge with another ImageCollection.
+    
+            Args:
+                other (ImageCollection): 
+                    The collection to merge.
+                overwrite_path (bool): 
+                    If ``True``, existing assets will update their file paths
+                    to match the incoming assets.
+                overwrite_properties (bool): 
+                    If ``True``, incoming properties overwrite existing ones.
+                add_new (bool):
+                    If ``True``, assets in ``other`` that do not share an ID
+                    with any asset in will be added to the collection. 
+                    If False, they are ignored. Defaults to False.
+            """
+            # Create a lookup map for the current assets for fast access
+            # We ignore None IDs here because we cannot reliably match them.
+            current_map = {
+                asset.id: asset 
+                for asset in self._assets 
+                if asset.id is not None
+            }
+            
+            count_merged = 0
+            count_added = 0
+            count_skipped = 0
+    
+            for incoming_asset in other:
+                # If a match is found, merge:
+                if incoming_asset.id is not None and \
+                    incoming_asset.id in current_map:
+                    existing_asset = current_map[incoming_asset.id]
+                    existing_asset.combine_with(
+                        incoming_asset,
+                        ignore_id_mismatch=False,
+                        overwrite_path=overwrite_path,
+                        overwrite_properties=overwrite_properties
+                    )
+                    count_merged += 1
+                
+                # If there is no Match (or ID is None) and add_new is True:
+                elif add_new:
+                    self._assets.append(incoming_asset)
+                    # Update map in case 'other' has duplicates of this new ID:
+                    if incoming_asset.id is not None:
+                        current_map[incoming_asset.id] = incoming_asset
+                    count_added += 1
+                
+                # If there is no Match (or ID is None) and add_new is False:
+                else:
+                    count_skipped += 1
+    
+            logging.info(
+                f'Merge complete: {count_merged} merged, {count_added} added, '
+                f'{count_skipped} skipped.'
+            )
+
     def filter(self, func: Callable[[ImageAsset], bool]) -> ImageCollection:
         """
         Filters the collection using a custom function.
@@ -461,6 +591,21 @@ class ImageCollection:
             return (min_lat <= lat <= max_lat) and (min_lon <= lon <= max_lon)
 
         return self.filter(inside_box)
+
+    def get_ids(self, ignore_none: bool = True) -> list[str | int | None]:
+        """
+        Retrieves a list of IDs for all assets in the collection.
+
+        Args:
+            ignore_none: If ``True``, assets with no ID (None) are excluded 
+                         from the list. Defaults to ``True``.
+
+        Returns:
+            list: A list of IDs corresponding to the assets.
+        """
+        if ignore_none:
+            return [asset.id for asset in self._assets if asset.id is not None]
+        return [asset.id for asset in self._assets]
 
     def download_all(self, max_workers: int = 5, overwrite: bool = False) -> None:
         """
