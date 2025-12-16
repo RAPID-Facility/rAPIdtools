@@ -38,18 +38,21 @@
 # 12-16-2025
 
 from __future__ import annotations
-from pathlib import Path
-from dataclasses import dataclass, field, asdict
+
 import json
 import logging
+import uuid
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any, ClassVar, Iterator
 
+from tqdm import tqdm
+from shapely.geometry import mapping, shape
 from shapely.geometry.base import BaseGeometry
-from shapely.geometry import shape, mapping
 from shapely.ops import unary_union
 
-from .image_asset import ImageAsset
 from .bounding_box import BoundingBox
+from .image_asset import ImageAsset
 
 @dataclass(kw_only=True, repr=False)
 class InfrastructureAsset:
@@ -246,14 +249,14 @@ class InfrastructureAsset:
     @classmethod
     def from_geojson_feature(
             cls, 
-            geojson_feature: dict[str, Any]
+            geojson_feature: dict[str, Any],
+            asset_id: str | None = None
             ) -> InfrastructureAsset:
         """
         Create an InfrastructureAsset from a GeoJSON Feature dictionary.
     
-        The method expects a GeoJSON object of type "Feature" with at least:
-        - a "geometry" field containing a valid GeoJSON geometry, and
-        - an optional "id" field, or an "id" inside "properties".
+        The method expects a GeoJSON object of type "Feature" with at least a 
+        "geometry" field containing a valid GeoJSON geometry, and
     
         If no id is found at the top level or in properties, a warning is
         logged and the id 'no_id' is used as a placeholder.
@@ -261,6 +264,9 @@ class InfrastructureAsset:
         Args:
             geojson_feature (dict[str, Any]): 
                 A dictionary representing a GeoJSON Feature.
+            asset_id (str | None, optional):
+                An explicit ID to assign to the asset. If provided, this 
+                overrides any ID found within the GeoJSON data. Defaults to None.
     
         Returns:
             An initialized InfrastructureAsset instance.
@@ -274,10 +280,11 @@ class InfrastructureAsset:
                 'Input dictionary must be a valid GeoJSON Feature.'
             )
         
-        # Try to get the ID from the top-level 'id' field:
-        asset_id = geojson_feature.get('id')
+        # If no explicit asset_id provided, look in the top-level 'id' field:
+        if asset_id is None:
+            asset_id = geojson_feature.get('id')
         
-        # If not found, try to get it from the 'properties' dictionary:
+        # If still None, try to get it from the 'properties' dictionary:
         if asset_id is None:
             properties = geojson_feature.get('properties', {})
             asset_id = properties.get('id')
@@ -496,52 +503,88 @@ class InfrastructureAssetCollection:
         min_lon, min_lat, max_lon, max_lat = combined_geom.bounds
         return BoundingBox(lon1=min_lon, lat1=min_lat, lon2=max_lon, lat2=max_lat)
 
-    @classmethod
     def from_geojson(
-            cls, 
+            self, 
             source: str | Path | dict[str, Any]
-        ) -> InfrastructureAssetCollection:
+        ) -> 'InfrastructureAssetCollection':
         """
-        Create an InfrastructureAssetCollection from a GeoJSON file.
+        Populate the collection with assets from a GeoJSON source.
+
+        Includes a progress bar and O(N) optimization for bulk imports.
 
         Args:
-            source:
-                Either:
-                - A dictionary representing the GeoJSON FeatureCollection, or
-                - A string or Path pointing to a .geojson file on disk.
-
-        Raises:
-            TypeError:
-                If `source` is not a str, Path, or dict.
-            ValueError:
-                If the input is not a valid GeoJSON FeatureCollection.
+            source: GeoJSON dictionary or file path.
 
         Returns:
-            InfrastructureAssetCollection:
-                A new collection populated from the GeoJSON features.
+            The current instance (self).
         """
-        # Determine if source is a file path or a dictionary:
+        # Load Data:
         if isinstance(source, (str, Path)):
             with open(source, 'r', encoding='utf-8') as f:
                 geojson_data = json.load(f)
         elif isinstance(source, dict):
             geojson_data = source
         else:
-            raise TypeError(
-                'Input must be a file path (str, Path) or a dictionary.'
+            raise TypeError('Input must be a file path or a dictionary.')
+
+        if geojson_data.get('type') != 'FeatureCollection':
+            raise ValueError(
+                'Input data must be a valid GeoJSON FeatureCollection.'
+            )
+        
+        features = geojson_data.get('features', [])
+        
+        # Create a set of existing IDs:
+        existing_ids = {asset.id for asset in self.assets}
+        
+        new_assets = []
+
+        # Iterate over each GeoJSON feature and convert it into an asset:
+        for feature_geojson in tqdm(
+                features, 
+                desc='Importing Assets', 
+                unit='asset'
+            ):
+
+            # Try to reuse an existing ID from the feature if present. We 
+            # first check a top-level "id" field, then fall back to 
+            # "properties.id":
+            existing_id = feature_geojson.get('id')
+            if existing_id is None:
+                existing_id = feature_geojson.get('properties', {}).get('id')
+
+            if existing_id is None:
+                # If No ID found in the source data: generate a new, unique one
+                # Prefix with "gen_" to mark it as system-generated:
+                assigned_id = f'gen_{uuid.uuid4().hex}'
+            else:
+                # Normalize to string for consistent ID handling:
+                assigned_id = str(existing_id)
+
+            # If this ID has already been seen in the current import session,
+            # skip this feature to avoid creating duplicate assets:
+            if assigned_id in existing_ids:
+                logging.warning(
+                    f"Skipping duplicate asset with ID '{assigned_id}' found "
+                    'in GeoJSON input.'
+                )
+                continue
+
+            # Pass the resolved ID explicitly so the InfrastructureAsset
+            # constructor does not have to infer or override it:
+            asset = InfrastructureAsset.from_geojson_feature(
+                feature_geojson,
+                asset_id=assigned_id,
             )
 
-        # Validate the GeoJSON structure:
-        if geojson_data.get("type") != "FeatureCollection":
-            raise ValueError("Input data must be a valid GeoJSON FeatureCollection.")
-        
-        # 3. Process features
-        assets = [
-            InfrastructureAsset.from_geojson_feature(feature_geojson)
-            for feature_geojson in geojson_data.get("features", [])
-        ]
+            # Track the new asset and remember that this ID has been used:
+            existing_ids.add(assigned_id)
+            new_assets.append(asset)
 
-        return cls(assets)
+        # Extend the main list once at the end
+        self.assets.extend(new_assets)
+
+        return self
     
     def to_geojson(
         self,
