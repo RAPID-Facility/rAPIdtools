@@ -35,8 +35,10 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 11-26-2025
+# 12-16-2025
 
+from __future__ import annotations
+from pathlib import Path
 from dataclasses import dataclass, field, asdict
 import json
 import logging
@@ -245,7 +247,7 @@ class InfrastructureAsset:
     def from_geojson_feature(
             cls, 
             geojson_feature: dict[str, Any]
-            ) -> 'InfrastructureAsset':
+            ) -> InfrastructureAsset:
         """
         Create an InfrastructureAsset from a GeoJSON Feature dictionary.
     
@@ -495,33 +497,83 @@ class InfrastructureAssetCollection:
         return BoundingBox(lon1=min_lon, lat1=min_lat, lon2=max_lon, lat2=max_lat)
 
     @classmethod
-    def from_geojson(cls, geojson_data: dict) -> "InfrastructureAssetCollection":
+    def from_geojson(
+            cls, 
+            source: str | Path | dict[str, Any]
+        ) -> InfrastructureAssetCollection:
         """
-        A factory method to create a collection from a GeoJSON FeatureCollection dictionary.
+        Create an InfrastructureAssetCollection from a GeoJSON file.
+
+        Args:
+            source:
+                Either:
+                - A dictionary representing the GeoJSON FeatureCollection, or
+                - A string or Path pointing to a .geojson file on disk.
+
+        Raises:
+            TypeError:
+                If `source` is not a str, Path, or dict.
+            ValueError:
+                If the input is not a valid GeoJSON FeatureCollection.
+
+        Returns:
+            InfrastructureAssetCollection:
+                A new collection populated from the GeoJSON features.
         """
+        # Determine if source is a file path or a dictionary:
+        if isinstance(source, (str, Path)):
+            with open(source, 'r', encoding='utf-8') as f:
+                geojson_data = json.load(f)
+        elif isinstance(source, dict):
+            geojson_data = source
+        else:
+            raise TypeError(
+                'Input must be a file path (str, Path) or a dictionary.'
+            )
+
+        # Validate the GeoJSON structure:
         if geojson_data.get("type") != "FeatureCollection":
-            raise ValueError("Input must be a valid GeoJSON FeatureCollection.")
+            raise ValueError("Input data must be a valid GeoJSON FeatureCollection.")
         
+        # 3. Process features
         assets = [
             InfrastructureAsset.from_geojson_feature(feature_geojson)
             for feature_geojson in geojson_data.get("features", [])
         ]
-        return cls(assets=assets)
+
+        return cls(assets)
     
-    def to_geojson(self, indent: int | None = None) -> str:
+    def to_geojson(
+        self,
+        file: str | Path | None = None,
+        indent: int | None = 2,
+    ) -> dict:
         """
-        Serializes the entire collection into a GeoJSON FeatureCollection string.
+        Serialize the collection into a GeoJSON FeatureCollection.
+    
+        By default, the output is pretty-printed with an indentation of 2 
+        spaces. Callers can change or disable pretty-printing by passing a 
+        different `indent` value (e.g., `indent=None` for compact output).
     
         Args:
-            indent (int | None): The number of spaces to use for indentation
-                for pretty-printing. If None, the output will be compact.
-                Defaults to None.
+            file:
+                Optional path to a file where the GeoJSON should be written. If
+                None, nothing is written to disk.
+            indent:
+                Number of spaces for JSON indentation when writing to a file.
+                Use None for compact output. Defaults to 2.
     
         Returns:
-            A string containing the GeoJSON FeatureCollection.
+            dict: The GeoJSON FeatureCollection as a dictionary.
         """
-        feature_collection = {
-            'type': 'FeatureCollection',
-            'features': [asset.to_geojson_feature() for asset in self.assets]
+        feature_collection: dict = {
+            "type": "FeatureCollection",
+            "features": [asset.to_geojson_feature() for asset in self.assets],
         }
-        return json.dumps(feature_collection, indent=indent)
+    
+        if file is not None:
+            path = Path(file)
+            with path.open("w", encoding="utf-8") as f:
+                json.dump(feature_collection, f, indent=indent)
+    
+        return feature_collection
