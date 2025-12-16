@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 12-10-2025
+# 12-16-2025
 
 import gzip
 import logging
@@ -107,7 +107,7 @@ class MapillaryClient:
     def fetch_image(
         self, 
         image_id: str, 
-        fields: list[str] | None,
+        fields: list[str] | None = None,
         save_to_disk: bool = True
     )-> ImageAsset | None:
         """
@@ -171,6 +171,12 @@ class MapillaryClient:
         # If we are not saving to disk, the file will be missing:
         allow_missing = not save_to_disk
         
+        # Optionally download the image to disk:
+        if save_to_disk:
+            self.save_dir.mkdir(parents=True, exist_ok=True)
+            if not self._download_image(image_url, file_path):
+                return None  # Download failed
+        
         # Create the ImageAsset:
         image_asset = ImageAsset(
             path=str(file_path),
@@ -179,12 +185,6 @@ class MapillaryClient:
             allow_missing_file=allow_missing
         )
         
-        # Optionally download the image to disk:
-        if save_to_disk:
-            self.save_dir.mkdir(parents=True, exist_ok=True)
-            if not self._download_image(image_url, file_path):
-                return None  # Download failed
-
         return image_asset
 
 
@@ -683,7 +683,7 @@ class MapillaryClient:
             A dictionary containing the JSON metadata returned by the API if 
             the request succeeds; otherwise ``None``.
         """
-        url = f"{self.BASE_URL}/{image_id}"
+        url = f"{BASE_URL}/{image_id}"
         params = {
             "access_token": self.access_token,
             "fields": ",".join(fields),
