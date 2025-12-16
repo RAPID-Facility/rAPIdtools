@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 12-09-2025
+# 12-16-2025
 
 from __future__ import annotations
 
@@ -606,6 +606,25 @@ class ImageCollection:
         if ignore_none:
             return [asset.id for asset in self._assets if asset.id is not None]
         return [asset.id for asset in self._assets]
+
+    def subset(self, indices: list[int]) -> 'ImageCollection':
+        """
+        Creates a new ImageCollection containing assets at the specific indices.
+
+        Args:
+            indices: A list of integer indices (e.g., [0, 5, 10]).
+
+        Returns:
+            A new ImageCollection instance.
+        
+        Raises:
+            IndexError: If any index is out of bounds.
+        """
+        # Extract the assets using list comprehension:
+        selected_assets = [self._assets[i] for i in indices]
+        
+        # Return a new instance of the class:
+        return ImageCollection(selected_assets)
 
     def download_all(self, max_workers: int = 5, overwrite: bool = False) -> None:
         """
