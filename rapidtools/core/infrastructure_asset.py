@@ -266,7 +266,8 @@ class InfrastructureAsset:
                 A dictionary representing a GeoJSON Feature.
             asset_id (str | None, optional):
                 An explicit ID to assign to the asset. If provided, this 
-                overrides any ID found within the GeoJSON data. Defaults to None.
+                overrides any ID found within the GeoJSON data. Defaults to 
+                None.
     
         Returns:
             An initialized InfrastructureAsset instance.
@@ -291,17 +292,25 @@ class InfrastructureAsset:
         
         # If still not found, issue a warning and use a placeholder.
         if asset_id is None:
-            # This message will be displayed because its level (WARNING) is >= INFO
+            generated_id = f"no_id_{uuid.uuid4().hex[:8]}"
             props = geojson_feature.get('properties', {})
-            logging.warning(
-                "GeoJSON feature is missing an 'id'. Using placeholder "
-                f"'no_id'. Properties: {props}"
+            logging.debug(
+                "GeoJSON feature is missing an 'id'. Generated placeholder "
+                f"'{generated_id}'. Properties: {props}"
             )
-            asset_id = 'no_id'
+            asset_id = generated_id
         
+        # Convert the GeoJSON dict to a Shapely object
+        geom_obj = shape(geojson_feature['geometry'])
+
+        # Check if it is a MultiPolygon with only one component:
+        if geom_obj.geom_type == 'MultiPolygon' and len(geom_obj.geoms) == 1:
+            # Extract the single polygon from the list:
+            geom_obj = geom_obj.geoms[0]
+            
         return cls(
             id=str(asset_id),
-            geometry=shape(geojson_feature['geometry']),
+            geometry=geom_obj,
             attributes=geojson_feature.get('properties', {}).copy()
         )
 
