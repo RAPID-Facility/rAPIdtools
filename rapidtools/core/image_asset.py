@@ -39,6 +39,7 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 import json
 import logging
 from collections.abc import Callable, Iterator
@@ -339,22 +340,38 @@ class ImageAsset:
         """
         return self.properties.get(key, default)
 
-    def load_image_data(self) -> PillowImage.Image:
+    def load_image_from_disk(
+            self, 
+            force_reload: bool = False,
+            convert_mode: str | None = None
+        ) -> PillowImage.Image:
         """
-        Loads the image data using the Pillow library and caches it.
-
-        This method uses lazy loading: the image is only loaded from disk the
-        first time this method is called. Subsequent calls return the cached 
-        object.
-
+        Load the image from disk using Pillow and caches it.
+    
+        Behavior:
+        - Lazy-caches by default (returns cached image if present).
+        - Always fully decodes and then closes the underlying file handle.
+        Optionally converts to a target mode (e.g., "RGB").
+        - Optional force reload to bypass cache.
+    
+        Args:
+            force_reload: 
+                Reload from disk even if already cached.
+            convert_mode: 
+                If provided, converts image to the specified PIL mode. Some
+                options are ``L`` (Grayscale), ``1`` (Black and White), 
+                ``CMYK`` (Cyan, Magenta, Yellow, Key/Black), ``I`` 
+                (32-bit signed integer pixels), and ``HSV`` (Hue, Saturation, 
+                Value color space).
+    
         Returns:
-            PillowImage.Image: The loaded image object.
-
+            PillowImage.Image: The loaded PIL image.
+    
         Raises:
-            ImportError: If the Pillow library is not installed.
-            IOError: If the image file cannot be opened or read.
+            FileNotFoundError: If the file is missing/empty.
+            Exception: Propagates Pillow/IO errors with logging.
         """
-        if self._pil_image:
+        if self._pil_image is not None and not force_reload:
             return self._pil_image
 
         if not self.is_downloaded:
@@ -365,12 +382,95 @@ class ImageAsset:
         
         try:
             logging.info(f"Loading image data from: {self.path}")
-            self._pil_image = PillowImage.open(self.path)
-            self._pil_image.load() 
+            
+            with PillowImage.open(self.path) as img:
+                img.load()
+            
+            if convert_mode is not None and img.mode != convert_mode:
+                img = img.convert(convert_mode)
+            
+            self._pil_image = img 
+            
             return self._pil_image
-        except IOError as e:
+
+        except (IOError, OSError) as e:
             logging.error(f"Failed to load image file at {self.path}: {e}")
+            self._pil_image = None 
             raise
+
+    def load_image_from_url(
+             self, 
+             url: str | None = None, 
+             url_key: str = 'thumb_original_url',
+             convert_mode: str | None = None,
+             force_reload: bool = False,
+             session: requests.Session | None = None
+         ) -> PillowImage.Image:
+         """
+         Download the image into memory without saving to disk.
+    
+         This method bypasses ``self.path`` entirely for the actual data.
+         Note that ``self.is_downloaded`` will remain False after this method
+         completes (unless the file happened to exist previously).
+    
+         Args:
+             url (str, optional): 
+                 Direct URL to download from. If None, checks self.properties.
+             url_key (str): 
+                 Property key to use for URL if direct url is None.
+             convert_mode (str, optional):
+                 Mode to convert the loaded image to (e.g., "RGB").
+             force_reload (bool):
+                 If True, re-downloads even if self._pil_image is already set.
+             session (requests.Session, optional):
+                 Session for efficient connection pooling during download.
+    
+         Returns:
+             PillowImage.Image: The fully loaded PIL image.
+         """
+         # Return existing cached image if available:
+         if self._pil_image is not None and not force_reload:
+             return self._pil_image
+    
+         # Determine the image URL (logic mirror of download()):
+         target_url = url or self.properties.get(url_key)
+         
+         if not target_url:
+             available_keys = ", ".join(k for k in self.properties.keys() if 'url' in k)
+             raise ValueError(
+                 f"Cannot load image for {self.id}: URL not provided and property "
+                 f"'{url_key}' not found.\nAvailable URL-like keys: "
+                 f'{available_keys}'
+             )
+    
+         try:
+             logging.info(f"Downloading {self.id} into memory...")
+             
+             # Use provided session or create a temporary one:
+             requester = session if session else requests
+             
+             # Download bytes into memory:
+             response = requester.get(target_url, stream=False, timeout=30)
+             response.raise_for_status()
+    
+             # Create an in-memory file-like object:
+             image_bytes = BytesIO(response.content)
+    
+             # Load into Pillow:
+             img = PillowImage.open(image_bytes)
+             img.load()  # Force decode
+    
+             # Optional conversion:
+             if convert_mode is not None and img.mode != convert_mode:
+                 img = img.convert(convert_mode)
+    
+             self._pil_image = img
+             return self._pil_image
+    
+         except Exception as e:
+             logging.error(f"Failed to load image from URL for {self.id}: {e}")
+             self._pil_image = None
+             raise
 
     # --- Methods for Future Extensibility ---
     def add_segmentation_mask(self, mask_data: Any):
