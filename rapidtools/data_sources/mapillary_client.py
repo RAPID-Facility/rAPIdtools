@@ -35,21 +35,24 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 12-16-2025
+# 01-15-2025
 
+import base64
 import gzip
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import mapbox_vector_tile
+import numpy as np
 import requests
-from requests.adapters import HTTPAdapter, Retry
+from PIL import Image, ImageDraw
 from tqdm import tqdm
 
+from rapidtools.config import get_configured_session, REQUESTS_TIMEOUT_VAL
 from rapidtools.core import BoundingBox, ImageAsset, ImageCollection
 from .tile_utils import TileUtils
 
@@ -60,19 +63,6 @@ TILE_URL_TEMPLATE = (
     "{z}/{x}/{y}?access_token={token}"
 )
 RAPID_CREATOR_ID = 107708041466249
-
-# Requests download strategy:
-REQUESTS_TIMEOUT_VAL = 30
-REQUESTS_RETRY_STRATEGY = Retry(
-    total=5,
-    backoff_factor=1,
-    status_forcelist=[429, 500, 502, 503, 504],
-)
-REQUESTS_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                  'AppleWebKit/537.36 (KHTML, like Gecko) '
-                  'Chrome/131.0.0.0 Safari/537.36'
-}
 
 class MapillaryClient:
     """
@@ -86,7 +76,8 @@ class MapillaryClient:
         'creator', 'exif_orientation', 'geometry', 'height', 'is_pano', 
         'make', 'model', 'thumb_256_url', 'thumb_1024_url', 
         'thumb_2048_url', 'thumb_original_url', 'merge_cc', 'mesh', 
-        'sequence', 'sfm_cluster', 'width', 'detections'
+        'sequence', 'sfm_cluster', 'width', 'detections.value', 
+        'detections.geometry'
     ])
 
     def __init__(self, access_token: str, save_dir: str = 'mapillary_images'):
@@ -96,19 +87,14 @@ class MapillaryClient:
         self.save_dir = Path(save_dir)
         
         # Create a session with the Retry strategy and the default headers:
-        self.session = requests.Session()                
-        
-        adapter = HTTPAdapter(max_retries=REQUESTS_RETRY_STRATEGY)
-        self.session.mount('http://', adapter)
-        self.session.mount('https://', adapter)
-        
-        self.session.headers.update(REQUESTS_HEADERS)
+        self.session = self.session = get_configured_session()
 
     def fetch_image(
         self, 
         image_id: str, 
         fields: list[str] | None = None,
-        save_to_disk: bool = True
+        save_to_disk: bool = True,
+        process_masks: list[Literal['semantic', 'instance']] | None = None
     )-> ImageAsset | None:
         """
         Fetch image metadata using it Mapillary ID and optionally download it.
@@ -118,19 +104,24 @@ class MapillaryClient:
             - Fetches image metadata from the API.
             - Extracts the download URL from the metadata.
             - Downloads the image file to the configured save directory.
-            - Returns an ImageAsset containing the file path, ID, and 
-              remaining  metadata.
+            - Optionally generates and saves segmentation masks.
+            - Returns an ImageAsset containing the file path, ID, and metadata.
         
         Args:
             image_id (str):
                 The identifier of the image to fetch from the API.
             fields (list[str] | None):
-                Optional list of metadata fields to request. If ``None``, a 
-                default set of fields (as defined by ``_validate_fields``)
-                will be used. Invalid fields are ignored with a warning.
+                Optional list of metadata fields to request. If None, all 
+                fields defined in self.AVAILABLE_IMAGE_FIELDS are returned.
+                Invalid fields are ignored with a warning.
             save_to_disk (bool): 
                 If ``True``, downloads the image to the configured save 
                 directory. Defaults to ``True``.
+            process_masks (list[str] | None): 
+                A list of mask types to generate. Options are ``'semantic'`` 
+                and ``'instance'``. Pass ``None`` or ``[]`` to skip 
+                segmentation. Example: ``['semantic']`` or 
+                ``['semantic', 'instance']``.
         
         Returns:
             ImageAsset | None:
@@ -143,12 +134,20 @@ class MapillaryClient:
                     - properties (dict): 
                         Remaining metadata fields returned by the API 
                         (excluding the file ``id`` and used download URL).
-                    - ``None`` if validation fails, metadata retrieval fails, no 
-                      download URL is present, or the download itself fails.
+                Returns ``None`` if validation fails, metadata retrieval fails, 
+                no download URL is present, or the download itself fails.
         """
+        # Determine intent:
+        should_process_masks = process_masks is not None and \
+            len(process_masks) > 0
+
+        # Validate and prepare requested fields:
+        fields_to_request = self._validate_fields(
+            fields, 
+            image_id, 
+            require_segmentation=should_process_masks
+        )
         
-        # Validate requested fields:
-        fields_to_request = self._validate_fields(fields, image_id)
         if not fields_to_request:
             return None
 
@@ -185,14 +184,57 @@ class MapillaryClient:
             allow_missing_file=allow_missing
         )
         
+        # Process segmentation:
+        if should_process_masks:
+            # Check if detections were returned from the API:
+            detections_data = props.get('detections')
+            
+            if not detections_data or not detections_data.get('data'):
+                logging.warning(
+                    f'No detection data found for {prop_id}, skipping masks.'
+                )
+            else:
+                try:
+                    # Semantic mask:
+                    if 'semantic' in process_masks:
+                        sem_mask, sem_map = self._parse_mapillary_segmentation(
+                            image_asset, merge_detections=True
+                        )
+                        image_asset.set_mask(
+                            sem_mask, 
+                            mask_type='semantic', 
+                            map_data=sem_map
+                        )
+                        if save_to_disk:
+                            image_asset.save_mask(mask_type="semantic")
+                    
+                    # Instance mask:
+                    if 'instance' in process_masks:
+                        inst_mask, inst_map = self._parse_mapillary_segmentation(
+                            image_asset, 
+                            merge_detections=False
+                        )
+                        image_asset.set_mask(
+                            inst_mask, 
+                            mask_type='instance', 
+                            map_data=inst_map
+                        )
+                        if save_to_disk:
+                            image_asset.save_mask(mask_type='instance')
+                        
+                except Exception as e:
+                    logging.error(
+                        f'Failed to process segmentation for {prop_id}: {e}'
+                    )
+        
         return image_asset
-
 
     def fetch_images_by_ids(
         self, 
         image_ids: list[str], 
         fields: list[str] | None,
         save_to_disk: bool = True,
+        process_masks: list[Literal['semantic', 'instance']] | None = None,
         max_workers: int = 10
     ) -> ImageCollection:
         """
@@ -214,6 +256,11 @@ class MapillaryClient:
             save_to_disk (bool): 
                 If ``True``, downloads image files to ``self.save_dir``.
                 If ``False``, only metadata is retrieved. Defaults to ``True``.
+            process_masks (list[str] | None): 
+                A list of mask types to generate. Options are ``'semantic'`` 
+                and ``'instance'``. Pass ``None`` or ``[]`` to skip 
+                segmentation. Example: ``['semantic']`` or 
+                ``['semantic', 'instance']``.
             max_workers:
                 Maximum number of parallel worker threads used for fetching
                 images. Defaults to ``10``.
@@ -237,7 +284,8 @@ class MapillaryClient:
                     self.fetch_image, 
                     img_id, 
                     fields,
-                    save_to_disk): img_id 
+                    save_to_disk,
+                    process_masks): img_id 
                 for img_id in image_ids
             }
             
@@ -266,7 +314,8 @@ class MapillaryClient:
         self,
         bbox: BoundingBox,
         fields: list[str] | None = None,
-        save_to_disk: bool = True,
+        save_to_disk: bool = False,
+        process_masks: list[Literal['semantic', 'instance']] | None = None,
         start_date = '',
         end_date = '',
         filter_rapid_only: bool = True,
@@ -284,11 +333,11 @@ class MapillaryClient:
                 ``['captured_at', 'compass_angle']``). If ``None``, 
                 defaults to all available fields. Note: The download URL is
                 always fetched internally.
-            fields (list[str] | None):
-                A list of specific metadata fields to fetch (e.g., 
-                ``['captured_at', 'compass_angle']``). If ``None``, 
-                defaults to all available fields. Note: The download URL is
-                always fetched internally.
+            process_masks (list[str] | None): 
+                A list of mask types to generate. Options are ``'semantic'`` 
+                and ``'instance'``. Pass ``None`` or ``[]`` to skip 
+                segmentation. Example: ``['semantic']`` or 
+                ``['semantic', 'instance']``.
             save_to_disk (bool): 
                 If ``True``, downloads the images to the configured save 
                 directory. Defaults to ``True``.   
@@ -362,7 +411,8 @@ class MapillaryClient:
             rich_collection = self.fetch_images_by_ids(
                 image_ids=ids, 
                 fields=fields, 
-                save_to_disk=save_to_disk
+                save_to_disk=save_to_disk,
+                process_masks=process_masks
             )
             logging.info('Downloaded data for all detected images.')
             
@@ -572,9 +622,9 @@ class MapillaryClient:
             logging.warning(f"Failed to process tile {z}/{x}/{y}: {e}")
     
         return found_assets
-
+    
+    @staticmethod
     def _is_date_in_range(
-        self,
         check_date: date | datetime | str | None,
         start_date: date | datetime | str | None,
         end_date: date | datetime | str | None
@@ -720,10 +770,163 @@ class MapillaryClient:
             )
         return None
 
+    @staticmethod
+    def _parse_mapillary_segmentation(
+        pano: ImageAsset, 
+        target_classes: list[str] | None = None, 
+        flip_y: bool = True,
+        merge_detections: bool = True,
+        show_progress: bool = False
+    ) -> tuple[np.ndarray, dict[int, str]]:
+        """
+        Create a segmentation image for the pano using Mapillary detections.
+        
+        Args:
+            pano: 
+                ImageAsset object containing properties and detection data.
+            target_classes: 
+                Optional list of class prefixes to include.
+            flip_y: 
+                Whether to flip the Y-axis of the mask.
+            merge_detections:
+                If True (Semantic), all detections of the same label share one 
+                ID. If False (Instance), every detection gets a unique ID. 
+            show_progress:
+                If True, displays a tqdm progress bar. Default is False to
+                reduce clutter.
+
+        Returns:
+            mask_array (np.ndarray): 
+                The rasterized segmentation mask as a NumPy array.
+                - Dtype: ``uint8`` if max ID <= 255, otherwise `int32``.
+                - Values: Integers corresponding to keys in ``result_map``.
+            result_map (dict[int, str]): 
+                A dictionary mapping pixel integer values to label names.
+                - Semantic Mode: {1: 'car', 2: 'road'} (IDs grouped by class).
+                - Instance Mode: {1: 'car', 2: 'car'} (Unique IDs per object).
+        """
+        # Extract image properties to avoid repeated lookups:
+        props = pano.properties
+        img_width = props.get('width')
+        img_height = props.get('height')
+        
+        if not img_width or not img_height:
+            logging.warning('ImageAsset missing dimension information.')
+            return np.zeros((1, 1), dtype=np.uint8), {}
+
+        # Get instance detections:
+        detections = props.get('detections', {}).get('data', [])
+        if not detections:
+            return np.zeros((img_height, img_width), dtype=np.uint8), {}
+
+        # Initialize state:
+        label_to_id = {}
+        result_map = {0: "void--unlabeled"} 
+        next_id = 1
+        
+        # Start with 'L' (8-bit, max 255) for memory efficiency.
+        # We will upgrade to 'I' (32-bit) only if necessary.
+        image_mode = 'L'
+        canvas = Image.new(image_mode, (img_width, img_height), 0)
+        draw = ImageDraw.Draw(canvas)
+
+        # Pre-process target classes for faster filtering:
+        for item in tqdm(
+                detections, 
+                desc='Processing mask layers', 
+                leave=False,
+                disable=not show_progress
+            ):
+            label_value = item.get('value', 'void--unlabeled')
+
+            # Fast filtering:
+            if target_classes:
+                if not any(label_value.startswith(tc) for tc in target_classes):
+                    continue
+
+            # ID Management:            
+            if merge_detections:
+                # Semantic segmentation mode:
+                if label_value in label_to_id:
+                    current_id = label_to_id[label_value]
+                else:
+                    label_to_id[label_value] = next_id
+                    result_map[next_id] = label_value
+                    current_id = next_id
+                    next_id += 1
+            else:
+                # Instance segmentation mode:
+                current_id = next_id
+                result_map[current_id] = label_value
+                next_id += 1
+
+            # Check if 32-bit upgrade is necessary:
+            if next_id > 255 and image_mode == 'L':
+                image_mode = 'I'
+                canvas = canvas.convert(image_mode)
+                draw = ImageDraw.Draw(canvas)
+
+            # Geometry decoding:
+            b64_string = item.get('geometry')
+            if not b64_string: continue
+
+            try:
+                # Decode Protobuf:
+                pbf_bytes = base64.decodebytes(b64_string.encode('utf-8'))
+                decoded_tile = mapbox_vector_tile.decode(pbf_bytes)
+                
+                if not decoded_tile: continue
+                
+                # Get the first layer (standard MVT structure):
+                layer_name = next(iter(decoded_tile.keys()))
+                layer_data = decoded_tile[layer_name]
+                extent = layer_data['extent']
+
+                # Coordinate transformation. Calculate scalars once per tile:
+                scale_x = img_width / extent
+                scale_y = img_height / extent
+
+                # Define the transformation:
+                def transform_poly(ring_coords):
+                    if flip_y:
+                        return [(x * scale_x, img_height - (y * scale_y)) \
+                                for x, y in ring_coords]
+                    return [(x * scale_x, y * scale_y) for x, y in ring_coords]
+
+                # Drawing:
+                for feature in layer_data['features']:
+                    geom = feature['geometry']
+                    g_type = geom['type']
+                    coords = geom['coordinates']
+
+                    if g_type == 'Polygon':
+                        for ring in coords:
+                            poly_pts = transform_poly(ring)
+                            if len(poly_pts) > 2:
+                                draw.polygon(poly_pts, fill=current_id)
+                                
+                    elif g_type == 'MultiPolygon':
+                        for poly in coords:
+                            for ring in poly:
+                                poly_pts = transform_poly(ring)
+                                if len(poly_pts) > 2:
+                                    draw.polygon(poly_pts, fill=current_id)
+
+            except Exception as e:
+                logging.error(f"Error processing mask geometry: {e}")
+                continue
+
+        mask_array = np.array(
+            canvas, 
+            dtype=np.uint8 if image_mode == 'L' else np.int32
+        )
+        return mask_array, result_map
+
     def _validate_fields(
         self, 
         fields: list[str]|None, 
-        image_id: str = "batch"
+        image_id: str = "batch",
+        require_segmentation: bool = False
     ) -> list[str]|None:
         """
         Validate and normalize requested image fields for API requests.
@@ -737,6 +940,8 @@ class MapillaryClient:
           error and returns None.
         - Ensures that "thumb_original_url" is always included in the returned
           list of fields.
+         - Automatically injects "detections.value" and "detections.geometry"
+           if segmentation processing is required.
         
         Args:
             fields (list[str] | None): 
@@ -746,6 +951,10 @@ class MapillaryClient:
                 Identifier of the image or batch used only for logging context
                 when reporting invalid or missing fields. Defaults to 
                 ``batch``.
+            require_segmentation (bool):
+                If ``True``, explicitly adds ``detections.value`` and 
+                ``detections.geometry`` to the requested fields list to ensure 
+                segmentation data is retrieved. Defaults to ``False``.
         
         Returns:
             list[str] | None: 
@@ -754,19 +963,37 @@ class MapillaryClient:
                 ``thumb_original_url``. Returns ``None`` if no valid fields are
                 found after validation.
         """
-        
+        # Initialize the set of fields to validate:
         if fields is None:
-            return list(self.AVAILABLE_IMAGE_FIELDS)
-        
-        requested_set = set(fields)
-        valid_fields = requested_set.intersection(self.AVAILABLE_IMAGE_FIELDS)
-        invalid_fields = requested_set.difference(self.AVAILABLE_IMAGE_FIELDS)
+            # If default, we take everything available:
+            current_fields = set(self.AVAILABLE_IMAGE_FIELDS)
+        else:
+            # Otherwise, start with the user's requested list:
+            current_fields = set(fields)
+         
+        # Inject segmentation dependencies if required:
+        if require_segmentation:
+            current_fields.add('detections.value') 
+            current_fields.add('detections.geometry')
 
-        if invalid_fields:
-            logging.warning(
-                f"Invalid field(s) omitted: {', '.join(invalid_fields)}"
+        # Filter against the schema. Only keep fields that exist in the known
+        # available set:        
+        valid_fields = current_fields.intersection(
+            self.AVAILABLE_IMAGE_FIELDS
+        )
+
+        # Check for invalid fields:
+        if fields is not None:
+            invalid_fields = current_fields.difference(
+                self.AVAILABLE_IMAGE_FIELDS
             )
+
+            if invalid_fields:
+                logging.warning(
+                    f"Invalid field(s) omitted: {', '.join(invalid_fields)}"
+                )
         
+        # Fail if nothing remains:
         if not valid_fields:
             logging.error(
                 f'No valid fields provided for {image_id}. Aborting.'
@@ -774,8 +1001,10 @@ class MapillaryClient:
             return None
             
         final_fields = list(valid_fields)
-        # We always need the download URL
+        
+        # We always need the download URL:
         if 'thumb_original_url' not in final_fields:
             final_fields.append('thumb_original_url')
+            
         return final_fields
     
