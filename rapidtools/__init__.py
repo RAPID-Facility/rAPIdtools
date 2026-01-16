@@ -35,12 +35,23 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 11-11-2025
+# 01-15-2025
 
 """Initializations and metadata for the rapidtools package."""
 
 import logging
 import sys
+
+from rapidtools.config import LOG_FORMAT, DATE_FORMAT
+
+"""
+from rapidtools.image_asset import ImageAsset
+__all__ = [
+    'REQUESTS_TIMEOUT',
+    'REQUESTS_HEADERS',
+    'get_configured_session'
+]
+"""
 
 # Package metadata:
 name = 'rapidtools'
@@ -49,13 +60,10 @@ __copyright__ = 'Copyright (c) 2025, The University of Washington'
 __license__ = 'BSD 3-Clause License'
 
 # Logger formatting:
-_LOG_FORMAT = '%(asctime)s- %(levelname)s: %(message)s'
-_DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
-
 logging.basicConfig(
     level=logging.INFO,
-    format=_LOG_FORMAT,
-    datefmt=_DATE_FORMAT,
+    format=LOG_FORMAT,
+    datefmt=DATE_FORMAT,
     stream=sys.stdout,
     force=True
 )
