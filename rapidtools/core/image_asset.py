@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 12-16-2025
+# 01-15-2025
 
 from __future__ import annotations
 
@@ -46,11 +46,14 @@ from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
+import matplotlib.cm as cm
+import numpy as np
 import pandas as pd
 import requests
 from PIL import Image as PillowImage
+
 
 if TYPE_CHECKING:
     # This import ONLY happens when type checking.
@@ -61,20 +64,46 @@ if TYPE_CHECKING:
 @dataclass(kw_only=True)
 class ImageAsset:
     """
-    A single image asset, including its location and metadata.
+    A single image asset, its location, metadata, and segmentation info.
     """
     path: Path | str
     id: str | None = field(default=None) 
+    
+    # User-facing metadata (location, photographer, tags, etc.):
     properties: dict[str, Any] = field(default_factory=dict)
     
+    # Mapping dictionary for the semantic segmentation masks:
+    # Key: Pixel Value (int) -> Value: Class Name (str)
+    semantic_map: dict[int, str] | None = field(
+        default=None, 
+        repr=False
+    )
+
+    # Mapping dictionary for the instance segmentation mask:
+    # Key: Instance ID (int) -> Value: Metadata dict or label
+    instance_map: dict[int, Any] | None = field(
+        default=None, 
+        repr=False
+    )
+    
+    # Flag for delayed image download for efficient image handling:
     allow_missing_file: bool = field(default=False, repr=False)
     
+    # --- Internal Caches ---
     _pil_image: PillowImage.Image | None = field(
         default=None, 
         repr=False, 
         init=False
     )
-    _segmentation_mask: Any | None = field(
+    
+    # Lazy-loaded NumPy arrays for segmentation masks:
+    _semantic_mask: np.ndarray | None = field(
+        default=None, 
+        repr=False, 
+        init=False
+    )
+    
+    _instance_mask: np.ndarray | None = field(
         default=None, 
         repr=False, 
         init=False
@@ -158,21 +187,6 @@ class ImageAsset:
         )
     
     @property
-    def segmentation_mask(self) -> Any | None:
-        """
-        The segmentation mask associated with this image, if any.
-    
-        This property exposes the current value of the internal
-        _segmentation_mask attribute, which can be used to store
-        arbitrary mask representations (e.g., an array, another image
-        object, or a custom mask type).
-    
-        Returns:
-            The segmentation mask object if set, otherwise ``None``.
-        """
-        return self._segmentation_mask
-    
-    @property
     def stem(self) -> str:
         """
         The filename of the image without its extension.
@@ -206,11 +220,13 @@ class ImageAsset:
                 If ``True``, allows merging even if self.id != other.id.
                 Defaults to ``False``.
             overwrite_path (bool): 
-                If ``True``, updates self.path with other.path. 
+                If ``True``, updates self.path with other.path and adopts
+                its internal caches (images/masks). 
                 Defaults to ``False`` (preserves original path).
             overwrite_properties (bool): 
-                If ``True``, other.properties will overwrite existing keys in 
-                self.properties. If ``False``, only new keys are added.
+                If ``True``, other.properties, semantic_map, and instance_map
+                will overwrite existing values in self. 
+                If ``False``, only missing values are filled.
                 Defaults to ``True``.
 
         Raises:
@@ -234,6 +250,16 @@ class ImageAsset:
             for key, value in other.properties.items():
                 self.properties.setdefault(key, value)
 
+        # Merge segmentation maps. If 'other' has a map, we decide whether to
+        # take it based on the overwrite flag:
+        if other.semantic_map is not None:
+            if self.semantic_map is None or overwrite_properties:
+                self.semantic_map = other.semantic_map
+
+        if other.instance_map is not None:
+            if self.instance_map is None or overwrite_properties:
+                self.instance_map = other.instance_map
+
         # Merge asset path:
         if overwrite_path:
             self.path = other.path
@@ -247,7 +273,8 @@ class ImageAsset:
             
             # Similarly, if the path changed, the old mask likely does not
             # apply. Adopt the other's mask (whether it is data or None):
-            self._segmentation_mask = other._segmentation_mask
+            self._semantic_mask = other._semantic_mask
+            self._instance_mask = other._instance_mask
             
         logging.info(f"Merged asset data from {other.id} into {self.id}")
 
@@ -324,6 +351,31 @@ class ImageAsset:
             logging.error(f"Download failed for {self.id}: {e}")
             raise
 
+    def get_mask_path(
+            self, 
+            mask_type: Literal['semantic', 'instance'],
+            override_path: Path | str | None = None
+        ) -> Path:
+        """
+        Determines the filename for the mask.
+        
+        Default Convention: 
+          - Image:    photo.jpg 
+          - Semantic: photo_semantic.png
+          - Instance: photo_instance.png
+        
+        Args:
+            mask_type: The type of mask ('semantic' or 'instance').
+            override_path: If provided, this specific path is used instead 
+                           of the automatic naming convention.
+        """
+        # Use the manual override if provided:
+        if override_path is not None:
+            return Path(override_path)
+            
+        # Otherwise, use the standard convention:
+        suffix = f"_{mask_type}.png"
+        return self.path.with_name(f"{self.path.stem}{suffix}")
 
     def get_property(self, key: str, default: Any = None) -> Any:
         """
@@ -472,15 +524,315 @@ class ImageAsset:
              self._pil_image = None
              raise
 
-    # --- Methods for Future Extensibility ---
-    def add_segmentation_mask(self, mask_data: Any):
+    def load_mask(
+            self, 
+            mask_type: Literal['semantic', 'instance'],
+            force_reload: bool = False,
+            custom_path: Path | str | None = None
+        ) -> np.ndarray:
         """
-        Attaches segmentation mask data to this image asset.
+        Lazy-loads the segmentation mask from disk into a NumPy array.
+
+        This method handles caching automatically. It checks if the mask is 
+        already loaded in memory (e.g. `_semantic_mask`) before attempting 
+        file I/O.
+
+        Args:
+            mask_type (str): 
+                The type of mask to load. Standard values are 'semantic' or 
+                'instance'. Defaults to 'semantic'.
+            force_reload (bool): 
+                If ``True``, ignores the internal cache and re-reads the file 
+                from disk. Defaults to ``False``.
+            custom_path (Path | str | None): 
+                If provided, loads the mask from this specific path instead 
+                of deriving the filename from the image asset's path.
+
+        Returns:
+            np.ndarray: 
+                The segmentation mask data as a NumPy array.
+
+        Raises:
+            FileNotFoundError: 
+                If the mask file does not exist at the calculated or provided 
+                path.
+            Exception: 
+                If the file exists but cannot be opened or decoded 
+                (e.g. corruption).
+        """        
         
-        The 'mask_data' can be any format you choose (e.g., a NumPy array).
+        # Select cache dynamically based on the string provided:
+        if mask_type == "semantic":
+            cache_attr = "_semantic_mask"
+        elif mask_type == "instance":
+            cache_attr = "_instance_mask"
+        else:
+            logging.warning(
+                f"Mask type '{mask_type}' has no dedicated cache. Reloading "
+                'from the disk.'
+            )
+            cache_attr = None
+        
+        # Return cached if available:
+        if cache_attr:
+            current_val = getattr(self, cache_attr)
+            if current_val is not None and not force_reload:
+                return current_val
+
+        # Locate file:
+        mask_path = self.get_mask_path(mask_type, override_path=custom_path)
+        
+        if not mask_path.exists():
+            raise FileNotFoundError(
+                f'No {mask_type} mask found at {mask_path}'
+                )
+
+        try:
+            with PillowImage.open(mask_path) as img:
+                mask_data = np.array(img)
+            
+            # Cache it only if we have a slot for it
+            if cache_attr:
+                setattr(self, cache_attr, mask_data)
+                
+            return mask_data
+
+        except Exception as e:
+            logging.error(
+                f'Failed to load {mask_type} mask for {self.id}: {e}'
+            )
+            raise
+             
+    def set_mask(
+            self, 
+            data: np.ndarray, 
+            mask_type: Literal['semantic', 'instance'],
+            map_data: dict[int, Any] | None = None
+        ) -> None:
         """
-        logging.info(f"Attaching segmentation mask to {self.filename}")
-        self._segmentation_mask = mask_data
+        Manually attaches a segmentation mask from memory.
+        
+        Use this when you have generated a mask in code 
+        (e.g., model inference) instead of loading it from a file.
+
+        Args:
+            data: 
+                The array containing the mask.
+            mask_type: 
+                Mask type, i.e., 'semantic' or 'instance'.
+            map_data: 
+                Optional dictionary to update the class/instance mapping.
+                If provided, it REPLACES the existing map for this asset.
+        """
+        # Store the array in the cache:
+        if mask_type == "semantic":
+            self._semantic_mask = data
+            # Update the map if provided:
+            if map_data is not None:
+                self.semantic_map = map_data
+                
+        elif mask_type == "instance":
+            self._instance_mask = data
+            # Update the map if provided:
+            if map_data is not None:
+                self.instance_map = map_data
+        else:
+        # This handles runtime typos like "instnce" or "sem_seg":
+            logging.warning(
+                f"Skipping set_mask: Unknown mask type '{mask_type}'. "
+                "Only 'semantic' and 'instance' are supported."
+            )
+    
+    def save_image(
+            self, 
+            output_path: Path | str | None = None, 
+            format: str | None = None,
+            quality: int = 100
+        ) -> None:
+        """
+        Saves the currently cached PIL image to disk.
+
+        This method writes the in-memory image data to a file. It automatically 
+        creates any necessary parent directories.
+
+        Args:
+            output_path (Path | str | None): 
+                The file path where the image will be saved. If ``None``, 
+                defaults to ``self.path``, which will **overwrite** the 
+                original image file.
+            format (str | None): 
+                The image format to use (e.g., 'JPEG', 'PNG'). If ``None``, 
+                the format is inferred from the file extension of the 
+                output path.
+            quality (int): 
+                The compression quality (1-100) for lossy formats like JPEG. 
+                Higher numbers mean better quality but larger file size. 
+                Defaults to 100.
+
+        Raises:
+            ValueError: 
+                If no image is currently loaded in memory (i.e., 
+                ``load_image_from_disk()``, ``load_image_from_url`` has not 
+                been called).
+        """
+        if self._pil_image is None:
+            raise ValueError(
+                'No image loaded in memory. Please call '
+                "'load_image_from_disk()' or 'load_image_from_url()' before"
+                ' saving.'
+            )
+        
+        # Extract the target save path:
+        target_path = Path(output_path) if output_path else self.path
+        
+        # Ensure parent directory exists:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        logging.info(f"Saving image to {target_path}")
+        self._pil_image.save(target_path, format=format, quality=quality)
+
+    def save_mask(
+            self, 
+            mask_type: Literal['semantic', 'instance'],
+            output_path: Path | str | None = None
+        ) -> None:
+        """
+        Saves the specified segmentation mask to disk as a PNG image.
+
+        Args:
+            mask_type: 
+                'semantic' or 'instance'.
+            output_path: 
+                Where to save. Defaults to standard naming convention 
+                (e.g., image_semantic.png).
+
+        Raises:
+            ValueError: If the requested mask is not loaded.
+        """
+        # Ensure the data exists (this checks cache and disk):
+        try:
+            mask_data = self.load_mask(mask_type)
+        except FileNotFoundError:
+            raise ValueError(f'Cannot save {mask_type} mask: No data found.')
+
+        target_path = Path(output_path) if output_path else self.get_mask_path(mask_type)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Convert NumPy array to PIL Image
+        # For segmentation, we want exact pixel values, so we stick to PNG.
+        img = PillowImage.fromarray(mask_data)
+        
+        logging.info(f'Saving {mask_type} mask to {target_path}')
+        img.save(target_path, format='PNG')
+
+    def show(
+            self,
+            output_type: Literal[
+                'image', 
+                'semantic', 
+                'instance', 
+                'overlay_semantic',  # Explicit name (Default)
+                'overlay_instance'
+            ] = 'overlay_semantic',
+            alpha: float = 0.5,
+            cmap: str | None = None,
+        ) -> None:
+        """
+        Show the asset in the system's default image viewer.
+
+        Args:
+            output_type:
+                - 'image': Show raw image only.
+                - 'semantic': Show semanOpenstic mask only (colored).
+                - 'instance': Show instance mask only.
+                - 'overlay_semantic': Image + Semantic Mask.
+                - 'overlay_instance': Image + Instance Mask.
+            alpha:
+                Transparency of the mask in overlay modes (0.0 to 1.0), where
+                0 is fully transparent, 0.5 is 50% Transparent (see-through),
+                and 1 is a solid color (blocks anything underneath it)
+            cmap:
+                Matplotlib colormap name (e.g., 'tab20', 'jet').
+        """
+        # Load the base image:
+        raw_img = self.load_image_from_disk()
+
+        # Helper to colorize a mask:
+        def get_colored_mask(mask_kind, default_cmap):
+            try:
+                mask_data = self.load_mask(mask_kind)
+            except FileNotFoundError:
+                logging.warning(f'No {mask_kind} mask found to show.')
+                return None
+
+            # Get colormap and apply to data
+            cmap_name = cmap if cmap else default_cmap
+            colormap = cm.get_cmap(cmap_name)
+            
+            # Apply colormap. Note that if you have > 255 instances, this 
+            # modulo wrap-around ensures the code does not crash, though colors
+            # will repeat:
+            colored_arr = colormap(mask_data % 256) 
+            
+            # Convert to (H, W, 4) uint8:
+            colored_uint8 = (colored_arr * 255).astype(np.uint8)
+            
+            # Create PIL Image:
+            mask_img = PillowImage.fromarray(colored_uint8, mode='RGBA')
+            
+            # Handle Transparency:
+            # Set alpha=0 where data=0 (Background)
+            # Set alpha=user_value where data>0 (Objects)
+            mask_alpha_arr = np.array(mask_img.split()[3])
+            mask_alpha_arr[mask_data == 0] = 0
+            
+            if alpha < 1.0:
+                # Apply transparency to the visible parts
+                visible_pixels = mask_data > 0
+                mask_alpha_arr[visible_pixels] = (
+                    mask_alpha_arr[visible_pixels] * alpha
+                ).astype(np.uint8)
+                
+            mask_img.putalpha(PillowImage.fromarray(mask_alpha_arr))
+            return mask_img
+
+        # Select and generate visualization based on output type:
+        final_image = None
+
+        if output_type == 'image':
+            final_image = raw_img
+
+        elif output_type == 'semantic':
+            final_image = get_colored_mask('semantic', 'tab20')
+            
+        elif output_type == 'instance':
+            final_image = get_colored_mask('instance', 'nipy_spectral')
+
+        elif output_type in ['overlay_semantic', 'overlay_instance']:
+            # Convert the base image to RGBA to composite it with the mask:
+            base_rgba = raw_img.convert('RGBA')
+            
+            # Create a colored mask image for the requested mask type:
+            mask_type = 'semantic' if output_type == 'overlay_semantic' else \
+                'instance'
+            DEFAULT_CMAP = 'tab20' if mask_type == 'semantic' else \
+                'nipy_spectral'
+            mask_img = get_colored_mask(mask_type, DEFAULT_CMAP)
+            
+            # Create a composit of base image + mask:
+            if mask_img:
+                final_image = PillowImage.alpha_composite(base_rgba, mask_img)
+            else:
+                logging.warning(
+                    f'Could not create {output_type}: mask unavailable. '
+                    'Displaying raw image instead.'
+                )
+                final_image = base_rgba
+
+        # Display the image:
+        if final_image:
+            final_image.show(title=f'{self.filename} - {output_type}')
+    
     
 class ImageCollection:
     """
