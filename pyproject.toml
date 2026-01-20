@@ -36,18 +36,20 @@ classifiers = [
     "Topic :: Scientific/Engineering :: GIS",
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
-keywords = ["gis", "geospatial", "damage detection", "computer vision", "shapely"]
+keywords = ["gis", "geospatial", "damage detection", "computer vision"]
 
 # --- Core Dependencies ---
 # These are the libraries your application ALWAYS needs to run.
 dependencies = [
     "mapbox_vector_tile",
+    "matplotlib",
     "numpy",
     "pandas",
     "pillow",
     "rasterio",
     "requests",
-    "shapely >= 2.0",
+    "scikit-image",
+    "shapely>=2.0",
     "tqdm"
 ]
 
@@ -57,7 +59,8 @@ dependencies = [
 [project.optional-dependencies]
 test = [
     "pytest",
-    "pytest-cov", # For checking test coverage
+    "pytest-cov",
+    "requests-mock"
 ]
 dev = [
     "rapidtools[test]", 
