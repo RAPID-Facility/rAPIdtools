@@ -62,7 +62,7 @@ REQUESTS_RETRY_STRATEGY = Retry(
     allowed_methods=["HEAD", "GET", "OPTIONS"]
 )
 
-REQUESTS_TIMEOUT = 30
+REQUESTS_TIMEOUT_VAL = 30
 
 # Helper functions:
 def get_configured_session() -> requests.Session:
