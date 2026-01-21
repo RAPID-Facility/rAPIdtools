@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 01-15-2025
+# 01-20-2025
 
 """Configuration utilities for the rapidtools package."""
 
@@ -52,8 +52,16 @@ REQUESTS_HEADERS = {
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
         'AppleWebKit/537.36 (KHTML, like Gecko) '
         'Chrome/131.0.0.0 Safari/537.36'
-    )
+    ),
+    'Accept': (
+        'text/html,application/xhtml+xml,application/xml;'
+        'q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8'
+    ),
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Connection': 'keep-alive',
 }
+
 
 REQUESTS_RETRY_STRATEGY = Retry(
     total=5,
@@ -63,6 +71,10 @@ REQUESTS_RETRY_STRATEGY = Retry(
 )
 
 REQUESTS_TIMEOUT_VAL = 30
+
+# Segmentation Visualization Configuration:
+DEFAULT_SEMANTIC_CMAP = 'tab20'
+DEFAULT_INSTANCE_CMAP = 'nipy_spectral'   
 
 # Helper functions:
 def get_configured_session() -> requests.Session:
