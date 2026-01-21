@@ -35,30 +35,33 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 01-15-2025
+# 01-20-2025
 
 from __future__ import annotations
 
-from io import BytesIO
+import base64
 import json
 import logging
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 import matplotlib.cm as cm
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import requests
 from PIL import Image as PillowImage
-
+from skimage import measure
 
 if TYPE_CHECKING:
-    # This import ONLY happens when type checking.
-    # It is ignored when the code actually runs.
     from .bounding_box import BoundingBox 
+from rapidtools.config import REQUESTS_HEADERS, DEFAULT_INSTANCE_CMAP, \
+    DEFAULT_SEMANTIC_CMAP
 
 
 @dataclass(kw_only=True)
@@ -149,7 +152,30 @@ class ImageAsset:
     
         Returns:
             Path: The directory containing the image as a Path object.
+            
+        Example:
+            In the example below, we set ``allow_missing_file=True``. This is 
+            useful for lazy-loading assets from an API or database where the 
+            local file may not yet exist, allowing for metadata manipulation 
+            without disk overhead.
+            
+            >>> image = ImageAsset(
+            ...     path='/projects/data/image.jpg', 
+            ...     allow_missing_file=True
+            ... )
+
+            The property returns a standard ``pathlib.Path`` object:
+            
+            >>> image.directory
+            PosixPath('/projects/data')
+            
+            This allows for seamless path manipulation, such as joining 
+            related files in the same folder:
+            
+            >>> image.directory / 'metadata.json'
+            PosixPath('/projects/data/metadata.json')
         """
+
         return self.path.parent
     
     @property
@@ -157,11 +183,31 @@ class ImageAsset:
         """
         The filename of the image, including its extension.
     
-        Examples:
-            'photo.jpg', 'satellite_image.tif'
-    
         Returns:
             str: The image filename as a string.
+            
+        Example:
+            In the example below, we set ``allow_missing_file=True``. This 
+            allows the asset to be initialized and its naming metadata to 
+            be accessed even if the file has not yet been downloaded to the
+            local file system.
+
+            >>> image = ImageAsset(
+            ...     path='/data/projects/panoramas/image_001.jpg',
+            ...     allow_missing_file=True
+            ... )
+
+            The filename property extracts only the final component of the 
+            path:
+            
+            >>> image.filename
+            'image_001.jpg'
+
+            This is property useful for generating logs, status reports, 
+            or matching image data with external database records:
+            
+            >>> print(f'Processing asset: {image.filename}')
+            Processing asset: image_001.jpg
         """
         return self.path.name
     
@@ -179,6 +225,37 @@ class ImageAsset:
             bool: 
                 ``True`` if a non-empty image file exists at image path, 
                 otherwise ``False``.
+                
+        Examples:
+            ``is_downloaded`` is essential for workflows where assets are 
+            initialized lazily. Here, by using ``allow_missing_file=True``, we
+            can  work with an asset's metadata and only trigger a download if 
+            this property returns ``False``.
+
+            Case 1: The file exists on the local file system:
+            
+            >>> image = ImageAsset('exists.jpg')
+            >>> image.is_downloaded
+            True
+
+            Case 2: The file is missing or has not been downloaded yet. We use
+            ``allow_missing_file=True`` to avoid an initialization error:
+            
+            >>> image = ImageAsset(path='missing.jpg', allow_missing_file=True)
+            >>> image.is_downloaded
+            False
+
+            This allows for simple conditional logic in processing pipelines.
+
+            >>> if not image.is_downloaded:
+            ...     image.download(
+            ...         url=r'https://upload.wikimedia.org/wikipedia/commons/1'
+            ...             r'/1e/Suzzallo_Reading_Room%2C_May_2016.jpg'
+            ...     )
+            ...     print(f"Downloaded: {image.is_downloaded}")
+            INFO: Downloading missing...
+            INFO: Successfully downloaded: missing.jpg
+            Downloaded: True
         """
         return (
             self.path.exists()
@@ -191,12 +268,16 @@ class ImageAsset:
         """
         The filename of the image without its extension.
     
-        Examples:
-            For 'photo.jpg' -> 'photo'
-            For '/data/images/scene_01.tif' -> 'scene_01'
-    
         Returns:
             str: The filename stem as a string.
+            
+        Example:
+            >>> asset = ImageAsset('/data/images/scene_01.tif')
+            >>> asset.stem
+            'scene_01'
+            >>> asset = ImageAsset('photo.jpg')
+            >>> asset.stem
+            'photo'
         """
         return self.path.stem
 
@@ -232,6 +313,16 @@ class ImageAsset:
         Raises:
             ValueError: 
                 If IDs do not match and ``ignore_id_mismatch`` is ``False``.
+                
+        Example:
+            >>> asset_a = ImageAsset("img1.jpg", properties={"temp": 20, "status": "raw"})
+            >>> asset_b = ImageAsset("img1.jpg", properties={"status": "processed", "gps": [0, 0]})
+            >>> 
+            >>> # Merge asset_b into asset_a
+            >>> asset_a.combine_with(asset_b, overwrite_properties=True)
+            >>> 
+            >>> asset_a.properties
+            {'temp': 20, 'status': 'processed', 'gps': [0, 0]}
         """
         # Check asset ID correspondence:
         if self.id != other.id and not ignore_id_mismatch:
@@ -336,7 +427,12 @@ class ImageAsset:
             # Use provided session or create a temporary one:
             requester = session if session else requests
             
-            with requester.get(target_url, stream=True, timeout=30) as r:
+            with requester.get(
+                    target_url, 
+                    headers=REQUESTS_HEADERS,
+                    stream=True, 
+                    timeout=30
+                ) as r:
                 r.raise_for_status()
                 with open(self.path, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
@@ -451,78 +547,83 @@ class ImageAsset:
             raise
 
     def load_image_from_url(
-             self, 
-             url: str | None = None, 
-             url_key: str = 'thumb_original_url',
-             convert_mode: str | None = None,
-             force_reload: bool = False,
-             session: requests.Session | None = None
-         ) -> PillowImage.Image:
-         """
-         Download the image into memory without saving to disk.
+            self, 
+            url: str | None = None, 
+            url_key: str = 'thumb_original_url',
+            convert_mode: str | None = None,
+            force_reload: bool = False,
+            session: requests.Session | None = None
+        ) -> None: 
+            """
+            Download the image into memory and save it to self._pil_image.
+       
+            This method bypasses ``path`` for the image entirely.
+            Note that the ``is_downloaded`` property of the image will remain
+            ``False`` after this method completes execution (unless the file 
+            happened to exist previously).
+       
+            Args:
+                url (str, optional): 
+                    Direct URL to download from. If ``None``, checks 
+                    image properties to find the URL.
+                url_key (str): 
+                    Property key to use for URL if direct url is ``None``.
+                convert_mode (str, optional):
+                    Mode to convert the loaded image to (e.g., "RGB").
+                force_reload (bool):
+                    If ``True``, re-downloads even if _pil_image is already 
+                    set.
+                session (requests.Session, optional):
+                    Session for efficient connection pooling during download.
+            """
+            # If an image is already loaded and forcing reload is set to False,
+            # exit method execution:
+            if self._pil_image is not None and not force_reload:
+                return
     
-         This method bypasses ``self.path`` entirely for the actual data.
-         Note that ``self.is_downloaded`` will remain False after this method
-         completes (unless the file happened to exist previously).
+            # Determine the image URL:
+            target_url = url or self.properties.get(url_key)
+            
+            if not target_url:
+                available_keys = ", ".join(
+                    k for k in self.properties.keys() if 'url' in k
+                )
+                raise ValueError(
+                    f'Cannot load image for {self.id}: URL not provided and '
+                    f"property '{url_key}' not found.\nAvailable URL-like keys"
+                    f': {available_keys}'
+                )
     
-         Args:
-             url (str, optional): 
-                 Direct URL to download from. If None, checks self.properties.
-             url_key (str): 
-                 Property key to use for URL if direct url is None.
-             convert_mode (str, optional):
-                 Mode to convert the loaded image to (e.g., "RGB").
-             force_reload (bool):
-                 If True, re-downloads even if self._pil_image is already set.
-             session (requests.Session, optional):
-                 Session for efficient connection pooling during download.
+            try:
+                logging.info(f'Downloading {self.id} into memory...')
+                
+                # Use provided session or create a temporary one:
+                requester = session if session else requests
+                
+                # Download bytes into memory:
+                response = requester.get(target_url, stream=False, timeout=30)
+                response.raise_for_status()
     
-         Returns:
-             PillowImage.Image: The fully loaded PIL image.
-         """
-         # Return existing cached image if available:
-         if self._pil_image is not None and not force_reload:
-             return self._pil_image
+                # Create an in-memory file-like object:
+                image_bytes = BytesIO(response.content)
     
-         # Determine the image URL (logic mirror of download()):
-         target_url = url or self.properties.get(url_key)
-         
-         if not target_url:
-             available_keys = ", ".join(k for k in self.properties.keys() if 'url' in k)
-             raise ValueError(
-                 f"Cannot load image for {self.id}: URL not provided and property "
-                 f"'{url_key}' not found.\nAvailable URL-like keys: "
-                 f'{available_keys}'
-             )
+                # Load into Pillow:
+                img = PillowImage.open(image_bytes)
+                img.load()  # Force decode
     
-         try:
-             logging.info(f"Downloading {self.id} into memory...")
-             
-             # Use provided session or create a temporary one:
-             requester = session if session else requests
-             
-             # Download bytes into memory:
-             response = requester.get(target_url, stream=False, timeout=30)
-             response.raise_for_status()
+                # Optional conversion:
+                if convert_mode is not None and img.mode != convert_mode:
+                    img = img.convert(convert_mode)
     
-             # Create an in-memory file-like object:
-             image_bytes = BytesIO(response.content)
+                # Save the image to the instance attribute
+                self._pil_image = img
     
-             # Load into Pillow:
-             img = PillowImage.open(image_bytes)
-             img.load()  # Force decode
-    
-             # Optional conversion:
-             if convert_mode is not None and img.mode != convert_mode:
-                 img = img.convert(convert_mode)
-    
-             self._pil_image = img
-             return self._pil_image
-    
-         except Exception as e:
-             logging.error(f"Failed to load image from URL for {self.id}: {e}")
-             self._pil_image = None
-             raise
+            except Exception as e:
+                logging.error(
+                    f'Failed to load image from URL for {self.id}: {e}'
+                )
+                self._pil_image = None
+                raise
 
     def load_mask(
             self, 
@@ -731,9 +832,9 @@ class ImageAsset:
                 'image', 
                 'semantic', 
                 'instance', 
-                'overlay_semantic',  # Explicit name (Default)
+                'overlay_semantic',
                 'overlay_instance'
-            ] = 'overlay_semantic',
+            ] = 'image',
             alpha: float = 0.5,
             cmap: str | None = None,
         ) -> None:
@@ -754,7 +855,22 @@ class ImageAsset:
             cmap:
                 Matplotlib colormap name (e.g., 'tab20', 'jet').
         """
-        # Load the base image:
+        # Check if the speficied output type is valid:
+        valid_options = [
+            'image',
+            'semantic',
+            'instance',
+            'overlay_semantic',
+            'overlay_instance'
+        ]
+        if output_type not in valid_options:
+            logging.warning(
+                f"The output type '{output_type}' is not supported. "
+                f"Please specify one of: {', '.join(map(repr, valid_options))}"
+            )
+            return
+        
+        # Check if the base image exists and load it if it exists:
         raw_img = self.load_image_from_disk()
 
         # Helper to colorize a mask:
@@ -765,36 +881,40 @@ class ImageAsset:
                 logging.warning(f'No {mask_kind} mask found to show.')
                 return None
 
-            # Get colormap and apply to data
+            # Get colormap and put it in a look up table for efficiency:
             cmap_name = cmap if cmap else default_cmap
             colormap = cm.get_cmap(cmap_name)
+            lut = (colormap(np.arange(256)) * 255).astype(np.uint8)
             
             # Apply colormap. Note that if you have > 255 instances, this 
             # modulo wrap-around ensures the code does not crash, though colors
             # will repeat:
-            colored_arr = colormap(mask_data % 256) 
+            if mask_data.dtype != np.uint8 or np.any(mask_data > 255):
+                # (mask-1)%255 + 1 keeps objects in range 1-255
+                mask_idx = (
+                    (mask_data.astype(np.int32, copy=False) - 1) % 255 + 1
+                ).astype(np.uint8)
+                mask_idx[mask_data == 0] = 0 # Background is exactly 0
+            else:
+                mask_idx = mask_data
+                       
+            # Apply look up table:
+            colored_uint8 = lut[mask_idx]
             
-            # Convert to (H, W, 4) uint8:
-            colored_uint8 = (colored_arr * 255).astype(np.uint8)
+            # Handle Transparency directly in NumPy (Channel 3 is Alpha)
+            # Set Alpha to 0 where mask is background:
+            colored_uint8[mask_data == 0, 3] = 0
             
-            # Create PIL Image:
-            mask_img = PillowImage.fromarray(colored_uint8, mode='RGBA')
-            
-            # Handle Transparency:
-            # Set alpha=0 where data=0 (Background)
-            # Set alpha=user_value where data>0 (Objects)
-            mask_alpha_arr = np.array(mask_img.split()[3])
-            mask_alpha_arr[mask_data == 0] = 0
-            
+            # Apply user alpha to visible objects:
             if alpha < 1.0:
                 # Apply transparency to the visible parts
-                visible_pixels = mask_data > 0
-                mask_alpha_arr[visible_pixels] = (
-                    mask_alpha_arr[visible_pixels] * alpha
+                visible_mask = mask_data > 0
+                colored_uint8[visible_mask, 3] = (
+                    colored_uint8[visible_mask, 3] * alpha
                 ).astype(np.uint8)
                 
-            mask_img.putalpha(PillowImage.fromarray(mask_alpha_arr))
-            return mask_img
+            # Create PIL Image once from the finalized array:
+            return PillowImage.fromarray(colored_uint8, mode='RGBA')
 
         # Select and generate visualization based on output type:
         final_image = None
@@ -803,10 +923,10 @@ class ImageAsset:
             final_image = raw_img
 
         elif output_type == 'semantic':
-            final_image = get_colored_mask('semantic', 'tab20')
+            final_image = get_colored_mask('semantic', DEFAULT_SEMANTIC_CMAP)
             
         elif output_type == 'instance':
-            final_image = get_colored_mask('instance', 'nipy_spectral')
+            final_image = get_colored_mask('instance', DEFAULT_INSTANCE_CMAP)
 
         elif output_type in ['overlay_semantic', 'overlay_instance']:
             # Convert the base image to RGBA to composite it with the mask:
@@ -815,12 +935,12 @@ class ImageAsset:
             # Create a colored mask image for the requested mask type:
             mask_type = 'semantic' if output_type == 'overlay_semantic' else \
                 'instance'
-            DEFAULT_CMAP = 'tab20' if mask_type == 'semantic' else \
-                'nipy_spectral'
+            DEFAULT_CMAP = DEFAULT_SEMANTIC_CMAP if mask_type == 'semantic' \
+                else DEFAULT_INSTANCE_CMAP
             mask_img = get_colored_mask(mask_type, DEFAULT_CMAP)
             
             # Create a composit of base image + mask:
-            if mask_img:
+            if mask_img is not None:
                 final_image = PillowImage.alpha_composite(base_rgba, mask_img)
             else:
                 logging.warning(
@@ -832,6 +952,180 @@ class ImageAsset:
         # Display the image:
         if final_image:
             final_image.show(title=f'{self.filename} - {output_type}')
+
+    def save_interactive_html(
+            self,
+            output_path: Path | str | None = None,
+            mask_type: Literal['semantic', 'instance'] = 'semantic',
+            opacity: float = 0.5,
+            min_area: int = 10
+        ) -> None:
+            """
+            Create an interactive HMTL file to view segmentation masks.
+            
+            Generates an interactive HTML file where masks are converted to SVG
+            polygons. Hovering over a polygon shows its label from the asset's 
+            mapping data.
+    
+            This method converts the raster NumPy mask into vector polygons 
+            on the fly.
+    
+            Args:
+                output_path:
+                    File path to save the HTML. Defaults to 
+                    {filename}_{mask_type}.html.
+                mask_type:
+                    Type of segmentation mask displayed, i.e., 'semantic' or 
+                    'instance'.
+                opacity:
+                    Opacity of the polygon fill (0.0 to 1.0).
+                min_area:
+                    Minimum number of vertices to generate a polygon for. Helps 
+                    reduce noise/dust in the SVG.
+            """    
+            # Load image and mask:
+            try:
+                # Load raw image for the background
+                pil_img = self.load_image_from_disk()
+                mask = self.load_mask(mask_type)
+            except FileNotFoundError:
+                logging.error("Cannot generate HTML: Image or Mask not found.")
+                return
+    
+            img_width, img_height = pil_img.size
+    
+            # Convert base image to Base64 so it can be embedded directly in 
+            # HTML:
+            buffered = BytesIO()
+            # Convert to RGB to ensure JPEG compatibility. Please note that
+            # this drops the alpha channel if present:
+            pil_img.convert("RGB").save(buffered, format="JPEG", quality=85)
+            img_str = base64.b64encode(buffered.getvalue()).decode()
+    
+            # Setup HTML structure:
+            html_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body {{ font-family: sans-serif; background: #222; color: #eee; margin: 0; padding: 20px; }}
+                    .container {{ 
+                        position: relative; 
+                        width: {img_width}px; 
+                        height: {img_height}px; 
+                        margin: 0 auto;
+                        box-shadow: 0 0 20px rgba(0,0,0,0.5);
+                    }}
+                    .bg-img {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }}
+                    .svg-layer {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; }}
+                    
+                    polygon {{
+                        stroke-width: 1;
+                        stroke: rgba(255, 255, 255, 0.5);
+                        transition: all 0.2s ease;
+                        cursor: pointer;
+                        vector-effect: non-scaling-stroke; /* Keeps stroke thin on zoom */
+                    }}
+                    polygon:hover {{
+                        stroke: #fff;
+                        stroke-width: 2;
+                        fill-opacity: 0.8 !important;
+                    }}
+                </style>
+            </head>
+            <body>
+                <h2 style="text-align:center">{self.filename} ({mask_type})</h2>
+                <div class="container">
+                    <img src="data:image/jpeg;base64,{img_str}" class="bg-img">
+                    <svg class="svg-layer" viewBox="0 0 {img_width} {img_height}" xmlns="http://www.w3.org/2000/svg">
+            """
+    
+            # Processing logic (Raster -> Vector):     
+            # Identify unique objects in the mask (ignoring 0/background):
+            unique_ids = np.unique(mask)
+            unique_ids = unique_ids[unique_ids != 0]
+    
+            # Select Colormap consistent with show():
+            cmap_name = DEFAULT_SEMANTIC_CMAP if mask_type == 'semantic' else \
+                DEFAULT_INSTANCE_CMAP
+            colormap = plt.get_cmap(cmap_name)
+    
+            logging.info(f"Generating HTML polygons for {len(unique_ids)} {mask_type}s...")
+    
+            for obj_id in unique_ids:
+                # Pad the binary mask with zeros. This ensures contours are
+                # closed even if they touch the image edge:
+                obj_mask = (mask == obj_id).astype(np.uint8)
+                padded_mask = np.pad(
+                    obj_mask, 
+                    pad_width=1, 
+                    mode='constant', 
+                    constant_values=0
+                )
+                
+                # Find contours using marching squares (skimage)
+                # level=0.5 finds the boundary between 0 and 1:
+                contours = measure.find_contours(padded_mask, level=0.5)
+                
+                # Map IDs to colors, ensuring IDs > 0 never map to index 0 
+                # (background):Ensure obj_id is a standard Python int for 
+                # .get() lookups:
+                lookup_id = int(obj_id)
+                color_idx = ((lookup_id - 1) % 255) + 1
+                hex_color = mcolors.to_hex(colormap(color_idx))
+                
+                # Get metadata:
+                if mask_type == 'semantic':
+                    label_text = self.semantic_map.get(lookup_id, 'unknown') \
+                        if self.semantic_map else 'unknown'
+                    tooltip = f"{label_text} (ID: {lookup_id})"
+                else:
+                    info = self.instance_map.get(lookup_id) \
+                        if self.instance_map else None
+                    label_text = str(info) if info else f"Object {lookup_id}"
+                    tooltip = f"{label_text}"
+    
+                for contour in contours:
+                    # Filter noise: Skip contours with too few points:
+                    if len(contour) < min_area:
+                        continue
+                    
+                    # Subtract the 1-pixel padding offset pt[1] is Column (X),
+                    # pt[0] is Row (Y). Also, clip them to 0 -> width/height
+                    # to be safe:
+                    points = []
+                    for pt in contour:
+                        x = max(0, min(img_width, pt[1] - 1))
+                        y = max(0, min(img_height, pt[0] - 1))
+                        points.append(f"{x:.1f},{y:.1f}")
+                    
+                    points_str = " ".join(points)
+                    
+                    html_content += (
+                        f'<polygon points="{points_str}" fill="{hex_color}" '
+                        f'fill-opacity="{opacity}" onclick="alert(\'{tooltip}\')">'
+                        f'<title>{label_text}</title></polygon>\n'
+                    )
+    
+            # Create the footer and save:
+            html_content += """
+                    </svg>
+                </div>
+            </body>
+            </html>
+            """
+    
+            # Determine output path:
+            if output_path:
+                target_path = Path(output_path)
+            else:
+                suffix = f"_{mask_type}.html"
+                target_path = self.path.with_name(f"{self.path.stem}{suffix}")
+    
+            with open(target_path, "w", encoding="utf-8") as f:
+                f.write(html_content)
+            
+            logging.info(f"Saved interactive HTML to: {target_path}")
     
     
 class ImageCollection:
