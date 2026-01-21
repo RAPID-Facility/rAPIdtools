@@ -859,9 +859,9 @@ class MapillaryClient:
                 current_id = next_id
                 result_map[current_id] = label_value
                 next_id += 1
-
+                
             # Check if 32-bit upgrade is necessary:
-            if next_id > 255 and image_mode == 'L':
+            if current_id > 255 and image_mode == 'L':
                 image_mode = 'I'
                 canvas = canvas.convert(image_mode)
                 draw = ImageDraw.Draw(canvas)
