@@ -80,11 +80,9 @@ data-aria-dark="Switch to auto color mode">
 </li>
       <li><a href="api.html#rapidtools.core.InfrastructureAsset.add_attributes">add_attributes() (rapidtools.core.InfrastructureAsset method)</a>
 </li>
-      <li><a href="api.html#rapidtools.core.InfrastructureAsset.add_image_assets">add_image_assets() (rapidtools.core.InfrastructureAsset method)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#rapidtools.core.ImageAsset.add_segmentation_mask">add_segmentation_mask() (rapidtools.core.ImageAsset method)</a>
+      <li><a href="api.html#rapidtools.core.InfrastructureAsset.add_image_assets">add_image_assets() (rapidtools.core.InfrastructureAsset method)</a>
 </li>
       <li><a href="api.html#rapidtools.core.InfrastructureAssetCollection.append">append() (rapidtools.core.InfrastructureAssetCollection method)</a>
 </li>
@@ -174,7 +172,7 @@ data-aria-dark="Switch to auto color mode">
 </li>
       <li><a href="api.html#rapidtools.core.ImageCollection.filter_downloaded">filter_downloaded() (rapidtools.core.ImageCollection method)</a>
 </li>
-      <li><a href="api.html#rapidtools.core.InfrastructureAssetCollection.from_geojson">from_geojson() (rapidtools.core.InfrastructureAssetCollection class method)</a>
+      <li><a href="api.html#rapidtools.core.InfrastructureAssetCollection.from_geojson">from_geojson() (rapidtools.core.InfrastructureAssetCollection method)</a>
 </li>
       <li><a href="api.html#rapidtools.core.InfrastructureAsset.from_geojson_feature">from_geojson_feature() (rapidtools.core.InfrastructureAsset class method)</a>
 </li>
@@ -201,6 +199,8 @@ data-aria-dark="Switch to auto color mode">
       <li><a href="api.html#rapidtools.data_sources.tile_utils.TileUtils.get_enclosing_zoom">get_enclosing_zoom() (rapidtools.data_sources.tile_utils.TileUtils static method)</a>
 </li>
       <li><a href="api.html#rapidtools.core.ImageCollection.get_ids">get_ids() (rapidtools.core.ImageCollection method)</a>
+</li>
+      <li><a href="api.html#rapidtools.core.ImageAsset.get_mask_path">get_mask_path() (rapidtools.core.ImageAsset method)</a>
 </li>
       <li><a href="api.html#rapidtools.core.ImageAsset.get_property">get_property() (rapidtools.core.ImageAsset method)</a>
 </li>
@@ -238,9 +238,13 @@ data-aria-dark="Switch to auto color mode">
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#rapidtools.data_sources.tile_utils.TileUtils.latlon_to_tile">latlon_to_tile() (rapidtools.data_sources.tile_utils.TileUtils static method)</a>
 </li>
+      <li><a href="api.html#rapidtools.core.ImageAsset.load_image_from_disk">load_image_from_disk() (rapidtools.core.ImageAsset method)</a>
+</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#rapidtools.core.ImageAsset.load_image_data">load_image_data() (rapidtools.core.ImageAsset method)</a>
+      <li><a href="api.html#rapidtools.core.ImageAsset.load_image_from_url">load_image_from_url() (rapidtools.core.ImageAsset method)</a>
+</li>
+      <li><a href="api.html#rapidtools.core.ImageAsset.load_mask">load_mask() (rapidtools.core.ImageAsset method)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -339,15 +343,25 @@ data-aria-dark="Switch to auto color mode">
 <h2 id="S">S</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#rapidtools.core.ImageAsset.segmentation_mask">segmentation_mask (rapidtools.core.ImageAsset property)</a>
+      <li><a href="api.html#rapidtools.core.ImageAsset.save_image">save_image() (rapidtools.core.ImageAsset method)</a>
 </li>
-      <li><a href="api.html#rapidtools.inference.GeminiClient.show_supported_models">show_supported_models() (rapidtools.inference.GeminiClient static method)</a>
+      <li><a href="api.html#rapidtools.core.ImageAsset.save_interactive_html">save_interactive_html() (rapidtools.core.ImageAsset method)</a>
+</li>
+      <li><a href="api.html#rapidtools.core.ImageAsset.save_mask">save_mask() (rapidtools.core.ImageAsset method)</a>
+</li>
+      <li><a href="api.html#rapidtools.core.ImageAsset.set_mask">set_mask() (rapidtools.core.ImageAsset method)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api.html#rapidtools.core.ImageAsset.show">show() (rapidtools.core.ImageAsset method)</a>
+</li>
+      <li><a href="api.html#rapidtools.inference.GeminiClient.show_supported_models">show_supported_models() (rapidtools.inference.GeminiClient static method)</a>
+</li>
       <li><a href="api.html#rapidtools.core.BoundingBox.split">split() (rapidtools.core.BoundingBox method)</a>
 </li>
       <li><a href="api.html#rapidtools.core.ImageAsset.stem">stem (rapidtools.core.ImageAsset property)</a>
+</li>
+      <li><a href="api.html#rapidtools.core.ImageCollection.subset">subset() (rapidtools.core.ImageCollection method)</a>
 </li>
   </ul></td>
 </tr></table>
