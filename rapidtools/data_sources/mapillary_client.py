@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 01-15-2025
+# 01-22-2025
 
 import base64
 import gzip
@@ -56,13 +56,55 @@ from rapidtools.config import get_configured_session, REQUESTS_TIMEOUT_VAL
 from rapidtools.core import BoundingBox, ImageAsset, ImageCollection
 from .tile_utils import TileUtils
 
-# Mapillary Required API data:
+# Mapillary API data:
 BASE_URL = 'https://graph.mapillary.com'
 TILE_URL_TEMPLATE = (
     "https://tiles.mapillary.com/maps/vtp/mly1_public/2/"
     "{z}/{x}/{y}?access_token={token}"
 )
 RAPID_CREATOR_ID = 107708041466249
+
+class SegmentationLabels:
+    """
+    A namespace for standard Mapillary segmentation category labels.
+
+    This class acts as a static container for string constants used to identify
+    specific semantic classes in Mapillary data. Using these attributes 
+    instead of raw strings prevents typos and ensures consistency when 
+    performing dictionary lookups or conditional logic.
+
+    Attributes:
+        VOID (str): 
+            Label for undefined, void, or unlabeled regions 
+            ('void--unlabeled').
+        SKY (str): 
+            Label for the sky region ('nature--sky').
+        ROAD (str): 
+            Label for flat, driveable road surfaces 
+            ('construction--flat--road').
+
+    Example:
+        Using the class prevents typos in string literals
+        
+        >>> label_map = {'nature--sky': 27, 'construction--flat--road': 13}
+        
+        Safe lookup using the constant:
+        
+        >>> sky_id = label_map.get(SegmentationLabels.SKY)
+        >>> print(sky_id)
+        27
+        
+        Useful for readable conditional logic:
+            
+        >>> current_pixel = 'nature--sky'
+        >>> if current_pixel == SegmentationLabels.SKY:
+        ...     print("Detected Sky")
+        Detected Sky
+    """
+    VOID = 'void--unlabeled'
+    SKY = 'nature--sky'
+    ROAD = 'construction--flat--road'
+    SURVEY_VEHICLE = 'void--ego-vehicle'
 
 class MapillaryClient:
     """
@@ -799,8 +841,9 @@ class MapillaryClient:
             mask_array (np.ndarray): 
                 The rasterized segmentation mask as a NumPy array.
                 - Dtype: ``uint8`` if max ID <= 255, otherwise `int32``.
-                - Values: Integers corresponding to keys in ``result_map``.
-            result_map (dict[int, str]): 
+                - Values: Integers corresponding to keys in 
+                  ``segmentation_map``.
+            segmentation_map (dict[int, str]): 
                 A dictionary mapping pixel integer values to label names.
                 - Semantic Mode: {1: 'car', 2: 'road'} (IDs grouped by class).
                 - Instance Mode: {1: 'car', 2: 'car'} (Unique IDs per object).
@@ -821,7 +864,7 @@ class MapillaryClient:
 
         # Initialize state:
         label_to_id = {}
-        result_map = {0: "void--unlabeled"} 
+        segmentation_map = {0: SegmentationLabels.VOID} 
         next_id = 1
         
         # Start with 'L' (8-bit, max 255) for memory efficiency.
@@ -837,7 +880,7 @@ class MapillaryClient:
                 leave=False,
                 disable=not show_progress
             ):
-            label_value = item.get('value', 'void--unlabeled')
+            label_value = item.get('value', SegmentationLabels.VOID)
 
             # Fast filtering:
             if target_classes:
@@ -851,13 +894,13 @@ class MapillaryClient:
                     current_id = label_to_id[label_value]
                 else:
                     label_to_id[label_value] = next_id
-                    result_map[next_id] = label_value
+                    segmentation_map[next_id] = label_value
                     current_id = next_id
                     next_id += 1
             else:
                 # Instance segmentation mode:
                 current_id = next_id
-                result_map[current_id] = label_value
+                segmentation_map[current_id] = label_value
                 next_id += 1
                 
             # Check if 32-bit upgrade is necessary:
@@ -920,7 +963,7 @@ class MapillaryClient:
             canvas, 
             dtype=np.uint8 if image_mode == 'L' else np.int32
         )
-        return mask_array, result_map
+        return mask_array, segmentation_map
 
     def _validate_fields(
         self, 
