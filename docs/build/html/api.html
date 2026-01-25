@@ -118,6 +118,7 @@ data-aria-dark="Switch to auto color mode">
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAsset.asset_type"><code class="docutils literal notranslate">asset_type</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAsset.from_geojson_feature"><code class="docutils literal notranslate">from_geojson_feature()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAsset.get_attributes"><code class="docutils literal notranslate">get_attributes()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.PhysicalAsset.get_image_assets"><code class="docutils literal notranslate">get_image_assets()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAsset.print_info"><code class="docutils literal notranslate">print_info()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAsset.remove_attributes"><code class="docutils literal notranslate">remove_attributes()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAsset.remove_image_assets"><code class="docutils literal notranslate">remove_image_assets()</span></code></a></li>
@@ -1061,11 +1062,13 @@ of images.</p>
 </dd>
 </dl>
 <p class="rubric">Examples</p>
-<p>Initialize the main physical asset:
-&gt;&gt;&gt; from shapely.geometry import Point
-&gt;&gt;&gt; from rapidtools.core import PhysicalAsset, ImageAsset,             &gt;&gt;&gt;     ImageCollection
-&gt;&gt;&gt;
-&gt;&gt;&gt; asset = PhysicalAsset(id=’pole_01’, geometry=Point(10, 20))</p>
+<p>Initialize the main physical asset:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Point</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhysicalAsset</span><span class="p">,</span> <span class="n">ImageAsset</span><span class="p">,</span>             <span class="o">&gt;&gt;&gt;</span>     <span class="n">ImageCollection</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span> <span class="o">=</span> <span class="n">PhysicalAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;pole_01&#39;</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">20</span><span class="p">))</span>
+</span></pre></div>
+</div>
 <p>Initialize several <code class="docutils literal notranslate"><span class="pre">ImageAsset</span></code> and <code class="docutils literal notranslate"><span class="pre">ImageCollection</span></code> objects
 to use in the examples below. At minimum, an <code class="docutils literal notranslate"><span class="pre">ImageAsset</span></code>
 requires an id and a path. Because we will be using mock paths, we
@@ -1212,6 +1215,65 @@ missing, so it is omitted in the result:</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.PhysicalAsset.get_image_assets">
+<span class="sig-name descname"><span class="pre">get_image_assets</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">identifiers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#rapidtools.core.ImageAsset" title="rapidtools.core.image_asset.ImageAsset"><span class="pre">ImageAsset</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAsset.get_image_assets"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAsset.get_image_assets" title="Link to this definition">¶</a></dt>
+<dd><p>Retrieve specific image assets by their ID or filename.</p>
+<p>This method searches the asset’s image collection. It matches against
+the ‘id’ attribute or the ‘filename’ (explicit or derived from path).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>*identifiers</strong> (<em>str</em>) – A variable number of string IDs or filenames
+to retrieve.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A list of the found ImageAsset objects.
+If a requested identifier is not found, it is skipped and a
+warning is logged.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list[<a class="reference internal" href="#rapidtools.core.ImageAsset" title="rapidtools.core.ImageAsset">ImageAsset</a>]</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<p>Setup asset with images:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhysicalAsset</span><span class="p">,</span> <span class="n">ImageAsset</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Point</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span> <span class="o">=</span> <span class="n">PhysicalAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;pole_01&#39;</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">))</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="n">img1</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;img_A&#39;</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="s1">&#39;/tmp/photo_A.jpg&#39;</span><span class="p">,</span>
+</span><span data-line="6"><span class="gp">... </span>                  <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span data-line="7"><span class="gp">&gt;&gt;&gt; </span><span class="n">img2</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;img_B&#39;</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="s1">&#39;/tmp/photo_B.jpg&#39;</span><span class="p">,</span>
+</span><span data-line="8"><span class="gp">... </span>                  <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span data-line="9"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">add_image_assets</span><span class="p">(</span><span class="n">img1</span><span class="p">,</span> <span class="n">img2</span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>Get by ID:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">found</span> <span class="o">=</span> <span class="n">asset</span><span class="o">.</span><span class="n">get_image_assets</span><span class="p">(</span><span class="s1">&#39;img_A&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="n">found</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">path</span>
+</span><span data-line="3"><span class="go">PosixPath(&#39;/tmp/photo_A.jpg&#39;)</span>
+</span></pre></div>
+</div>
+<p>Get by Filename:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">found</span> <span class="o">=</span> <span class="n">asset</span><span class="o">.</span><span class="n">get_image_assets</span><span class="p">(</span><span class="s1">&#39;photo_B.jpg&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="n">found</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">id</span>
+</span><span data-line="3"><span class="go">&#39;img_B&#39;</span>
+</span></pre></div>
+</div>
+<p>Get multiple (mixed ID and filename):</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">found</span> <span class="o">=</span> <span class="n">asset</span><span class="o">.</span><span class="n">get_image_assets</span><span class="p">(</span><span class="s1">&#39;img_A&#39;</span><span class="p">,</span> <span class="s1">&#39;photo_B.jpg&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">found</span><span class="p">)</span>
+</span><span data-line="3"><span class="go">2</span>
+</span></pre></div>
+</div>
+<p>Attempt to get non-existent image:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">get_image_assets</span><span class="p">(</span><span class="s1">&#39;missing.jpg&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="go">WARNING: Image asset &#39;missing.jpg&#39; not found in asset &#39;pole_01&#39;.</span>
+</span><span data-line="3"><span class="go">[]</span>
+</span></pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="rapidtools.core.PhysicalAsset.print_info">
 <span class="sig-name descname"><span class="pre">print_info</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAsset.print_info"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAsset.print_info" title="Link to this definition">¶</a></dt>
 <dd><p>Print a human-readable summary of the asset information.</p>
@@ -1324,28 +1386,36 @@ successfully found and removed.</p>
 </span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span> <span class="o">=</span> <span class="n">PhysicalAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;pole_01&#39;</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">))</span>
 </span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="n">img1</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;img_A&#39;</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="s1">&#39;/tmp/photo_A.jpg&#39;</span><span class="p">,</span>
 </span><span data-line="6"><span class="gp">... </span><span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-</span><span data-line="7"><span class="gp">&gt;&gt;&gt; </span><span class="n">img2</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;img_B&#39;</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="s1">&#39;/tmp/photo_B.jpg&#39;</span>
+</span><span data-line="7"><span class="gp">&gt;&gt;&gt; </span><span class="n">img2</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;img_B&#39;</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="s1">&#39;/tmp/photo_B.jpg&#39;</span><span class="p">,</span>
 </span><span data-line="8"><span class="gp">... </span><span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-</span><span data-line="9"><span class="gp">&gt;&gt;&gt; </span><span class="n">img3</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;img_C&#39;</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="s1">&#39;/tmp/photo_C.jpg&#39;</span>
+</span><span data-line="9"><span class="gp">&gt;&gt;&gt; </span><span class="n">img3</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;img_C&#39;</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="s1">&#39;/tmp/photo_C.jpg&#39;</span><span class="p">,</span>
 </span><span data-line="10"><span class="gp">... </span><span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </span><span data-line="11"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">add_image_assets</span><span class="p">(</span><span class="n">img1</span><span class="p">,</span> <span class="n">img2</span><span class="p">,</span> <span class="n">img3</span><span class="p">)</span>
 </span></pre></div>
 </div>
 <p>Remove by ID:</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">removed</span> <span class="o">=</span> <span class="n">asset</span><span class="o">.</span><span class="n">remove_image_assets</span><span class="p">(</span><span class="s1">&#39;img_A&#39;</span><span class="p">)</span>
-</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">asset</span><span class="o">.</span><span class="n">image_assets</span><span class="p">)</span>
-</span><span data-line="3"><span class="go">2</span>
-</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">removed</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">id</span>
-</span><span data-line="5"><span class="go">&#39;img_A&#39;</span>
+</span><span data-line="2"><span class="go">INFO: Removed 1 asset from the collection.</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">asset</span><span class="o">.</span><span class="n">image_assets</span><span class="p">)</span>
+</span><span data-line="4"><span class="go">2</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="n">removed</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">id</span>
+</span><span data-line="6"><span class="go">&#39;img_A&#39;</span>
 </span></pre></div>
 </div>
-<p>Remove by filename (assuming file_name is derived from path):
-&gt;&gt;&gt; asset.remove_image_assets(‘photo_B.jpg’)
-&gt;&gt;&gt; len(asset.image_assets)
-0</p>
-<p>Attempt to remove non-existent image:
-&gt;&gt;&gt; asset.remove_image_assets(‘ghost_image.jpg’)
-WARNING:root:Attempted to remove image ‘ghost_image.jpg’ from asset ‘pole_01’, but no matching asset was found.</p>
+<p>Remove by filename (assuming file_name is derived from path):</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">removed</span> <span class="o">=</span> <span class="n">asset</span><span class="o">.</span><span class="n">remove_image_assets</span><span class="p">(</span><span class="s1">&#39;photo_B.jpg&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="go">INFO: Removed 1 asset from the collection.</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">asset</span><span class="o">.</span><span class="n">image_assets</span><span class="p">)</span>
+</span><span data-line="4"><span class="go">1</span>
+</span></pre></div>
+</div>
+<p>Attempt to remove non-existent image:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">remove_image_assets</span><span class="p">(</span><span class="s1">&#39;ghost_image.jpg&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="go">WARNING: Attempted to remove image &#39;ghost_image.jpg&#39; from asset</span>
+</span><span data-line="3"><span class="go">&#39;pole_01&#39;, but no matching asset was found.</span>
+</span><span data-line="4"><span class="go">[]</span>
+</span></pre></div>
+</div>
 </dd></dl>
 
 <dl class="py method">
@@ -1360,6 +1430,33 @@ are used as the base for the feature’s ‘properties’. The list of
 <dd class="field-odd"><p>A dictionary representing a valid GeoJSON Feature.</p>
 </dd>
 </dl>
+<p class="rubric">Examples</p>
+<p>Create asset with an image:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Point</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhysicalAsset</span><span class="p">,</span> <span class="n">ImageAsset</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span> <span class="o">=</span> <span class="n">PhysicalAsset</span><span class="p">(</span>
+</span><span data-line="5"><span class="gp">... </span>    <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;pole_99&#39;</span><span class="p">,</span>
+</span><span data-line="6"><span class="gp">... </span>    <span class="n">geometry</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">20</span><span class="p">),</span>
+</span><span data-line="7"><span class="gp">... </span>    <span class="n">attributes</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;material&#39;</span><span class="p">:</span> <span class="s1">&#39;wood&#39;</span><span class="p">}</span>
+</span><span data-line="8"><span class="gp">... </span><span class="p">)</span>
+</span><span data-line="9"><span class="gp">&gt;&gt;&gt; </span><span class="n">img</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;img1&#39;</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="s1">&#39;p1.jpg&#39;</span><span class="p">,</span>
+</span><span data-line="10"><span class="gp">... </span><span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span data-line="11"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">add_image_assets</span><span class="p">(</span><span class="n">img</span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>Convert to GeoJSON:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">feature</span> <span class="o">=</span> <span class="n">asset</span><span class="o">.</span><span class="n">to_geojson_feature</span><span class="p">()</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">feature</span><span class="p">)</span>
+</span><span data-line="3"><span class="go">{&#39;type&#39;: &#39;Feature&#39;, &#39;id&#39;: &#39;pole_99&#39;, &#39;geometry&#39;:</span>
+</span><span data-line="4"><span class="go">{&#39;type&#39;: &#39;Point&#39;, &#39;coordinates&#39;: (10.0, 20.0)},</span>
+</span><span data-line="5"><span class="go">&#39;properties&#39;: {&#39;material&#39;: &#39;wood&#39;, &#39;image_assets&#39;:</span>
+</span><span data-line="6"><span class="go">[{&#39;path&#39;: PosixPath(&#39;/home/bacetiner/p1.jpg&#39;), &#39;id&#39;: &#39;img1&#39;,</span>
+</span><span data-line="7"><span class="go">&#39;properties&#39;: {}, &#39;semantic_map&#39;: None, &#39;instance_map&#39;: None,</span>
+</span><span data-line="8"><span class="go">&#39;allow_missing_file&#39;: True, &#39;_pil_image&#39;: None, &#39;_semantic_mask&#39;:</span>
+</span><span data-line="9"><span class="go">None, &#39;_instance_mask&#39;: None}]}}</span>
+</span></pre></div>
+</div>
 </dd></dl>
 
 </dd></dl>
