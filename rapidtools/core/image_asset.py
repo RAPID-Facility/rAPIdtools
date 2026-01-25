@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 01-20-2025
+# 01-24-2025
 
 from __future__ import annotations
 
@@ -552,6 +552,7 @@ class ImageAsset:
             url_key: str = 'thumb_original_url',
             convert_mode: str | None = None,
             force_reload: bool = False,
+            verbose: bool = True,
             session: requests.Session | None = None
         ) -> None: 
             """
@@ -573,6 +574,10 @@ class ImageAsset:
                 force_reload (bool):
                     If ``True``, re-downloads even if _pil_image is already 
                     set.
+                verbose (bool):
+                    If ``True``, logs standard info messages. Set to ``False``
+                    to suppress the "Downloading into memory" log. Defaults to
+                    ``True``.
                 session (requests.Session, optional):
                     Session for efficient connection pooling during download.
             """
@@ -595,7 +600,9 @@ class ImageAsset:
                 )
     
             try:
-                logging.info(f'Downloading {self.id} into memory...')
+                # Only log if verbose is True
+                if verbose:
+                    logging.info(f'Downloading {self.id} into memory...')
                 
                 # Use provided session or create a temporary one:
                 requester = session if session else requests
@@ -1352,6 +1359,90 @@ class ImageCollection:
         if ignore_none:
             return [asset.id for asset in self._assets if asset.id is not None]
         return [asset.id for asset in self._assets]
+
+    def remove(self, items: ImageAsset | str | list[ImageAsset | str]) -> None:
+            """
+            Remove one or more assets from the collection.
+    
+            This method accepts a single ImageAsset, a single ID string, or a 
+            list containing a mix of both.
+    
+            Args:
+                items: 
+                    An ImageAsset object, a string ID, or a list of these to 
+                    remove.
+    
+            Examples:
+                Initialize an ImageCollection:
+                    
+                >>> from rapidtools.core import ImageAsset, ImageCollection
+                >>> 
+                >>> # Initialize a collection with some assets
+                >>> img1 = ImageAsset(id='img_001', path='path/to/1.jpg', 
+                ... allow_missing_file=True)
+                >>> img2 = ImageAsset(id='img_002', path='path/to/2.jpg',
+                ... allow_missing_file=True)                      
+                >>> img3 = ImageAsset(id='img_003', path='path/to/3.jpg',
+                ... allow_missing_file=True)
+                >>> collection = ImageCollection([img1, img2, img3])
+                
+                Remove by ID:
+                >>> collection.remove('img_001')
+                Removed 1 assets from the collection.
+                >>> len(collection)
+                2
+                
+                Remove by Object:
+                >>> collection.remove(img2)
+                Removed 1 assets from the collection.
+                >>> len(collection)
+                1
+                
+                Remove a list of mixed types:
+                >>> collection.add([img1, img2]) 
+                >>> collection.remove(['img_001', img2])
+                Removed 2 assets from the collection.
+                >>> len(collection)
+                1
+            """
+            # Normalize input to a list
+            items_to_remove = items if isinstance(items, list) else [items]
+            
+            ids_to_remove = set()
+            object_addresses_to_remove = set()
+            
+            for item in items_to_remove:
+                if isinstance(item, str):
+                    ids_to_remove.add(item)
+                elif hasattr(item, 'id'): 
+                    # Store the memory address of the object for identity 
+                    # comparison:
+                    object_addresses_to_remove.add(id(item))
+                    
+                    # Also track the ID string if it exists:
+                    if item.id is not None:
+                        ids_to_remove.add(item.id)
+            
+            initial_count = len(self._assets)
+            
+            # Rebuild the list preserving order.
+            # We keep the asset if:
+            # 1. Its ID string is NOT in the removal set
+            #    AND
+            # 2. Its memory address is NOT in the removal set
+            self._assets = [
+                asset for asset in self._assets
+                if asset.id not in ids_to_remove and id(asset) \
+                    not in object_addresses_to_remove
+            ]
+            
+            removed_count = initial_count - len(self._assets)
+            if removed_count > 0:
+                logging.info(
+                    f'Removed {removed_count} assets from the collection.'
+                )
+            else:
+                logging.warning('No matching assets found to remove.')
 
     def subset(self, indices: list[int]) -> 'ImageCollection':
         """
