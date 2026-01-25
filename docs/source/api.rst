@@ -7,7 +7,7 @@ Core Objects
 ------------
 
 .. automodule:: rapidtools.core
-   :members: BoundingBox, PolygonRegion, ImageAsset, ImageCollection, InfrastructureAsset, InfrastructureAssetCollection
+   :members: BoundingBox, PolygonRegion, ImageAsset, ImageCollection, PhysicalAsset, PhysicalAssetCollection
 
 Data Sources
 ------------
