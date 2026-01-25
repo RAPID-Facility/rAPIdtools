@@ -1437,9 +1437,11 @@ class ImageCollection:
             ]
             
             removed_count = initial_count - len(self._assets)
+            removed_item = 'asset' if removed_count==1 else 'assets'
             if removed_count > 0:
                 logging.info(
-                    f'Removed {removed_count} assets from the collection.'
+                    f'Removed {removed_count} {removed_item} from the '
+                    'collection.'
                 )
             else:
                 logging.warning('No matching assets found to remove.')
