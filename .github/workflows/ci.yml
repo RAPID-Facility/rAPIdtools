@@ -12,7 +12,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       # fail-fast: false ensures that if Windows fails, Linux tests keep running.
-      # This helps you see if a bug is specific to one OS or global.
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -34,17 +33,19 @@ jobs:
         pip install -e ".[test]"
 
     - name: Run Tests and Generate Badge
+      shell: bash
       run: |
-        # 1. Run pytest and save output
+        # Run pytest and save output:
         pytest --cov=rapidtools | tee coverage_output.txt
         
-        # 2. Extract the number (e.g., "85")
+        # Extract the coverage number:
         COVERAGE=$(grep "TOTAL" coverage_output.txt | awk '{print $NF}' | sed 's/%//')
         
-        # 3. Save to env var
+        # Save to env var:
         echo "COVERAGE=$COVERAGE" >> $GITHUB_ENV
 
     - name: Update Dynamic Badge
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
       uses: schneegans/dynamic-badges-action@v1.7.0
       with:
         auth: ${{ secrets.GIST_SECRET }}
@@ -54,9 +55,9 @@ jobs:
         message: ${{ env.COVERAGE }}%
         
         # --- Color Range Configuration ---
-        # The number to evaluate (your actual coverage)
+        # The number to evaluate (actual code coverage)
         valColorRange: ${{ env.COVERAGE }}
-        # Coverage >= 90% will be pure green
+        # Coverage >= 90% will be pure green:
         maxColorRange: 90
-        # Coverage <= 50% will be pure red
+        # Coverage <= 50% will be pure red:
         minColorRange: 50
