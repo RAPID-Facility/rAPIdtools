@@ -1,7 +1,7 @@
 # rAPIdtools
 
 [![CI](https://github.com/RAPID-Facility/rAPIdtools/actions/workflows/ci.yml/badge.svg)](https://github.com/RAPID-Facility/rAPIdtools/actions/workflows/ci.yml)
-![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/YOUR_GITHUB_USER/YOUR_GIST_ID/raw/coverage.json)
+![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/bacetiner/c890ae687368838a74c5e442b9ff5b94/raw/coverage.json)
 [![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 
 A toolkit for damage detection in regional assets using AI and geospatial data.
