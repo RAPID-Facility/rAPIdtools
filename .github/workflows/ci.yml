@@ -33,13 +33,30 @@ jobs:
         # don't misinterpret the brackets.
         pip install -e ".[test]"
 
-    - name: Run Tests
+    - name: Run Tests and Generate Badge
       run: |
-        pytest
+        # 1. Run pytest and save output
+        pytest --cov=rapidtools | tee coverage_output.txt
+        
+        # 2. Extract the number (e.g., "85")
+        COVERAGE=$(grep "TOTAL" coverage_output.txt | awk '{print $NF}' | sed 's/%//')
+        
+        # 3. Save to env var
+        echo "COVERAGE=$COVERAGE" >> $GITHUB_ENV
 
-    # Optional: Upload coverage to Codecov
-    # - name: Upload coverage to Codecov
-    #   uses: codecov/codecov-action@v5
-    #   with:
-    #     token: ${{ secrets.CODECOV_TOKEN }}
-    #     slug: your_username/rapidtools
+    - name: Update Dynamic Badge
+      uses: schneegans/dynamic-badges-action@v1.7.0
+      with:
+        auth: ${{ secrets.GIST_SECRET }}
+        gistID: ${{ secrets.GIST_ID }}
+        filename: coverage.json
+        label: coverage
+        message: ${{ env.COVERAGE }}%
+        
+        # --- Color Range Configuration ---
+        # The number to evaluate (your actual coverage)
+        valColorRange: ${{ env.COVERAGE }}
+        # Coverage >= 90% will be pure green
+        maxColorRange: 90
+        # Coverage <= 50% will be pure red
+        minColorRange: 50
