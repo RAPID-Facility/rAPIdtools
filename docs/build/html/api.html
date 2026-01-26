@@ -1152,9 +1152,13 @@ being ‘category’:</p>
 <em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_geojson_feature</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">geojson_feature</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">asset_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.PhysicalAsset" title="rapidtools.core.physical_asset.PhysicalAsset"><span class="pre">PhysicalAsset</span></a></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAsset.from_geojson_feature"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAsset.from_geojson_feature" title="Link to this definition">¶</a></dt>
 <dd><p>Create a PhysicalAsset from a GeoJSON Feature dictionary.</p>
 <p>The method expects a GeoJSON object of type “Feature” with at least a
-“geometry” field containing a valid GeoJSON geometry, and</p>
+“geometry” field containing a valid GeoJSON geometry.</p>
+<p>If the feature’s properties contain an ‘image_assets’ list (as produced
+by <code class="docutils literal notranslate"><span class="pre">to_geojson_feature</span></code>), this method attempts to reconstruct the
+corresponding <code class="docutils literal notranslate"><span class="pre">ImageAsset</span></code> objects and populate the asset’s image
+collection.</p>
 <p>If no id is found at the top level or in properties, a warning is
-logged and the id ‘no_id’ is used as a placeholder.</p>
+logged and a random UUID is generated as a placeholder.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -1172,6 +1176,39 @@ None.</p></li>
     (i.e., its “type” is not “Feature”).</p>
 </dd>
 </dl>
+<p class="rubric">Examples</p>
+<p>Create a PhysicalAsset from a GeoJSON feature:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhysicalAsset</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">feature</span> <span class="o">=</span> <span class="p">{</span>
+</span><span data-line="4"><span class="gp">... </span>    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;Feature&quot;</span><span class="p">,</span>
+</span><span data-line="5"><span class="gp">... </span>    <span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="s2">&quot;pole_01&quot;</span><span class="p">,</span>
+</span><span data-line="6"><span class="gp">... </span>    <span class="s2">&quot;geometry&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;Point&quot;</span><span class="p">,</span> <span class="s2">&quot;coordinates&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">20</span><span class="p">]},</span>
+</span><span data-line="7"><span class="gp">... </span>    <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+</span><span data-line="8"><span class="gp">... </span>        <span class="s2">&quot;material&quot;</span><span class="p">:</span> <span class="s2">&quot;wood&quot;</span><span class="p">,</span>
+</span><span data-line="9"><span class="gp">... </span>        <span class="s2">&quot;image_assets&quot;</span><span class="p">:</span> <span class="p">[</span>
+</span><span data-line="10"><span class="gp">... </span>            <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="s2">&quot;img1&quot;</span><span class="p">,</span> <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="s2">&quot;/tmp/a.jpg&quot;</span><span class="p">,</span>
+</span><span data-line="11"><span class="gp">... </span>             <span class="s2">&quot;allow_missing_file&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+</span><span data-line="12"><span class="gp">... </span>        <span class="p">]</span>
+</span><span data-line="13"><span class="gp">... </span>    <span class="p">}</span>
+</span><span data-line="14"><span class="gp">... </span><span class="p">}</span>
+</span><span data-line="15"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="16"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span> <span class="o">=</span> <span class="n">PhysicalAsset</span><span class="o">.</span><span class="n">from_geojson_feature</span><span class="p">(</span><span class="n">feature</span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>Display the asset’s ID and material properties. Note that
+<code class="docutils literal notranslate"><span class="pre">image_assets</span></code> is removed from the GeoJSON feature attributes
+and stored instead in the asset’s <code class="docutils literal notranslate"><span class="pre">ImageCollection</span></code>:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">asset</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+</span><span data-line="2"><span class="go">pole_01</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">asset</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s1">&#39;material&#39;</span><span class="p">])</span>
+</span><span data-line="4"><span class="go">wood</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="s1">&#39;image_assets&#39;</span> <span class="ow">in</span> <span class="n">asset</span><span class="o">.</span><span class="n">attributes</span><span class="p">)</span>
+</span><span data-line="6"><span class="go">False</span>
+</span><span data-line="7"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">asset</span><span class="o">.</span><span class="n">image_assets</span><span class="p">))</span>
+</span><span data-line="8"><span class="go">1</span>
+</span></pre></div>
+</div>
 </dd></dl>
 
 <dl class="py method">
