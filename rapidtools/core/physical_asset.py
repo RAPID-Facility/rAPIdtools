@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 01-24-2025
+# 01-26-2025
 
 from __future__ import annotations
 
@@ -369,6 +369,141 @@ class PhysicalAsset:
         if valid_assets_to_add:
             self.image_assets.add(valid_assets_to_add)
 
+    @classmethod
+    def from_geojson_feature(
+            cls, 
+            geojson_feature: dict[str, Any],
+            asset_id: str | None = None
+            ) -> PhysicalAsset:
+        """
+        Create a PhysicalAsset from a GeoJSON Feature dictionary.
+    
+        The method expects a GeoJSON object of type "Feature" with at least a 
+        "geometry" field containing a valid GeoJSON geometry. 
+        
+        If the feature's properties contain an 'image_assets' list (as produced
+        by ``to_geojson_feature``), this method attempts to reconstruct the 
+        corresponding ``ImageAsset`` objects and populate the asset's image 
+        collection.
+    
+        If no id is found at the top level or in properties, a warning is
+        logged and a random UUID is generated as a placeholder.
+    
+        Args:
+            geojson_feature (dict[str, Any]): 
+                A dictionary representing a GeoJSON Feature.
+            asset_id (str | None, optional):
+                An explicit ID to assign to the asset. If provided, this 
+                overrides any ID found within the GeoJSON data. Defaults to 
+                None.
+    
+        Returns:
+            An initialized PhysicalAsset instance.
+    
+        Raises:
+            ValueError: If geojson_feature is not a valid GeoJSON Feature
+                (i.e., its "type" is not "Feature").
+            
+        Examples:
+            Create a PhysicalAsset from a GeoJSON feature:
+            
+            >>> from rapidtools.core import PhysicalAsset
+            >>> 
+            >>> feature = {
+            ...     "type": "Feature",
+            ...     "id": "pole_01",
+            ...     "geometry": {"type": "Point", "coordinates": [10, 20]},
+            ...     "properties": {
+            ...         "material": "wood",
+            ...         "image_assets": [
+            ...             {"id": "img1", "path": "/tmp/a.jpg", 
+            ...              "allow_missing_file": True}
+            ...         ]
+            ...     }
+            ... }
+            >>>
+            >>> asset = PhysicalAsset.from_geojson_feature(feature)
+
+            Display the asset’s ID and material properties. Note that 
+            ``image_assets`` is removed from the GeoJSON feature attributes
+            and stored instead in the asset’s ``ImageCollection``:
+                
+            >>> print(asset.id)
+            pole_01
+            >>> print(asset.attributes['material'])
+            wood
+            >>> print('image_assets' in asset.attributes)
+            False
+            >>> print(len(asset.image_assets))
+            1
+        """       
+        if geojson_feature.get('type') != 'Feature':
+            raise ValueError(
+                'Input dictionary must be a valid GeoJSON Feature.'
+            )
+        
+        # Ensure properties is a dict (it can be None in valid GeoJSON):
+        properties = (geojson_feature.get('properties') or {}).copy()
+
+        # Determine asset ID:
+        if asset_id is None:
+            # Check top-level ID, then properties ID:
+            asset_id = geojson_feature.get('id') or properties.get('id')
+        
+        if asset_id is None:
+            generated_id = f"no_id_{uuid.uuid4().hex[:8]}"
+            logging.debug(
+                "GeoJSON feature is missing an 'id' field. Generated "
+                f"placeholder '{generated_id}'."
+            )
+            asset_id = generated_id
+        
+        # Extract and Rehydrate ImageAssets. Note that this key from the 
+        # general attributes dict to eliminate duplication:
+        image_data_list = properties.pop('image_assets', [])
+        rehydrated_images = []
+        
+        if image_data_list:
+            for img_dict in image_data_list:
+                try:
+                    # Reconstruct ImageAsset from dictionary kwargs
+                    # This step always sets 'allow_missing_file' is True if not
+                    # specified, as rehydrating from JSON often implies offline
+                    # processing:
+                    if 'allow_missing_file' not in img_dict:
+                        img_dict['allow_missing_file'] = True
+                        
+                    img_obj = ImageAsset(**img_dict)
+                    rehydrated_images.append(img_obj)
+                except Exception as e:
+                    logging.warning(
+                        f"Failed to rehydrate an image asset from GeoJSON for "
+                        f"asset '{asset_id}': {e}"
+                    )
+
+        # Process asset geometry:
+        geom_data = geojson_feature.get('geometry')
+        if not geom_data:
+            raise ValueError(f"Feature '{asset_id}' is missing geometry.")
+            
+        geom_obj = shape(geom_data)
+
+        # Simplify MultiPolygon to Polygon if it only has one component:
+        if geom_obj.geom_type == 'MultiPolygon' and len(geom_obj.geoms) == 1:
+            geom_obj = geom_obj.geoms[0]
+            
+        # Initialize Asset:
+        new_asset = cls(
+            id=str(asset_id),
+            geometry=geom_obj,
+            attributes=properties
+        )
+        
+        # Add rehydrated images:
+        if rehydrated_images:
+            new_asset.image_assets.add(rehydrated_images)
+            
+        return new_asset
     
     def get_attributes(self, *keys: str) -> dict[str, Any]:
         """
@@ -485,10 +620,10 @@ class PhysicalAsset:
                 lookup[img.id] = img
             
             # Map Filename
-            # 1. Try explicit 'filename' property
+            # Try explicit 'filename' property:
             fname = getattr(img, 'filename', None)
             
-            # 2. Fallback: Derive from 'path'
+            # Fallback: Derive from 'path':
             if not fname:
                 raw_path = getattr(img, 'path', None)
                 if raw_path:
@@ -506,74 +641,6 @@ class PhysicalAsset:
                 )
         
         return results
-
-    @classmethod
-    def from_geojson_feature(
-            cls, 
-            geojson_feature: dict[str, Any],
-            asset_id: str | None = None
-            ) -> PhysicalAsset:
-        """
-        Create a PhysicalAsset from a GeoJSON Feature dictionary.
-    
-        The method expects a GeoJSON object of type "Feature" with at least a 
-        "geometry" field containing a valid GeoJSON geometry, and
-    
-        If no id is found at the top level or in properties, a warning is
-        logged and the id 'no_id' is used as a placeholder.
-    
-        Args:
-            geojson_feature (dict[str, Any]): 
-                A dictionary representing a GeoJSON Feature.
-            asset_id (str | None, optional):
-                An explicit ID to assign to the asset. If provided, this 
-                overrides any ID found within the GeoJSON data. Defaults to 
-                None.
-    
-        Returns:
-            An initialized PhysicalAsset instance.
-    
-        Raises:
-            ValueError: If geojson_feature is not a valid GeoJSON Feature
-                (i.e., its "type" is not "Feature").
-        """       
-        if geojson_feature.get('type') != 'Feature':
-            raise ValueError(
-                'Input dictionary must be a valid GeoJSON Feature.'
-            )
-        
-        # If no explicit asset_id provided, look in the top-level 'id' field:
-        if asset_id is None:
-            asset_id = geojson_feature.get('id')
-        
-        # If still None, try to get it from the 'properties' dictionary:
-        if asset_id is None:
-            properties = geojson_feature.get('properties', {})
-            asset_id = properties.get('id')
-        
-        # If still not found, issue a warning and use a placeholder.
-        if asset_id is None:
-            generated_id = f"no_id_{uuid.uuid4().hex[:8]}"
-            props = geojson_feature.get('properties', {})
-            logging.debug(
-                "GeoJSON feature is missing an 'id'. Generated placeholder "
-                f"'{generated_id}'. Properties: {props}"
-            )
-            asset_id = generated_id
-        
-        # Convert the GeoJSON dict to a Shapely object
-        geom_obj = shape(geojson_feature['geometry'])
-
-        # Check if it is a MultiPolygon with only one component:
-        if geom_obj.geom_type == 'MultiPolygon' and len(geom_obj.geoms) == 1:
-            # Extract the single polygon from the list:
-            geom_obj = geom_obj.geoms[0]
-            
-        return cls(
-            id=str(asset_id),
-            geometry=geom_obj,
-            attributes=geojson_feature.get('properties', {}).copy()
-        )
 
     def print_info(self) -> None:
         """
