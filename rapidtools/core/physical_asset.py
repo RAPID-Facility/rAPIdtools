@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 12-16-2025
+# 01-24-2025
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 
 from .bounding_box import BoundingBox
-from .image_asset import ImageAsset
+from .image_asset import ImageAsset, ImageCollection
 
 @dataclass(kw_only=True, repr=False)
 class PhysicalAsset:
@@ -84,7 +84,7 @@ class PhysicalAsset:
     id: str
     geometry: BaseGeometry
     attributes: dict[str, Any] = field(default_factory=dict)
-    image_assets: list[ImageAsset] = field(default_factory=list)
+    image_assets: ImageCollection = field(default_factory=ImageCollection)
 
     # Define the keys to search as a class attribute for easy configuration:
     _ASSET_TYPE_KEYS: ClassVar[list[str]] = [
@@ -110,7 +110,7 @@ class PhysicalAsset:
                 )
         
         if not self.id:
-            raise ValueError("InfrastructureAsset 'id' cannot be empty.")
+            raise ValueError("PhysicalAsset 'id' cannot be empty.")
             
         if not self.geometry.is_valid:
             logging.warning(
@@ -152,6 +152,7 @@ class PhysicalAsset:
         
         Example:
             Create an asset using the key ``'category'`` for its type:
+            
             >>> from shapely.geometry import Point
             >>> from rapidtools.core import PhysicalAsset
             >>> asset = PhysicalAsset(
@@ -226,7 +227,7 @@ class PhysicalAsset:
             >>> print(asset.attributes['height'])
             12.0
             
-            >>> Force update existing attributes by setting the ``overwrite`` 
+            Force update existing attributes by setting the ``overwrite`` 
             argument to ``True``:
                 
             >>> asset.add_attributes({'status': 'retired'}, overwrite=True)
@@ -256,39 +257,117 @@ class PhysicalAsset:
                 # If the key is new, simply add it
                 self.attributes[key] = value
 
-    def add_image_assets(self, *image_assets: Any) -> None:
+    def add_image_assets(self, *args: Any) -> None:
         """
-        Associate one or more ImageAsset instances with this asset.
+        Add one or more ``ImageAsset`` objects to the asset.
     
-        Any argument that is not an instance of ImageAsset is ignored and
-        a warning is logged. Valid ImageAsset instances are appended to
-        the image_assets list.
+        This method is highly flexible and accepts:
+        - Individual ``ImageAsset`` objects.
+        - Lists or Tuples of ``ImageAsset`` objects.
+        - ``ImageCollection`` instances.
+        - A mix of all the above.
+        
+        Any nested item that is not an ``ImageAsset`` is ignored and a 
+        warning is logged.
     
         Args:
-            *image_assets (Any): One or more objects, of which only ImageAsset
-                instances will be added.
+            *args (Any): 
+                Variable length argument list containing images or collections
+                of images.
+            
+        Examples:
+            
+            Initialize the main physical asset:
+                
+            >>> from shapely.geometry import Point
+            >>> from rapidtools.core import PhysicalAsset, ImageAsset, \
+            >>>     ImageCollection
+            >>> 
+            >>> asset = PhysicalAsset(id='pole_01', geometry=Point(10, 20))
+
+            
+            Initialize several ``ImageAsset`` and ``ImageCollection`` objects
+            to use in the examples below. At minimum, an ``ImageAsset`` 
+            requires an id and a path. Because we will be using mock paths, we
+            must set ``allow_missing_file=True``; otherwise, ``ImageAsset`` 
+            will validate the path, detect that it does not exist, and raise
+            an error. To avoid repeating the path and ``allow_missing_file`` 
+            arguments, we will define a small helper function, named 
+            ``make_img`` to construct ``ImageAsset`` instances consistently:
+
+            >>> def make_img(uid):
+            ...     return ImageAsset(
+            ...         id=uid, 
+            ...         path=f'/tmp/{uid}', 
+            ...         allow_missing_file=True
+            ...     )
+            >>>
+            >>> img1 = make_img('img_1.jpg')
+            >>> img2 = make_img('img_2.jpg')
+            >>> img3 = make_img('img_3.jpg')
+            >>> img4 = make_img('img_4.jpg')
+            >>> img5 = make_img('img_5.jpg')
+            >>> img6 = make_img('img_6.jpg')
+            >>> img7 = make_img('img_7.jpg')
+            >>> collection = ImageCollection([img4, img5])
+
+            Add individual ImageAssets to the physical asset:
+            
+            >>> asset.add_image_assets(img1, img2)
+            >>> len(asset.image_assets)
+            2
+
+            Add a list of images:
+            
+            >>> asset.add_image_assets([img3])
+            >>> len(asset.image_assets)
+            3
+
+            Add a mix of a single ``ImageAsset``, list, tuple, and 
+            ``ImageCollection`` in one call:
+
+            >>> asset.add_image_assets(
+            ...     img5,               # Single Object
+            ...     [img6],             # List
+            ...     (img7,),            # Tuple
+            ...     collection          # ImageCollection (contains img4, img5)
+            ... )
+            INFO: Skipping duplicate asset with ID: img_5.jpg
+            >>> 'img_7.jpg' in asset.image_assets.get_ids()
+            True
         """
-        # Create a temporary list to hold only the valid assets:
         valid_assets_to_add = []
 
-        # Iterate through all provided arguments:
-        for asset in image_assets:
-            if isinstance(asset, ImageAsset):
-                # If the item is a valid ImageAsset, add it to our list.
-                valid_assets_to_add.append(asset)
+        for arg in args:
+            # Case 1 - Single ImageAsset:
+            if isinstance(arg, ImageAsset):
+                valid_assets_to_add.append(arg)
+            
+            # Case 2 - A List, Tuple, or ImageCollection
+            # Check for these types specifically to avoid iterating over 
+            # strings or other iterables:
+            elif isinstance(arg, (list, tuple, ImageCollection)):
+                for item in arg:
+                    if isinstance(item, ImageAsset):
+                        valid_assets_to_add.append(item)
+                    else:
+                        logging.warning(
+                            f"Ignored item of type '{type(item).__name__}' "
+                            f'found inside a container argument. This method'
+                            " supports adding 'ImageAsset' objects only."
+                        )
+            
+            # Unsupported top-level argument:
             else:
-                # If the item is NOT a valid ImageAsset, log a warning.
-                # Provide context: which asset is being updated and what the 
-                # invalid type was:
                 logging.warning(
-                    f"Skipping invalid item for asset '{self.id}'. "
-                    f"Expected ImageAsset, but got {type(asset).__name__}."
+                    f"Ignored argument of type '{type(arg).__name__}'. "
+                    'This method supports ImageAsset, list, tuple, or '
+                    'ImageCollection.'
                 )
 
-        # If found any valid assets, extend the main list:
+        # Batch add everything to the internal collection:
         if valid_assets_to_add:
-            self.image_assets.extend(valid_assets_to_add)
-
+            self.image_assets.add(valid_assets_to_add)
 
     
     def get_attributes(self, *keys: str) -> dict[str, Any]:
@@ -303,6 +382,31 @@ class PhysicalAsset:
 
         Returns:
             A dictionary containing the keys that were found and their values.
+            
+        Examples:
+            
+            Initialize the main physical asset:
+            
+            >>> from shapely.geometry import Point
+            >>> from rapidtools.core import PhysicalAsset
+            >>> 
+            >>> asset = PhysicalAsset(
+            ...     id='bldg_001', 
+            ...     geometry=Point(0,0), 
+            ...     attributes={'year_built': 1990, 'material': 'concrete'}
+            ... )
+    
+            Retrieve a single attribute:
+            
+            >>> asset.get_attributes('year_built')
+            {'year_built': 1990}
+    
+            Request multiple attributes. Please note that ``roof_type`` is 
+            missing, so it is omitted in the result:
+            
+            >>> asset.get_attributes('year_built', 'roof_type', 'material')
+            WARNING: Attribute key 'roof_type' not found for asset 'bldg_001'.
+            {'year_built': 1990, 'material': 'concrete'}
         """
         found_attributes = {}
         for key in keys:
@@ -316,6 +420,93 @@ class PhysicalAsset:
                 )
         return found_attributes
 
+    def get_image_assets(self, *identifiers: str) -> list[ImageAsset]:
+        """
+        Retrieve specific image assets by their ID or filename.
+
+        This method searches the asset's image collection. It matches against 
+        the 'id' attribute or the 'filename' (explicit or derived from path).
+
+        Args:
+            *identifiers (str): A variable number of string IDs or filenames 
+                to retrieve.
+
+        Returns:
+            list[ImageAsset]: A list of the found ImageAsset objects. 
+            If a requested identifier is not found, it is skipped and a 
+            warning is logged.
+
+        Examples:
+            Setup asset with images:
+
+            >>> from rapidtools.core import PhysicalAsset, ImageAsset
+            >>> from shapely.geometry import Point
+            >>> 
+            >>> asset = PhysicalAsset(id='pole_01', geometry=Point(0,0))
+            >>> img1 = ImageAsset(id='img_A', path='/tmp/photo_A.jpg', 
+            ...                   allow_missing_file=True)
+            >>> img2 = ImageAsset(id='img_B', path='/tmp/photo_B.jpg',
+            ...                   allow_missing_file=True)
+            >>> asset.add_image_assets(img1, img2)
+
+            Get by ID:
+
+            >>> found = asset.get_image_assets('img_A')
+            >>> found[0].path
+            PosixPath('/tmp/photo_A.jpg')
+
+            Get by Filename:
+
+            >>> found = asset.get_image_assets('photo_B.jpg')
+            >>> found[0].id
+            'img_B'
+
+            Get multiple (mixed ID and filename):
+
+            >>> found = asset.get_image_assets('img_A', 'photo_B.jpg')
+            >>> len(found)
+            2
+
+            Attempt to get non-existent image:
+
+            >>> asset.get_image_assets('missing.jpg')
+            WARNING: Image asset 'missing.jpg' not found in asset 'pole_01'.
+            []
+        """
+        results = []
+
+        # Build a temporary lookup map for efficient retrieval.
+        # This handles cases where one image might be referenced by ID and 
+        # another by filename in the same call.
+        lookup = {}
+        for img in self.image_assets:
+            # Map ID
+            if img.id:
+                lookup[img.id] = img
+            
+            # Map Filename
+            # 1. Try explicit 'filename' property
+            fname = getattr(img, 'filename', None)
+            
+            # 2. Fallback: Derive from 'path'
+            if not fname:
+                raw_path = getattr(img, 'path', None)
+                if raw_path:
+                    fname = Path(raw_path).name
+            
+            if fname:
+                lookup[fname] = img
+        
+        for key in identifiers:
+            if key in lookup:
+                results.append(lookup[key])
+            else:
+                logging.warning(
+                    f'Image asset \'{key}\' not found in asset \'{self.id}\'.'
+                )
+        
+        return results
+
     @classmethod
     def from_geojson_feature(
             cls, 
@@ -323,7 +514,7 @@ class PhysicalAsset:
             asset_id: str | None = None
             ) -> PhysicalAsset:
         """
-        Create an InfrastructureAsset from a GeoJSON Feature dictionary.
+        Create a PhysicalAsset from a GeoJSON Feature dictionary.
     
         The method expects a GeoJSON object of type "Feature" with at least a 
         "geometry" field containing a valid GeoJSON geometry, and
@@ -340,7 +531,7 @@ class PhysicalAsset:
                 None.
     
         Returns:
-            An initialized InfrastructureAsset instance.
+            An initialized PhysicalAsset instance.
     
         Raises:
             ValueError: If geojson_feature is not a valid GeoJSON Feature
@@ -386,88 +577,191 @@ class PhysicalAsset:
 
     def print_info(self) -> None:
         """
-        Print a human-readable summary of the asset to stdout.
-    
+        Print a human-readable summary of the asset information.
+
         The summary includes:
-        - id,
-        - inferred asset type,
-        - geometry (in WKT format),
-        - all attributes (pretty-printed as JSON), and
-        - a list of associated image assets.
+        - Identity (ID and inferred type).
+        - Spatial data (WKT geometry, truncated if excessively long).
+        - Metadata (Attributes pretty-printed as JSON).
+        - Media (List of associated ImageAsset representations).
+
+        Example:
+            >>> from shapely.geometry import Point
+            >>> from rapidtools.core import PhysicalAsset
+            >>> 
+            >>> asset = PhysicalAsset(
+            ...     id='pole_99',
+            ...     geometry=Point(10, 20),
+            ...     attributes={'material': 'wood', 'install_year': 2021}
+            ... )
+            >>> 
+            >>> asset.print_info()      
+            --- PhysicalAsset Summary ---
+            ID:          pole_99
+            Asset Type:  N/A
+            Geometry:    POINT (10 20)
+            Attributes (2):
+            {
+                "material": "wood",
+                "install_year": 2021
+            }
+            Image Assets (0):
+              (No image assets)
+            -----------------------------
         """
-        # Use a helper to pretty-print dictionaries
-        def pretty_dict(d: dict) -> str:
-            return json.dumps(d, indent=4)
+        header = f'--- {self.__class__.__name__} Summary ---'
+        print(f'\n{header}')
+        print(f'ID:          {self.id}')
+        # Inner quotes for "N/A" must be double since the outer quotes are single
+        print(f'Asset Type:  {self.asset_type or "N/A"}')
 
-        print("\n--- Infrastructure Asset Summary ---")
-        print(f"ID:          {self.id}")
-        print(f"Asset Type:  {self.asset_type or 'N/A'}")
-        print(f"Geometry:    {self.geometry.wkt}")  # WKT is a readable format
+        # Truncate geometry string if it is too long:
+        wkt_str = self.geometry.wkt
+        if len(wkt_str) > 80:
+            wkt_str = wkt_str[:77] + '...'
+        print(f'Geometry:    {wkt_str}')
 
-        # Display Attributes
-        attr_count = len(self.attributes)
-        print(f"Attributes ({attr_count}):")
+        # Display attributes:
+        print(f'Attributes ({len(self.attributes)}):')
         if self.attributes:
-            print(pretty_dict(self.attributes))
+            # default=str handles objects like datetime or UUIDs gracefully
+            print(json.dumps(self.attributes, indent=4, default=str))
         else:
-            print("  (No attributes)")
+            print('  (No attributes)')
 
         # Display Image Assets
-        img_count = len(self.image_assets)
-        print(f"Image Assets ({img_count}):")
+        print(f'Image Assets ({len(self.image_assets)}):')
         if self.image_assets:
             for img in self.image_assets:
-                # Assumes ImageAsset has a nice __repr__
-                print(f"  - {img!r}")
+                print(f'  - {img!r}')
         else:
-            print("  (No image assets)")
+            print('  (No image assets)')
 
-        print("------------------------------------\n")
+        print('-' * len(header) + '\n')
 
     def remove_attributes(self, *keys: str) -> None:
         """
-        Remove one or more attributes by key.
-    
-        For each key:
+        Remove one or more attributes from the asset by key.
+
+        For each provided key:
+            
         - If the key exists, it is removed.
-        - If the key does not exist, a warning is logged.
-    
+        - If the key does not exist, a warning is logged to indicate a 
+          potential typo or logic error in the caller.
+
         Args:
-            *keys (str): One or more attribute names to remove.
+            *keys (str): The names of the attributes to remove.
+
+        Examples:
+            Setup a physical asset with initial attributes:
+            
+            >>> from shapely.geometry import Point
+            >>> from rapidtools.core import PhysicalAsset
+            >>> 
+            >>> asset = PhysicalAsset(
+            ...     id='bldg_123',
+            ...     geometry=Point(0, 0),
+            ...     attributes={'color': 'red', 'height': 50, 'year': 1990}
+            ... )
+
+            Remove a single existing attribute:
+            
+            >>> asset.remove_attributes('color')
+            >>> 'color' in asset.attributes
+            False
+            
+            Attempt to remove a non-existent attribute:
+                
+            >>> asset.remove_attributes('width')
+            WARNING: Attempted to remove non-existent attribute 'width' from
+            asset 'bldg_123'.
+            
+            Attempt to remove multiple (mixed existing and missing) attributes
+            at once:
+                
+            >>> asset.remove_attributes('height', 'invalid_key')
+            WARNING: Attempted to remove non-existent attribute 'invalid_key'
+            from asset 'bldg_123'.
+            >>> print(asset.attributes)
+            {'year': 1990}
         """
         for key in keys:
             if key in self.attributes:
                 del self.attributes[key]
-                logging.debug(f"Removed attribute '{key}' from asset '{self.id}'.")
+                logging.debug(
+                    f'Removed attribute \'{key}\' from asset \'{self.id}\'.'
+                )
             else:
                 logging.warning(
-                    f"Attempted to remove non-existent attribute '{key}' "
-                    f"from asset '{self.id}'."
+                    f'Attempted to remove non-existent attribute \'{key}\' '
+                    f'from asset \'{self.id}\'.'
                 )
 
     def remove_image_assets(self, *image_ids: str) -> list[ImageAsset]:
         """
         Removes image assets identified by their unique string ID or filename.
+        
+        This method searches the asset's image collection for matches. It 
+        checks both the 'id' and 'file_name' fields of the image assets.
 
         Args:
             *image_ids: 
-                A variable number of string IDs (or filenames) to remove.
+                A variable number of string IDs (or filenames) identifying 
+                the images to remove.
 
         Returns:
-            list[ImageAsset]: A list of the actual ImageAsset objects that were 
-            successfully removed.
+            list[ImageAsset]: 
+                A list containing the actual ImageAsset objects that were
+                successfully found and removed.
+                
+        Examples:
+            Setup asset with images:
+                
+            >>> from rapidtools.core import PhysicalAsset, ImageAsset
+            >>> from shapely.geometry import Point
+            >>>
+            >>> asset = PhysicalAsset(id='pole_01', geometry=Point(0,0))
+            >>> img1 = ImageAsset(id='img_A', path='/tmp/photo_A.jpg', 
+            ... allow_missing_file=True)
+            >>> img2 = ImageAsset(id='img_B', path='/tmp/photo_B.jpg',
+            ... allow_missing_file=True)
+            >>> img3 = ImageAsset(id='img_C', path='/tmp/photo_C.jpg',
+            ... allow_missing_file=True)
+            >>> asset.add_image_assets(img1, img2, img3)
+            
+            Remove by ID:
+                
+            >>> removed = asset.remove_image_assets('img_A')
+            INFO: Removed 1 asset from the collection.
+            >>> len(asset.image_assets)
+            2
+            >>> removed[0].id
+            'img_A'
+            
+            Remove by filename (assuming file_name is derived from path):
+                
+            >>> removed = asset.remove_image_assets('photo_B.jpg')
+            INFO: Removed 1 asset from the collection.
+            >>> len(asset.image_assets)
+            1
+
+            Attempt to remove non-existent image:
+                
+            >>> asset.remove_image_assets('ghost_image.jpg')
+            WARNING: Attempted to remove image 'ghost_image.jpg' from asset 
+            'pole_01', but no matching asset was found.
+            []
         """
         removed_items = []
 
         for target_id in image_ids:
             asset_to_remove = None
             
-            # Iterate through the current assets to find a match
+            # Iterate through the current assets to find a match:
             for img in self.image_assets:
-                # Check against 'id' or 'file_name' attributes safely
-                # (We use getattr to avoid crashes if the ImageAsset lacks these fields)
+                # Check against 'id' or 'file_name' attributes safely:
                 if target_id in (getattr(img, 'id', None), 
-                                 getattr(img, 'file_name', None)):
+                                 getattr(img, 'filename', None)):
                     asset_to_remove = img
                     break  # Stop after finding the first match
 
@@ -475,19 +769,20 @@ class PhysicalAsset:
                 self.image_assets.remove(asset_to_remove)
                 removed_items.append(asset_to_remove)
                 logging.debug(
-                    f"Successfully removed image asset '{target_id}' from asset '{self.id}'."
+                    f"Successfully removed image asset '{target_id}' from "
+                    f"asset '{self.id}'."
                 )
             else:
                 logging.warning(
-                    f"Attempted to remove image '{target_id}' from asset '{self.id}', "
-                    "but no matching asset was found."
+                    f"Attempted to remove image '{target_id}' from asset "
+                    f"'{self.id}', but no matching asset was found."
                 )
         
         return removed_items
 
     def to_geojson_feature(self) -> dict[str, Any]:
         """
-        Converts the InfrastructureAsset into a GeoJSON Feature dictionary.
+        Converts the PhysicalAsset into a GeoJSON Feature dictionary.
 
         The asset's 'id' becomes the feature's 'id'. The asset's 'attributes'
         are used as the base for the feature's 'properties'. The list of
@@ -495,14 +790,42 @@ class PhysicalAsset:
 
         Returns:
             A dictionary representing a valid GeoJSON Feature.
+            
+        Examples:
+            Create asset with an image:
+            
+            >>> from shapely.geometry import Point
+            >>> from rapidtools.core import PhysicalAsset, ImageAsset
+            >>> 
+            >>> asset = PhysicalAsset(
+            ...     id='pole_99', 
+            ...     geometry=Point(10, 20),
+            ...     attributes={'material': 'wood'}
+            ... )
+            >>> img = ImageAsset(id='img1', path='p1.jpg',
+            ... allow_missing_file=True)
+            >>> asset.add_image_assets(img)
+            
+            Convert to GeoJSON:
+            
+            >>> feature = asset.to_geojson_feature()
+            >>> print(feature)
+            {'type': 'Feature', 'id': 'pole_99', 'geometry': 
+            {'type': 'Point', 'coordinates': (10.0, 20.0)}, 
+            'properties': {'material': 'wood', 'image_assets': 
+            [{'path': PosixPath('/home/bacetiner/p1.jpg'), 'id': 'img1', 
+            'properties': {}, 'semantic_map': None, 'instance_map': None,
+            'allow_missing_file': True, '_pil_image': None, '_semantic_mask':
+            None, '_instance_mask': None}]}}
         """
-        # Start with a copy of the attributes for the properties dictionary
+        # Start with a copy of the attributes for the properties dictionary:
         properties = self.attributes.copy()
         
-        # Serialize image_assets into a list of dictionaries and add to properties
-        # This assumes ImageAsset is a dataclass, making asdict a perfect tool.
+        # Serialize image_assets into a list of dictionaries and add to 
+        # properties:
         if self.image_assets:
-            properties['image_assets'] = [asdict(img) for img in self.image_assets]
+            properties['image_assets'] = \
+                [asdict(img) for img in self.image_assets]
 
         return {
             'type': 'Feature',
@@ -514,7 +837,7 @@ class PhysicalAsset:
 @dataclass
 class PhysicalAssetCollection:
     """
-    Represents a collection of InfrastructureAsset objects.
+    Represents a collection of PhysicalAsset objects.
 
     This class acts as a "smart list," providing methods to manage and analyze
     a group of assets as a whole. It supports list-like operations such as
@@ -543,12 +866,15 @@ class PhysicalAssetCollection:
 
     def append(self, asset: PhysicalAsset):
         """
-        Adds a new InfrastructureAsset to the collection, checking for a unique ID.
+        Adds a new PhysicalAsset to the collection, checking for a unique ID.
         """
         if not isinstance(asset, PhysicalAsset):
-            raise TypeError("Only InfrastructureAsset objects can be added to the collection.")
+            raise TypeError(
+                'Only PhysicalAsset objects can be added to the collection.'
+            )
         if asset.id in {a.id for a in self.assets}:
-            raise ValueError(f"InfrastructureAsset with ID '{asset.id}' already exists.")
+            raise ValueError(
+                f"PhysicalAsset with ID '{asset.id}' already exists.")
         self.assets.append(asset)
 
     def get_asset_by_id(self, asset_id: str) -> PhysicalAsset | None:
@@ -564,7 +890,7 @@ class PhysicalAssetCollection:
             attribute_value: Any
         ) -> 'PhysicalAssetCollection':
         """
-        Filters the collection and returns a new InfrastructureAssetCollection.
+        Filters the collection and returns a new PhysicalAssetCollection.
         """
         filtered_assets = [
             asset for asset in self.assets 
@@ -653,8 +979,8 @@ class PhysicalAssetCollection:
                 )
                 continue
 
-            # Pass the resolved ID explicitly so the InfrastructureAsset
-            # constructor does not have to infer or override it:
+            # Pass the resolved ID explicitly so the PhysicalAsset constructor
+            # does not have to infer or override it:
             asset = PhysicalAsset.from_geojson_feature(
                 feature_geojson,
                 asset_id=assigned_id,
