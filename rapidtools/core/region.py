@@ -35,16 +35,17 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 11-11-2025
+# 01-27-2025
 
 from abc import ABC, abstractmethod
+from functools import cached_property
+from typing import TYPE_CHECKING, Any
+
 from shapely.geometry.base import BaseGeometry
 
-# Forward declaration for the type hint to prevent circular imports.
-# This tells Python: "Trust me, a class named 'BoundingBox' will exist."
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .bounding_box import BoundingBox
+
 
 class Region(ABC):
     """
@@ -52,40 +53,99 @@ class Region(ABC):
 
     This class acts as a wrapper around a shapely geometry object, providing a
     common interface for all region types (e.g., BoundingBox, Polygon).
+
+    Implementation Contract:
+        Concrete subclasses are responsible for initializing the ``_geom``
+        attribute with a valid Shapely ``BaseGeometry`` in their ``__init__``
+        method and implement the ``get_bounding_box`` method.
     """
-    # All subclasses will have an internal shapely object for geometric calculations.
+
+    # All subclasses will have an internal shapely object for geometric
+    # calculations:
     _geom: BaseGeometry
 
-    @property
-    def area(self) -> float:
-        """The area of the region, calculated by shapely."""
-        return self._geom.area
-
-    @property
-    def centroid(self) -> tuple[float, float]:
-        """The center point (centroid) of the region, calculated by shapely."""
-        centroid = self._geom.centroid
-        return (centroid.x, centroid.y)
-
-    @property
-    def shapely(self) -> BaseGeometry:
+    def __repr__(self) -> str:
         """
-        Provides direct access to the internal shapely geometry object
-        for advanced geometric operations.
+        Return a string representation suitable for debugging.
+
+        This includes the class name and a preview of the geometry in WKT
+        (Well-Known Text) format. Long WKT strings are truncated to avoid
+        cluttering logs.
+        """
+        wkt = self._geom.wkt
+        preview = wkt if len(wkt) < 55 else f"{wkt[:52]}..."
+        return f"{self.__class__.__name__}(wkt='{preview}')"
+
+    @property
+    def geometry(self) -> BaseGeometry:
+        """
+        Return the underlying Shapely geometry object.
+
+        This property provides direct access to the raw geometric primitive
+        used for spatial calculations.
         """
         return self._geom
 
-    @abstractmethod
-    def get_bounding_box(self) -> 'BoundingBox':
+    @property
+    def __geo_interface__(self) -> dict[str, Any]:
         """
-        An abstract method that must be implemented by all subclasses.
+        Return a GeoJSON-compatible dictionary representation.
+
+        This implements the Python Geo Interface protocol, allowing this
+        object to be passed directly to libraries like
+        ``shapely.geometry.shape``, ``fiona``, and ``geopandas``.
+        """
+        return self._geom.__geo_interface__
+
+    @cached_property
+    def area(self) -> float:
+        """
+        Return the raw planar area of the geometry.
 
         Returns:
-            BoundingBox: The smallest axis-aligned BoundingBox that encloses this region.
-        """
-        pass
+            float: The area in the squared units of the coordinate system.
 
-    def __repr__(self) -> str:
-        """Provides an unambiguous string representation of the object."""
-        # This will be inherited by subclasses and provides a sensible default.
-        return f"{self.__class__.__name__}(wkt='{self._geom.wkt[:55]}...')"
+        Note:
+            - If coordinates are in meters (e.g., UTM), result is sq. meters.
+            - If coordinates are in degrees (e.g., WGS84), result is sq.
+              degrees. Square degrees are generally not useful for physical
+              size estimates.
+        """
+        return self._geom.area
+
+    @cached_property
+    def bounds(self) -> tuple[float, float, float, float]:
+        """
+        Return the bounds as a ``(minx, miny, maxx, maxy)`` tuple.
+
+        This value is cached to improve performance during repeated spatial
+        filtering operations.
+
+        Returns:
+            tuple[float, float, float, float]:
+                A tuple containing the (min_x, min_y, max_x, max_y)
+                coordinates of the geometry's extent.
+        """
+        return self._geom.bounds
+
+    @cached_property
+    def centroid(self) -> tuple[float, float]:
+        """
+        Return the geometric center (centroid) as an ``(x, y)`` tuple.
+
+        Returns:
+            tuple[float, float]:
+                The longitude (x) and latitude (y) of the center.
+        """
+        centroid = self._geom.centroid
+        return (centroid.x, centroid.y)
+
+    @abstractmethod
+    def get_bounding_box(self) -> "BoundingBox":
+        """
+        Return the smallest axis-aligned BoundingBox that encloses this region.
+
+        Returns:
+            BoundingBox: A new BoundingBox instance derived from the
+            geometry's extrema.
+        """
