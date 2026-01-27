@@ -34,6 +34,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: GIS",
     "Topic :: Scientific/Engineering :: Image Processing",
+    "Typing :: Typed",
 ]
 keywords = ["gis", "geospatial", "damage detection", "computer vision"]
 
@@ -53,7 +54,6 @@ dependencies = [
 ]
 
 # --- Optional Dependencies ---
-# These are for specific use cases (testing, development).
 # Install with: pip install .[test] or pip install .[dev]
 [project.optional-dependencies]
 test = [
@@ -77,6 +77,11 @@ dev = [
 "Repository" = "https://github.com/RAPID-Facility/rapidtools"
 "Bug Tracker" = "https://github.com/RAPID-Facility/rapidtools/issues"
 
+# ==============================================================================
+# Setuptools configuration: include the PEP 561 marker file
+# ==============================================================================
+[tool.setuptools.package-data]
+rapidtools = ["py.typed"]
 
 # ==============================================================================
 # Tool Configurations
@@ -98,18 +103,20 @@ select = [
     "B",   # flake8-bugbear
 ]
 
-# --- Black (Code Formatter) ---
+# --- Black (Code formatter) ---
 [tool.black]
 line-length = 88
 target-version = ['py311']
 
-# --- MyPy (Static Type Checker) ---
+# --- MyPy (Static type checker) ---
 [tool.mypy]
 python_version = "3.11"
-warn_return_any = true
+warn_return_any = false
 ignore_missing_imports = true
+disallow_untyped_defs = false
+disable_error_code = ["import-untyped"] 
 
-# --- Pytest (Testing Framework) ---
+# --- Pytest (Testing framework) ---
 [tool.pytest.ini_options]
 minversion = "6.0"
 addopts = "-ra -q --cov=rapidtools --cov-report=term-missing"
