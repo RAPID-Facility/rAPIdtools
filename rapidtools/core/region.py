@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 01-27-2025
+# 01-28-2026
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ from abc import ABC, abstractmethod
 from functools import cached_property
 from typing import TYPE_CHECKING, Any
 
-from shapely.geometry.base import BaseGeometry
+from shapely.geometry import Polygon
 
 if TYPE_CHECKING:
     from .bounding_box import BoundingBox
@@ -54,17 +54,41 @@ class Region(ABC):
     An abstract base class representing a geographical region.
 
     This class acts as a wrapper around a shapely geometry object, providing a
-    common interface for all region types (e.g., BoundingBox, Polygon).
+    common interface for all region types (e.g., BoundingBox, PolygonRegion).
 
     Implementation Contract:
-        Concrete subclasses are responsible for initializing the ``_geom``
-        attribute with a valid Shapely ``BaseGeometry`` in their ``__init__``
-        method and implement the ``get_bounding_box`` method.
+        Concrete subclasses are responsible for:
+        1. Initializing the ``_geom`` attribute with a valid Shapely
+           ``Polygon`` in their ``__init__`` method.
+        2. Implementing the abstract methods: ``get_bounding_box`` and
+           ``buffer``.
     """
 
     # All subclasses will have an internal shapely object for geometric
     # calculations:
-    _geom: BaseGeometry
+    _geom: Polygon
+
+    def __eq__(self, other: object) -> bool:
+        """
+        Check if two Regions are geometrically equivalent.
+
+        This uses Shapely's ``equals`` predicate, which returns ``True`` if the
+        shapes cover the exact same set of points, even if defined differently.
+        """
+        if self is other:
+            return True
+
+        if not isinstance(other, Region):
+            return NotImplemented
+        return self._geom.equals(other.geometry)
+
+    def __hash__(self) -> int:
+        """
+        Create a hash based on the geometry's WKT representation.
+
+        This allows Regions to be used in sets and as dictionary keys.
+        """
+        return hash(self._geom.wkb)
 
     def __repr__(self) -> str:
         """
@@ -74,19 +98,12 @@ class Region(ABC):
         (Well-Known Text) format. Long WKT strings are truncated to avoid
         cluttering logs.
         """
-        wkt = self._geom.wkt
-        preview = wkt if len(wkt) < 55 else f"{wkt[:52]}..."
-        return f"{self.__class__.__name__}(wkt='{preview}')"
+        wkt = self.wkt
 
-    @property
-    def geometry(self) -> BaseGeometry:
-        """
-        Return the underlying Shapely geometry object.
-
-        This property provides direct access to the raw geometric primitive
-        used for spatial calculations.
-        """
-        return self._geom
+        # Truncate long geometries for cleaner logs:
+        if len(wkt) > 55:
+            wkt = f"{wkt[:52]}..."
+        return f"{self.__class__.__name__}(wkt='{wkt}')"
 
     @property
     def __geo_interface__(self) -> dict[str, Any]:
@@ -94,10 +111,90 @@ class Region(ABC):
         Return a GeoJSON-compatible dictionary representation.
 
         This implements the Python Geo Interface protocol, allowing this
-        object to be passed directly to libraries like
+        object to be passed directly to libraries such as
         ``shapely.geometry.shape``, ``fiona``, and ``geopandas``.
+
+        Returns:
+            dict[str, Any]:
+                A dictionary containing ``type`` and ``coordinates`` keys
+                following the GeoJSON specification.
         """
         return self._geom.__geo_interface__
+
+    @property
+    def geometry(self) -> Polygon:
+        """
+        Return the underlying Shapely Polygon object.
+
+        This property provides direct access to the raw geometric object,
+        allowing usage of the full Shapely API (e.g., buffering,
+        simplification, relate) that is not directly wrapped by this class.
+
+        Returns:
+            Polygon: The Shapely Polygon defining the region.
+        """
+        return self._geom
+
+    @property
+    def height(self) -> float:
+        """
+        Return the axis-aligned height (north-south extent) of the region.
+
+        Returns:
+            float: The scalar height in the units of the coordinate system.
+        """
+        _, min_y, _, max_y = self.bounds
+        return max_y - min_y
+
+    @property
+    def is_empty(self) -> bool:
+        """
+        Check if the region has no points (the geometric set is empty).
+
+        Note:
+            This is different from the object being ``None``. An empty geometry
+            is a valid object that represents "nothingness" (often the result
+            of an intersection between two disjoint shapes).
+
+        Returns:
+            bool: ``True`` if the geometry contains zero points.
+        """
+        return self.geometry.is_empty
+
+    @property
+    def is_valid(self) -> bool:
+        """
+        Check if the geometry is topologically valid.
+
+        Invalid geometries (such as polygons that intersect themselves like a
+        "bow-tie") can cause errors or undefined behavior in spatial operations
+        like intersection or union.
+
+        Returns:
+            bool: ``True`` if valid, ``False`` otherwise.
+        """
+        return self.geometry.is_valid
+
+    @property
+    def width(self) -> float:
+        """
+        Return the axis-aligned width (east-west extent) of the region.
+
+        Returns:
+            float: The scalar width in the units of the coordinate system.
+        """
+        min_x, _, max_x, _ = self.bounds
+        return max_x - min_x
+
+    @property
+    def wkt(self) -> str:
+        """
+        Return the Well-Known Text (WKT) representation of the geometry.
+
+        Returns:
+            str: The WKT string (e.g., 'POLYGON ((0 0, 1 0, 1 1, 0 0))').
+        """
+        return self._geom.wkt
 
     @cached_property
     def area(self) -> float:
@@ -142,16 +239,15 @@ class Region(ABC):
         centroid = self._geom.centroid
         return (centroid.x, centroid.y)
 
-    def contains(self, other: BaseGeometry | Region) -> bool:
+    def contains(self, other: Polygon | Region) -> bool:
         """
         Check if the region completely encloses another geometry.
 
         This is a wrapper around the Shapely ``contains`` predicate.
 
         Args:
-            other:
-                A ``Region`` instance or a Shapely ``BaseGeometry`` (e.g.,
-                Point, Polygon).
+            other (Polygon | Region):
+                The region to test for containment.
 
         Returns:
             ``True`` if no points of ``other`` lie in the exterior of this
@@ -162,14 +258,32 @@ class Region(ABC):
             return self.geometry.contains(other.geometry)
         return self.geometry.contains(other)
 
-    def intersects(self, other: BaseGeometry | Region) -> bool:
+    def distance(self, other: Polygon | Region) -> float:
+        """
+        Calculate the minimum Euclidean distance to another region or geometry.
+
+        Args:
+            other (Polygon | Region):
+                The region to calculate the distance to.
+
+        Returns:
+            float:
+                Distance in the units of the coordinate system (e.g.,
+                degrees or meters). Returns 0.0 if the regions intersect.
+        """
+        if isinstance(other, Region):
+            return self.geometry.distance(other.geometry)
+        return self.geometry.distance(other)
+
+    def intersects(self, other: Polygon | Region) -> bool:
         """
         Determine if the region spatially intersects with another geometry.
 
         This is a wrapper around the Shapely ``intersects`` predicate.
 
         Args:
-            other: A ``Region`` instance or a Shapely ``BaseGeometry``.
+            other (Polygon | Region):
+                The region to test for intersection with.
 
         Returns:
             ``True`` if the boundary or interior of this region shares any
@@ -180,11 +294,29 @@ class Region(ABC):
         return self.geometry.intersects(other)
 
     @abstractmethod
-    def get_bounding_box(self) -> 'BoundingBox':
+    def buffer(self, distance: float) -> Region:
+        """
+        Create a new Region expanded (or shrunk) by a constant distance.
+
+        If the buffer distance is positive, the region expands. If negative,
+        it erodes (shrinks).
+
+        Args:
+            distance (float):
+                The distance to buffer in the units of the coordinate
+                system (e.g., degrees for WGS84, meters for UTM).
+
+        Returns:
+            Region:
+                A new concrete Region instance representing the buffered area.
+        """
+
+    @abstractmethod
+    def get_bounding_box(self) -> BoundingBox:
         """
         Return the smallest axis-aligned BoundingBox that encloses this region.
 
         Returns:
-            BoundingBox: A new BoundingBox instance derived from the
-            geometry's extrema.
+            BoundingBox:
+                A new BoundingBox instance derived from the geometry's extrema.
         """
