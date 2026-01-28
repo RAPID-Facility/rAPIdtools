@@ -37,6 +37,8 @@
 # Last updated:
 # 01-27-2025
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from functools import cached_property
 from typing import TYPE_CHECKING, Any
@@ -140,8 +142,45 @@ class Region(ABC):
         centroid = self._geom.centroid
         return (centroid.x, centroid.y)
 
+    def contains(self, other: BaseGeometry | Region) -> bool:
+        """
+        Check if the region completely encloses another geometry.
+
+        This is a wrapper around the Shapely ``contains`` predicate.
+
+        Args:
+            other:
+                A ``Region`` instance or a Shapely ``BaseGeometry`` (e.g.,
+                Point, Polygon).
+
+        Returns:
+            ``True`` if no points of ``other`` lie in the exterior of this
+            region and at least one point of the interior of ``other`` lies in
+            the interior of this region.
+        """
+        if isinstance(other, Region):
+            return self.geometry.contains(other.geometry)
+        return self.geometry.contains(other)
+
+    def intersects(self, other: BaseGeometry | Region) -> bool:
+        """
+        Determine if the region spatially intersects with another geometry.
+
+        This is a wrapper around the Shapely ``intersects`` predicate.
+
+        Args:
+            other: A ``Region`` instance or a Shapely ``BaseGeometry``.
+
+        Returns:
+            ``True`` if the boundary or interior of this region shares any
+            points with ``other``; ``False`` otherwise.
+        """
+        if isinstance(other, Region):
+            return self.geometry.intersects(other.geometry)
+        return self.geometry.intersects(other)
+
     @abstractmethod
-    def get_bounding_box(self) -> "BoundingBox":
+    def get_bounding_box(self) -> 'BoundingBox':
         """
         Return the smallest axis-aligned BoundingBox that encloses this region.
 
