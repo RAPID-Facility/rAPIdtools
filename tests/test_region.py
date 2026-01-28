@@ -38,7 +38,7 @@
 # 01-27-2025
 
 import pytest
-from shapely.geometry import Polygon, Point
+from shapely.geometry import Polygon, Point, LineString
 from rapidtools.core.region import Region
 
 # Define a Dummy class just for testing purposes:
@@ -99,7 +99,6 @@ class TestRegionABC:
         poly = Polygon([(0, 0), (1, 0), (0, 1)])
         region = ConcreteRegion(poly)
         
-        # Should contain class name and full WKT
         assert "ConcreteRegion" in repr(region)
         assert "POLYGON" in repr(region)
         assert "..." not in repr(region)
@@ -136,3 +135,51 @@ class TestRegionABC:
         
         # If the raw geometry geometry is accessed, it is different:
         assert region.geometry.area == 0.0
+        
+    def test_contains_shapely_geometry(self, region):
+        """Test contains() passing a raw Shapely geometry."""
+        # Point inside the 10x10 square:
+        p_in = Point(5, 5)
+        assert region.contains(p_in) is True
+
+        # Point outside the 10x10 square:
+        p_out = Point(20, 20)
+        assert region.contains(p_out) is False
+
+    def test_contains_region_instance(self, region):
+        """Test contains() passing another Region instance."""
+        # Create a small region inside the main one:
+        inner_geom = Polygon([(1, 1), (2, 1), (2, 2), (1, 2)])
+        inner_region = ConcreteRegion(inner_geom)
+        
+        assert region.contains(inner_region) is True
+
+        # Create a region outside:
+        outer_geom = Polygon([(20, 20), (21, 20), (21, 21)])
+        outer_region = ConcreteRegion(outer_geom)
+        
+        assert region.contains(outer_region) is False
+
+    def test_intersects_shapely_geometry(self, region):
+        """Test intersects() passing a raw Shapely geometry."""
+        # A line crossing the boundary of the square:
+        crossing_line = LineString([(-1, 5), (5, 5)])
+        assert region.intersects(crossing_line) is True
+
+        # A point far away:
+        far_point = Point(100, 100)
+        assert region.intersects(far_point) is False
+
+    def test_intersects_region_instance(self, region):
+        """Test intersects() passing another Region instance."""
+        # A region that overlaps the corner (8,8) to (12,12):
+        overlap_geom = Polygon([(8, 8), (12, 8), (12, 12), (8, 12)])
+        overlap_region = ConcreteRegion(overlap_geom)
+        
+        assert region.intersects(overlap_region) is True
+
+        # A region completely distinct:
+        distinct_geom = Polygon([(20, 20), (30, 20), (30, 30)])
+        distinct_region = ConcreteRegion(distinct_geom)
+        
+        assert region.intersects(distinct_region) is False        
