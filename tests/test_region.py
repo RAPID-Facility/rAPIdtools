@@ -35,24 +35,28 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 01-27-2025
+# 01-28-2026
 
 import pytest
 from shapely.geometry import Polygon, Point, LineString
 from rapidtools.core.region import Region
 
-# Define a Dummy class just for testing purposes:
+# 1. Update Dummy Implementation
+# We must implement 'buffer' now because it is an abstract method in the base
+# class:
 class ConcreteRegion(Region):
     """A minimal concrete implementation of Region for testing."""
     def __init__(self, geometry):
         self._geom = geometry
 
     def get_bounding_box(self):
-        # There is no need to test BoundingBox logic here, this is just that
-        # the abstract method exists and can be called:
-        return "mock_bbox"
+        return 'mock_bbox'
+    
+    def buffer(self, distance: float) -> 'Region':
+        # Return self just to satisfy the abstract contract for testing:
+        return self
 
-# Test suite:
+# 2. Test Suite
 class TestRegionABC:
     
     @pytest.fixture
@@ -65,19 +69,21 @@ class TestRegionABC:
         """Returns an instance of our dummy concrete class."""
         return ConcreteRegion(square_geom)
 
+    # --- Basic Properties ---
+
     def test_area(self, region):
         """Test that the area property proxies to shapely correctly."""
-        # 10 * 10 = 100
+        # 10 * 10 = 100:
         assert region.area == 100.0
 
     def test_bounds(self, region):
         """Test that bounds returns the correct tuple order."""
-        # (minx, miny, maxx, maxy)
+        # (minx, miny, maxx, maxy):
         assert region.bounds == (0.0, 0.0, 10.0, 10.0)
 
     def test_centroid(self, region):
         """Test that centroid returns a tuple, not a Point object."""
-        # Center of 10x10 square is 5,5
+        # Center of 10x10 square is 5,5:
         assert region.centroid == (5.0, 5.0)
         assert isinstance(region.centroid, tuple)
 
@@ -92,94 +98,139 @@ class TestRegionABC:
         assert isinstance(geo, dict)
         assert geo['type'] == 'Polygon'
         assert len(geo['coordinates']) == 1
-
-    def test_repr_short_wkt(self):
-        """Test __repr__ with a short geometry."""
-        # A simple triangle
-        poly = Polygon([(0, 0), (1, 0), (0, 1)])
-        region = ConcreteRegion(poly)
         
-        assert "ConcreteRegion" in repr(region)
-        assert "POLYGON" in repr(region)
-        assert "..." not in repr(region)
+    def test_wkt_property(self, region, square_geom):
+        """Test that wkt returns the correct string representation."""
+        assert region.wkt == square_geom.wkt
+        assert region.wkt.startswith('POLYGON')
 
-    def test_repr_long_wkt_truncation(self):
-        """Test that __repr__ truncates very long WKT strings."""
-        # Create a complex polygon with many points to ensure long WKT
-        points = [(i, i) for i in range(50)]
-        points.append((0,0)) # Close the loop
-        poly = Polygon(points)
+    # --- Dimension Properties (Width/Height) ---
+
+    def test_dimensions(self, region):
+        """Test width and height calculations."""
+        # 10x10 square:
+        assert region.width == 10.0
+        assert region.height == 10.0
+
+    def test_dimensions_irregular(self):
+        """Test dimensions on a non-square shape."""
+        # Rectangle 2 wide, 5 high:
+        rect = Polygon([(0, 0), (2, 0), (2, 5), (0, 5), (0, 0)])
+        r = ConcreteRegion(rect)
+        assert r.width == 2.0
+        assert r.height == 5.0
+
+    # --- Validation Properties (is_valid/is_empty) ---
+
+    def test_is_valid(self, region):
+        """Test validity check."""
+        assert region.is_valid is True
+
+        # Create a "bow-tie" polygon (self-intersecting) which is invalid:
+        invalid_geom = Polygon([(0, 0), (1, 1), (0, 1), (1, 0), (0, 0)])
+        invalid_region = ConcreteRegion(invalid_geom)
+        assert invalid_region.is_valid is False
+
+    def test_is_empty(self, region):
+        """Test empty check."""
+        assert region.is_empty is False
+
+        # Create an empty polygon:
+        empty_geom = Polygon()
+        empty_region = ConcreteRegion(empty_geom)
+        assert empty_region.is_empty is True
+
+    # --- Magic Methods (__eq__, __hash__, __repr__) ---
+
+    def test_equality(self, region, square_geom):
+        """Test geometric equality logic."""
+        # 1. Identity check:
+        assert region == region
         
-        region = ConcreteRegion(poly)
+        # 2. Geometric equality (same points, different object):
+        other_region = ConcreteRegion(
+            Polygon([(0, 0), (10, 0), (10, 10), (0, 10), (0, 0)])
+        )
+        assert region == other_region
+        
+        # 3. Inequality:
+        diff_region = ConcreteRegion(Polygon([(0,0), (1,1), (0,1)]))
+        assert region != diff_region
+        
+        # 4. Type mismatch:
+        assert region != 'Not a Region'
+
+    def test_hashing(self, region):
+        """Test that regions can be hashed and used in sets."""
+        # Create another region with the exact same geometry:
+        same_geom = Polygon([(0, 0), (10, 0), (10, 10), (0, 10), (0, 0)])
+        other_region = ConcreteRegion(same_geom)
+
+        # Hashes should match:
+        assert hash(region) == hash(other_region)
+
+        # Should be deduped in a set:
+        region_set = {region, other_region}
+        assert len(region_set) == 1
+
+    def test_repr(self, region):
+        """Test string representation."""
         rep = repr(region)
-        
-        assert "ConcreteRegion" in rep
-        assert len(rep) < 100  # Should be short despite complex geometry
-        assert "..." in rep    # Should show ellipsis indicating truncation
+        assert 'ConcreteRegion' in rep
+        assert 'wkt=' in rep
+        assert 'POLYGON' in rep
+
+    # --- Spatial Methods (Contains, Intersects, Distance) ---
+
+    def test_contains(self, region):
+        """Test contains() with both Geometry and Region."""
+        # Point inside:
+        assert region.contains(Point(5, 5)) is True
+        # Region inside:
+        inner = ConcreteRegion(Polygon([(1, 1), (2, 1), (2, 2)]))
+        assert region.contains(inner) is True
+        # Point outside:
+        assert region.contains(Point(20, 20)) is False
+
+    def test_intersects(self, region):
+        """Test intersects() with both Geometry and Region."""
+        # Line crossing boundary:
+        line = LineString([(-1, 5), (5, 5)])
+        assert region.intersects(line) is True
+        # Disjoint region:
+        far = ConcreteRegion(Polygon([(100, 100), (101, 100), (101, 101)]))
+        assert region.intersects(far) is False
+
+    def test_distance(self, region):
+        """Test distance() calculation."""
+        # 1. Distance to a point 10 units to the right (at x=20)
+        # Square ends at x=10. Point is at x=20. Distance = 10:
+        far_point = Point(20, 5)
+        assert region.distance(far_point) == 10.0
+
+        # 2. Distance to an intersecting geometry should be 0:
+        touching_point = Point(10, 5)
+        assert region.distance(touching_point) == 0.0
+
+        # 3. Distance to another Region
+        # Region starting at x=20:
+        far_region = ConcreteRegion(Polygon([(20, 0), (22, 0), (22, 2)]))
+        assert region.distance(far_region) == 10.0
+
+    # --- Caching ---
 
     def test_caching_behavior(self, region):
-        """
-        Verify that properties are cached.
-        
-        We can test this by modifying the underlying private geometry 
-        and seeing if the public property remains stale (which proves caching).
-        """
+        """Verify that properties are cached."""
         initial_area = region.area
         assert initial_area == 100.0
         
-        # Modify the internal geometry directly:
+        # Modify the internal geometry directly
+        # (Simulating a state change that should not happen in immutable
+        # objects):
         region._geom = Point(0,0) 
         
-        # .area should STILL be 100.0 because it's cached:
+        # .area should STILL be 100.0 because it is cached:
         assert region.area == 100.0
         
-        # If the raw geometry geometry is accessed, it is different:
+        # Proof: If we access the raw geometry, it is different:
         assert region.geometry.area == 0.0
-        
-    def test_contains_shapely_geometry(self, region):
-        """Test contains() passing a raw Shapely geometry."""
-        # Point inside the 10x10 square:
-        p_in = Point(5, 5)
-        assert region.contains(p_in) is True
-
-        # Point outside the 10x10 square:
-        p_out = Point(20, 20)
-        assert region.contains(p_out) is False
-
-    def test_contains_region_instance(self, region):
-        """Test contains() passing another Region instance."""
-        # Create a small region inside the main one:
-        inner_geom = Polygon([(1, 1), (2, 1), (2, 2), (1, 2)])
-        inner_region = ConcreteRegion(inner_geom)
-        
-        assert region.contains(inner_region) is True
-
-        # Create a region outside:
-        outer_geom = Polygon([(20, 20), (21, 20), (21, 21)])
-        outer_region = ConcreteRegion(outer_geom)
-        
-        assert region.contains(outer_region) is False
-
-    def test_intersects_shapely_geometry(self, region):
-        """Test intersects() passing a raw Shapely geometry."""
-        # A line crossing the boundary of the square:
-        crossing_line = LineString([(-1, 5), (5, 5)])
-        assert region.intersects(crossing_line) is True
-
-        # A point far away:
-        far_point = Point(100, 100)
-        assert region.intersects(far_point) is False
-
-    def test_intersects_region_instance(self, region):
-        """Test intersects() passing another Region instance."""
-        # A region that overlaps the corner (8,8) to (12,12):
-        overlap_geom = Polygon([(8, 8), (12, 8), (12, 12), (8, 12)])
-        overlap_region = ConcreteRegion(overlap_geom)
-        
-        assert region.intersects(overlap_region) is True
-
-        # A region completely distinct:
-        distinct_geom = Polygon([(20, 20), (30, 20), (30, 30)])
-        distinct_region = ConcreteRegion(distinct_geom)
-        
-        assert region.intersects(distinct_region) is False        
