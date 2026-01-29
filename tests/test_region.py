@@ -200,6 +200,35 @@ class TestRegionABC:
         assert 'wkt=' in rep
         assert 'POLYGON' in rep
 
+    def test_repr_truncation_exact_match(self):
+        """
+        Test that __repr__ triggers the truncation logic for long WKT strings.
+
+        This specifically targets the line:
+            wkt = f'{wkt[:52]}...'
+        """
+        # Create a geometry with a long WKT string:
+        from shapely.geometry import LineString
+        long_geom = LineString([
+            (1000, 1000), (2000, 2000), (3000, 3000), (4000, 4000), (500, 500)
+        ])
+
+        # Verify this setup is correct:
+        assert len(long_geom.wkt) > 55
+
+        # Create the region
+        region = ConcreteRegion(long_geom)
+
+        # Call repr() to run the code
+        result = repr(region)
+
+        # Verify the output format
+        # It should contain the first 52 chars of the WKT followed by "...":
+        expected_wkt_snippet = f'{long_geom.wkt[:52]}...'
+
+        assert expected_wkt_snippet in result
+        assert result.endswith("...')")
+
     # --- Spatial Methods (Contains, Intersects, Distance) ---
 
     def test_contains(self, region):
