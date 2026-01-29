@@ -146,6 +146,8 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li><a class="reference internal" href="#rapidtools.core.PolygonRegion"><code class="docutils literal notranslate"><span class="pre">PolygonRegion</span></code></a><ul>
+<li><a class="reference internal" href="#rapidtools.core.PolygonRegion.buffer"><code class="docutils literal notranslate">buffer()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.PolygonRegion.from_geometry"><code class="docutils literal notranslate">from_geometry()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.PolygonRegion.get_bounding_box"><code class="docutils literal notranslate">get_bounding_box()</span></code></a></li>
 </ul>
 </li>
@@ -2008,12 +2010,93 @@ that specific ID and a warning is logged.</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="rapidtools.core.PolygonRegion">
-<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">rapidtools.core.</span></span><span class="sig-name descname"><span class="pre">PolygonRegion</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vertices</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/core/polygon_region.html#PolygonRegion"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PolygonRegion" title="Link to this definition">¶</a></dt>
-<dd><p>Represents a geographical region defined by a list of vertices.</p>
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">rapidtools.core.</span></span><span class="sig-name descname"><span class="pre">PolygonRegion</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">shell</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Iterable</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/core/polygon_region.html#PolygonRegion"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PolygonRegion" title="Link to this definition">¶</a></dt>
+<dd><p>Represents a geographical region defined by a single polygon shell.</p>
+<p>This class wraps a Shapely Polygon and provides initialization from
+explicit coordinates. Use <code class="docutils literal notranslate"><span class="pre">from_geometry</span></code> to wrap existing Shapely objects.</p>
+<p class="rubric">Example</p>
+<p>Define a triangle using (x, y) coordinates:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">PolygonRegion</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">coords</span> <span class="o">=</span> <span class="p">[(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">)]</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">region</span> <span class="o">=</span> <span class="n">PolygonRegion</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="n">region</span><span class="o">.</span><span class="n">area</span>
+</span><span data-line="6"><span class="go">50.0</span>
+</span></pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.PolygonRegion.buffer">
+<span class="sig-name descname"><span class="pre">buffer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">distance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Region</span></span></span><a class="reference internal" href="_modules/rapidtools/core/polygon_region.html#PolygonRegion.buffer"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PolygonRegion.buffer" title="Link to this definition">¶</a></dt>
+<dd><p>Create a new Region expanded (or shrunk) by a constant distance.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>distance</strong> (<em>float</em>) – The distance to buffer. Positive expands, negative erodes.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A new PolygonRegion representing the result.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Region</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>Initialize a <code class="docutils literal notranslate"><span class="pre">PolygonRegion</span></code> representing a 10x10 square:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Polygon</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">PolygonRegion</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">region</span> <span class="o">=</span> <span class="n">PolygonRegion</span><span class="p">([(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">)])</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="n">region</span><span class="o">.</span><span class="n">area</span>
+</span><span data-line="6"><span class="go">100.0</span>
+</span></pre></div>
+</div>
+<p>Apply a positive buffer to expand the region:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">expanded</span> <span class="o">=</span> <span class="n">region</span><span class="o">.</span><span class="n">buffer</span><span class="p">(</span><span class="mf">1.0</span><span class="p">)</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="n">expanded</span><span class="o">.</span><span class="n">area</span> <span class="o">&gt;</span> <span class="mf">100.0</span>
+</span><span data-line="3"><span class="go">True</span>
+</span></pre></div>
+</div>
+<p>Apply a negative buffer to erode (shrink) the region:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">shrunk</span> <span class="o">=</span> <span class="n">region</span><span class="o">.</span><span class="n">buffer</span><span class="p">(</span><span class="o">-</span><span class="mf">1.0</span><span class="p">)</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="n">shrunk</span><span class="o">.</span><span class="n">area</span> <span class="o">&lt;</span> <span class="mf">100.0</span>
+</span><span data-line="3"><span class="go">True</span>
+</span></pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.PolygonRegion.from_geometry">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_geometry</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">geometry</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">BaseGeometry</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference internal" href="_modules/rapidtools/core/polygon_region.html#PolygonRegion.from_geometry"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PolygonRegion.from_geometry" title="Link to this definition">¶</a></dt>
+<dd><p>Create a PolygonRegion from a Shapely geometry.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>geometry</strong> (<em>BaseGeometry</em>) – A Shapely Polygon.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The wrapped region.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#rapidtools.core.PolygonRegion" title="rapidtools.core.PolygonRegion">PolygonRegion</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If the geometry is not a Polygon.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Polygon</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">PolygonRegion</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">raw_poly</span> <span class="o">=</span> <span class="n">Polygon</span><span class="p">([(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="mi">5</span><span class="p">)])</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="n">region</span> <span class="o">=</span> <span class="n">PolygonRegion</span><span class="o">.</span><span class="n">from_geometry</span><span class="p">(</span><span class="n">raw_poly</span><span class="p">)</span>
+</span><span data-line="6"><span class="gp">&gt;&gt;&gt; </span><span class="n">region</span><span class="o">.</span><span class="n">area</span>
+</span><span data-line="7"><span class="go">12.5</span>
+</span></pre></div>
+</div>
+</dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="rapidtools.core.PolygonRegion.get_bounding_box">
 <span class="sig-name descname"><span class="pre">get_bounding_box</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.BoundingBox" title="rapidtools.core.bounding_box.BoundingBox"><span class="pre">BoundingBox</span></a></span></span><a class="reference internal" href="_modules/rapidtools/core/polygon_region.html#PolygonRegion.get_bounding_box"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PolygonRegion.get_bounding_box" title="Link to this definition">¶</a></dt>
-<dd><p>Calculates the smallest bounding box that encloses the polygon.</p>
+<dd><p>Calculate the smallest bounding box that encloses the polygon.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p>A new BoundingBox object representing the calculated bounds.</p>
@@ -2022,6 +2105,17 @@ that specific ID and a warning is logged.</p>
 <dd class="field-even"><p><a class="reference internal" href="#rapidtools.core.BoundingBox" title="rapidtools.core.BoundingBox">BoundingBox</a></p>
 </dd>
 </dl>
+<p class="rubric">Example</p>
+<p>Initialize a triangular <code class="docutils literal notranslate"><span class="pre">PolygonRegion</span></code> and retrieve its
+enclosing <code class="docutils literal notranslate"><span class="pre">BoundingBox</span></code>:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">PolygonRegion</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">region</span> <span class="o">=</span> <span class="n">PolygonRegion</span><span class="p">([(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span> <span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">0</span><span class="p">)])</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">bbox</span> <span class="o">=</span> <span class="n">region</span><span class="o">.</span><span class="n">get_bounding_box</span><span class="p">()</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="n">bbox</span><span class="o">.</span><span class="n">bounds</span>
+</span><span data-line="6"><span class="go">(0.0, 0.0, 4.0, 5.0)</span>
+</span></pre></div>
+</div>
 </dd></dl>
 
 </dd></dl>

@@ -449,37 +449,29 @@ data-aria-dark="Switch to auto color mode">
 </span><span data-line="326">        <span class="n">n_cols</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">total_tiles_needed</span> <span class="o">*</span> <span class="n">aspect_ratio</span><span class="p">))</span>
 </span><span data-line="327">        <span class="n">n_rows</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">total_tiles_needed</span> <span class="o">/</span> <span class="n">aspect_ratio</span><span class="p">))</span>
 </span><span data-line="328">
-</span><span data-line="329">        <span class="c1"># Ensure there are enough tiles to cover the bounding box:</span>
-</span><span data-line="330">        <span class="k">while</span> <span class="p">(</span><span class="n">n_cols</span> <span class="o">*</span> <span class="n">n_rows</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">total_tiles_needed</span><span class="p">:</span>
-</span><span data-line="331">            <span class="c1"># Add a row or col depending on which dimension is fuller:</span>
-</span><span data-line="332">            <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">width</span> <span class="o">/</span> <span class="n">n_cols</span><span class="p">)</span> <span class="o">&gt;</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">height</span> <span class="o">/</span> <span class="n">n_rows</span><span class="p">):</span>
-</span><span data-line="333">                <span class="n">n_cols</span> <span class="o">+=</span> <span class="mi">1</span>
-</span><span data-line="334">            <span class="k">else</span><span class="p">:</span>
-</span><span data-line="335">                <span class="n">n_rows</span> <span class="o">+=</span> <span class="mi">1</span>
-</span><span data-line="336">
-</span><span data-line="337">        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-</span><span data-line="338">            <span class="sa">f</span><span class="s1">&#39;Tiling BoundingBox into </span><span class="si">{</span><span class="n">n_cols</span><span class="si">}</span><span class="s1">x</span><span class="si">{</span><span class="n">n_rows</span><span class="si">}</span><span class="s1"> grid &#39;</span>
-</span><span data-line="339">            <span class="sa">f</span><span class="s1">&#39;(Target Area: </span><span class="si">{</span><span class="n">max_area</span><span class="si">}</span><span class="s1">, Total Tiles: </span><span class="si">{</span><span class="n">n_cols</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">n_rows</span><span class="si">}</span><span class="s1">)&#39;</span>
-</span><span data-line="340">        <span class="p">)</span>
-</span><span data-line="341">
-</span><span data-line="342">        <span class="c1"># Create tiles:</span>
-</span><span data-line="343">        <span class="n">min_x</span><span class="p">,</span> <span class="n">min_y</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bounds</span>
-</span><span data-line="344">        <span class="n">step_x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">width</span> <span class="o">/</span> <span class="n">n_cols</span>
-</span><span data-line="345">        <span class="n">step_y</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">height</span> <span class="o">/</span> <span class="n">n_rows</span>
-</span><span data-line="346">
-</span><span data-line="347">        <span class="n">tiles</span> <span class="o">=</span> <span class="p">[]</span>
-</span><span data-line="348">        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_cols</span><span class="p">):</span>
-</span><span data-line="349">            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_rows</span><span class="p">):</span>
-</span><span data-line="350">                <span class="c1"># Calculate coordinates relative to origin to minimize float</span>
-</span><span data-line="351">                <span class="c1"># drift:</span>
-</span><span data-line="352">                <span class="n">x1</span> <span class="o">=</span> <span class="n">min_x</span> <span class="o">+</span> <span class="p">(</span><span class="n">i</span> <span class="o">*</span> <span class="n">step_x</span><span class="p">)</span>
-</span><span data-line="353">                <span class="n">y1</span> <span class="o">=</span> <span class="n">min_y</span> <span class="o">+</span> <span class="p">(</span><span class="n">j</span> <span class="o">*</span> <span class="n">step_y</span><span class="p">)</span>
-</span><span data-line="354">                <span class="n">x2</span> <span class="o">=</span> <span class="n">min_x</span> <span class="o">+</span> <span class="p">((</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">step_x</span><span class="p">)</span>
-</span><span data-line="355">                <span class="n">y2</span> <span class="o">=</span> <span class="n">min_y</span> <span class="o">+</span> <span class="p">((</span><span class="n">j</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">step_y</span><span class="p">)</span>
-</span><span data-line="356">
-</span><span data-line="357">                <span class="n">tiles</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">BoundingBox</span><span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">y1</span><span class="p">,</span> <span class="n">x2</span><span class="p">,</span> <span class="n">y2</span><span class="p">))</span>
-</span><span data-line="358">
-</span><span data-line="359">        <span class="k">return</span> <span class="n">tiles</span></div>
+</span><span data-line="329">        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+</span><span data-line="330">            <span class="sa">f</span><span class="s1">&#39;Tiling BoundingBox into </span><span class="si">{</span><span class="n">n_cols</span><span class="si">}</span><span class="s1">x</span><span class="si">{</span><span class="n">n_rows</span><span class="si">}</span><span class="s1"> grid &#39;</span>
+</span><span data-line="331">            <span class="sa">f</span><span class="s1">&#39;(Target Area: </span><span class="si">{</span><span class="n">max_area</span><span class="si">}</span><span class="s1">, Total Tiles: </span><span class="si">{</span><span class="n">n_cols</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">n_rows</span><span class="si">}</span><span class="s1">)&#39;</span>
+</span><span data-line="332">        <span class="p">)</span>
+</span><span data-line="333">
+</span><span data-line="334">        <span class="c1"># Create tiles:</span>
+</span><span data-line="335">        <span class="n">min_x</span><span class="p">,</span> <span class="n">min_y</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bounds</span>
+</span><span data-line="336">        <span class="n">step_x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">width</span> <span class="o">/</span> <span class="n">n_cols</span>
+</span><span data-line="337">        <span class="n">step_y</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">height</span> <span class="o">/</span> <span class="n">n_rows</span>
+</span><span data-line="338">
+</span><span data-line="339">        <span class="n">tiles</span> <span class="o">=</span> <span class="p">[]</span>
+</span><span data-line="340">        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_cols</span><span class="p">):</span>
+</span><span data-line="341">            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_rows</span><span class="p">):</span>
+</span><span data-line="342">                <span class="c1"># Calculate coordinates relative to origin to minimize float</span>
+</span><span data-line="343">                <span class="c1"># drift:</span>
+</span><span data-line="344">                <span class="n">x1</span> <span class="o">=</span> <span class="n">min_x</span> <span class="o">+</span> <span class="p">(</span><span class="n">i</span> <span class="o">*</span> <span class="n">step_x</span><span class="p">)</span>
+</span><span data-line="345">                <span class="n">y1</span> <span class="o">=</span> <span class="n">min_y</span> <span class="o">+</span> <span class="p">(</span><span class="n">j</span> <span class="o">*</span> <span class="n">step_y</span><span class="p">)</span>
+</span><span data-line="346">                <span class="n">x2</span> <span class="o">=</span> <span class="n">min_x</span> <span class="o">+</span> <span class="p">((</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">step_x</span><span class="p">)</span>
+</span><span data-line="347">                <span class="n">y2</span> <span class="o">=</span> <span class="n">min_y</span> <span class="o">+</span> <span class="p">((</span><span class="n">j</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">step_y</span><span class="p">)</span>
+</span><span data-line="348">
+</span><span data-line="349">                <span class="n">tiles</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">BoundingBox</span><span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">y1</span><span class="p">,</span> <span class="n">x2</span><span class="p">,</span> <span class="n">y2</span><span class="p">))</span>
+</span><span data-line="350">
+</span><span data-line="351">        <span class="k">return</span> <span class="n">tiles</span></div>
 </div>
 
 </span></pre></div>
