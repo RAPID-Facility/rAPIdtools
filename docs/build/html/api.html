@@ -71,11 +71,14 @@ data-aria-dark="Switch to auto color mode">
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
 <li><a class="reference internal" href="#module-rapidtools.core">Core Objects</a><ul>
 <li><a class="reference internal" href="#rapidtools.core.BoundingBox"><code class="docutils literal notranslate"><span class="pre">BoundingBox</span></code></a><ul>
+<li><a class="reference internal" href="#rapidtools.core.BoundingBox.area"><code class="docutils literal notranslate">area</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.BoundingBox.buffer"><code class="docutils literal notranslate">buffer()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.BoundingBox.centroid"><code class="docutils literal notranslate">centroid</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.BoundingBox.from_geometry"><code class="docutils literal notranslate">from_geometry()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.BoundingBox.from_union"><code class="docutils literal notranslate">from_union()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.BoundingBox.get_bounding_box"><code class="docutils literal notranslate">get_bounding_box()</span></code></a></li>
-<li><a class="reference internal" href="#rapidtools.core.BoundingBox.height"><code class="docutils literal notranslate">height</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.BoundingBox.split"><code class="docutils literal notranslate">split()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.BoundingBox.tile_by_area"><code class="docutils literal notranslate">tile_by_area()</span></code></a></li>
-<li><a class="reference internal" href="#rapidtools.core.BoundingBox.width"><code class="docutils literal notranslate">width</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#rapidtools.core.ImageAsset"><code class="docutils literal notranslate"><span class="pre">ImageAsset</span></code></a><ul>
@@ -126,11 +129,19 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection"><code class="docutils literal notranslate"><span class="pre">PhysicalAssetCollection</span></code></a><ul>
-<li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.append"><code class="docutils literal notranslate">append()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.add"><code class="docutils literal notranslate">add()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.add_attribute_to_all"><code class="docutils literal notranslate">add_attribute_to_all()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.combined_bounding_box"><code class="docutils literal notranslate">combined_bounding_box</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.filter_by_attribute"><code class="docutils literal notranslate">filter_by_attribute()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.filter_by_bbox"><code class="docutils literal notranslate">filter_by_bbox()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.filter_by_polygon"><code class="docutils literal notranslate">filter_by_polygon()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.from_geojson"><code class="docutils literal notranslate">from_geojson()</span></code></a></li>
-<li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.get_asset_by_id"><code class="docutils literal notranslate">get_asset_by_id()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.get"><code class="docutils literal notranslate">get()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.get_all_image_assets"><code class="docutils literal notranslate">get_all_image_assets()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.merge"><code class="docutils literal notranslate">merge()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.remove"><code class="docutils literal notranslate">remove()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.summary"><code class="docutils literal notranslate">summary()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.to_dataframe"><code class="docutils literal notranslate">to_dataframe()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.to_geojson"><code class="docutils literal notranslate">to_geojson()</span></code></a></li>
 </ul>
 </li>
@@ -214,20 +225,171 @@ data-aria-dark="Switch to auto color mode">
 <span id="core-objects"></span><h2>Core Objects<a class="headerlink" href="#module-rapidtools.core" title="Link to this heading">¶</a></h2>
 <dl class="py class">
 <dt class="sig sig-object py" id="rapidtools.core.BoundingBox">
-<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">rapidtools.core.</span></span><span class="sig-name descname"><span class="pre">BoundingBox</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lon1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lat1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lon2</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lat2</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/core/bounding_box.html#BoundingBox"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.BoundingBox" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">rapidtools.core.</span></span><span class="sig-name descname"><span class="pre">BoundingBox</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">min_x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_y</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_y</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/core/bounding_box.html#BoundingBox"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.BoundingBox" title="Link to this definition">¶</a></dt>
 <dd><p>Represents an axis-aligned rectangular region.</p>
-<p>This class provides a convenient initializer for simple boxes and adds
-specialized behavior, such as tiling.</p>
+<p>This class acts as a wrapper around a Shapely BaseGeometry that is strictly
+rectangular. It provides specialized initialization methods and optimized
+properties for rectangular math.</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="rapidtools.core.BoundingBox.area">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">area</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#rapidtools.core.BoundingBox.area" title="Link to this definition">¶</a></dt>
+<dd><p>Return the area of the bounding box .</p>
+<p>Overridden from <code class="docutils literal notranslate"><span class="pre">Region</span></code> to use simple float math instead of
+Shapely logic for performance.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The area in the squared units of the coordinate system.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>float</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>If coordinates are in meters (e.g., UTM), result is sq. meters.</p></li>
+<li><p>If coordinates are in degrees (e.g., WGS84), result is sq.
+degrees. Square degrees are generally not useful for physical
+size estimates.</p></li>
+</ul>
+</div>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">BoundingBox</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">bbox</span> <span class="o">=</span> <span class="n">BoundingBox</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">bbox</span><span class="o">.</span><span class="n">area</span>
+</span><span data-line="5"><span class="go">25.0</span>
+</span></pre></div>
+</div>
+</dd></dl>
+
 <dl class="py method">
-<dt class="sig sig-object py" id="rapidtools.core.BoundingBox.get_bounding_box">
-<span class="sig-name descname"><span class="pre">get_bounding_box</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference internal" href="_modules/rapidtools/core/bounding_box.html#BoundingBox.get_bounding_box"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.BoundingBox.get_bounding_box" title="Link to this definition">¶</a></dt>
-<dd><p>A BoundingBox’s bounding box is itself.</p>
+<dt class="sig sig-object py" id="rapidtools.core.BoundingBox.buffer">
+<span class="sig-name descname"><span class="pre">buffer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">distance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference internal" href="_modules/rapidtools/core/bounding_box.html#BoundingBox.buffer"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.BoundingBox.buffer" title="Link to this definition">¶</a></dt>
+<dd><p>Return a new BoundingBox expanded (or shrunk) by a constant distance.</p>
+<p>This operation pushes the box boundaries outward by the specified
+distance.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>distance</strong> (<em>float</em>) – The amount to expand the box edges. Use negative values to
+shrink the box.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A new BoundingBox instance with adjusted boundaries.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#rapidtools.core.BoundingBox" title="rapidtools.core.BoundingBox">BoundingBox</a></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">BoundingBox</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">bbox</span> <span class="o">=</span> <span class="n">BoundingBox</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">expanded</span> <span class="o">=</span> <span class="n">bbox</span><span class="o">.</span><span class="n">buffer</span><span class="p">(</span><span class="mf">1.0</span><span class="p">)</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="n">expanded</span><span class="o">.</span><span class="n">bounds</span>
+</span><span data-line="6"><span class="go">(-1.0, -1.0, 11.0, 11.0)</span>
+</span></pre></div>
+</div>
 </dd></dl>
 
 <dl class="py property">
-<dt class="sig sig-object py" id="rapidtools.core.BoundingBox.height">
-<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">height</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#rapidtools.core.BoundingBox.height" title="Link to this definition">¶</a></dt>
-<dd><p>The height of the bounding box in degrees.</p>
+<dt class="sig sig-object py" id="rapidtools.core.BoundingBox.centroid">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">centroid</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#rapidtools.core.BoundingBox.centroid" title="Link to this definition">¶</a></dt>
+<dd><p>Return the center point of the bounding box.</p>
+<p>Overridden from <code class="docutils literal notranslate"><span class="pre">Region</span></code> to use simple float math instead of
+Shapely logic for performance.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The (longitude, latitude) center coordinates.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>tuple[float, float]</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">BoundingBox</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">bbox</span> <span class="o">=</span> <span class="n">BoundingBox</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">20</span><span class="p">)</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">bbox</span><span class="o">.</span><span class="n">centroid</span>
+</span><span data-line="5"><span class="go">(5.0, 10.0)</span>
+</span></pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.BoundingBox.from_geometry">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_geometry</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">geometry</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">BaseGeometry</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference internal" href="_modules/rapidtools/core/bounding_box.html#BoundingBox.from_geometry"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.BoundingBox.from_geometry" title="Link to this definition">¶</a></dt>
+<dd><p>Create a BoundingBox that exactly encloses a geometry.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>geometry</strong> (<em>BaseGeometry</em>) – Any Shapely geometry (Polygon, Point, LineString, etc.) to
+wrap.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A new instance covering the extent of the input geometry.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#rapidtools.core.BoundingBox" title="rapidtools.core.BoundingBox">BoundingBox</a></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">BoundingBox</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">LineString</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">line</span> <span class="o">=</span> <span class="n">LineString</span><span class="p">([(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">)])</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="n">bbox</span> <span class="o">=</span> <span class="n">BoundingBox</span><span class="o">.</span><span class="n">from_geometry</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+</span><span data-line="6"><span class="gp">&gt;&gt;&gt; </span><span class="n">bbox</span><span class="o">.</span><span class="n">bounds</span>
+</span><span data-line="7"><span class="go">(0.0, 0.0, 10.0, 10.0)</span>
+</span></pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.BoundingBox.from_union">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_union</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">region1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Region</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">region2</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Region</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference internal" href="_modules/rapidtools/core/bounding_box.html#BoundingBox.from_union"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.BoundingBox.from_union" title="Link to this definition">¶</a></dt>
+<dd><p>Create a box covering the total extent of two regions.</p>
+<p>This calculates the “envelope union” (min of mins, max of maxs) of two
+regions</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>region1</strong> (<em>Region</em>) – The first region.</p></li>
+<li><p><strong>region2</strong> (<em>Region</em>) – The second region.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A new instance large enough to cover both inputs.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#rapidtools.core.BoundingBox" title="rapidtools.core.BoundingBox">BoundingBox</a></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">BoundingBox</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">b1</span> <span class="o">=</span> <span class="n">BoundingBox</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">b2</span> <span class="o">=</span> <span class="n">BoundingBox</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">11</span><span class="p">)</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="n">union_box</span> <span class="o">=</span> <span class="n">BoundingBox</span><span class="o">.</span><span class="n">from_union</span><span class="p">(</span><span class="n">b1</span><span class="p">,</span> <span class="n">b2</span><span class="p">)</span>
+</span><span data-line="6"><span class="gp">&gt;&gt;&gt; </span><span class="n">union_box</span><span class="o">.</span><span class="n">bounds</span>
+</span><span data-line="7"><span class="go">(0.0, 0.0, 11.0, 11.0)</span>
+</span></pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.BoundingBox.get_bounding_box">
+<span class="sig-name descname"><span class="pre">get_bounding_box</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference internal" href="_modules/rapidtools/core/bounding_box.html#BoundingBox.get_bounding_box"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.BoundingBox.get_bounding_box" title="Link to this definition">¶</a></dt>
+<dd><p>Return the bounding box of this region.</p>
+<p>Since this object is already a BoundingBox, this method simply returns
+<code class="docutils literal notranslate"><span class="pre">self</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The object itself.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#rapidtools.core.BoundingBox" title="rapidtools.core.BoundingBox">BoundingBox</a></p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
@@ -244,19 +406,53 @@ is too dense with features and needs to be subdivided.</p>
 <dd class="field-even"><p>A list of four new BoundingBox objects for the quadrants</p>
 </dd>
 </dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">BoundingBox</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">bbox</span> <span class="o">=</span> <span class="n">BoundingBox</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">quads</span> <span class="o">=</span> <span class="n">bbox</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="n">quads</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">bounds</span>  <span class="c1"># Bottom-Left</span>
+</span><span data-line="6"><span class="go">(0.0, 0.0, 5.0, 5.0)</span>
+</span><span data-line="7"><span class="gp">&gt;&gt;&gt; </span><span class="n">quads</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span><span class="o">.</span><span class="n">bounds</span>  <span class="c1"># Top-Right</span>
+</span><span data-line="8"><span class="go">(5.0, 5.0, 10.0, 10.0)</span>
+</span></pre></div>
+</div>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="rapidtools.core.BoundingBox.tile_by_area">
 <span class="sig-name descname"><span class="pre">tile_by_area</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">max_area</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.01</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">Self</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/rapidtools/core/bounding_box.html#BoundingBox.tile_by_area"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.BoundingBox.tile_by_area" title="Link to this definition">¶</a></dt>
-<dd><p>A custom method to split this BoundingBox into a grid of smaller
-BoundingBox objects, each with an area less than or equal to max_area.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="rapidtools.core.BoundingBox.width">
-<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">width</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#rapidtools.core.BoundingBox.width" title="Link to this definition">¶</a></dt>
-<dd><p>The width of the bounding box in degrees.</p>
+<dd><p>Split the bounding box into a grid of smaller boxes.</p>
+<p>The grid dimensions are calculated to maintain the aspect ratio of the
+original box as closely as possible while ensuring every tile has an
+area less than or equal to <code class="docutils literal notranslate"><span class="pre">max_area</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>max_area</strong> (<em>float</em>) – The maximum allowed area for a single tile. Defaults to 0.01.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A flattened list of the resulting sub-boxes.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list[<a class="reference internal" href="#rapidtools.core.BoundingBox" title="rapidtools.core.BoundingBox">BoundingBox</a>]</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<p>Initialize a bounding box with an area of 100 square units:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">BoundingBox</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">bbox</span> <span class="o">=</span> <span class="n">BoundingBox</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>Split the bounding box into tiles with a maximum area of 25 square
+units:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">tiles</span> <span class="o">=</span> <span class="n">bbox</span><span class="o">.</span><span class="n">tile_by_area</span><span class="p">(</span><span class="n">max_area</span><span class="o">=</span><span class="mi">25</span><span class="p">)</span>
+</span><span data-line="2"><span class="go">INFO: Tiling BoundingBox into 2x2 grid (Target Area: 25, Total</span>
+</span><span data-line="3"><span class="go">Tiles: 4)</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">tiles</span><span class="p">)</span>
+</span><span data-line="5"><span class="go">4</span>
+</span></pre></div>
+</div>
 </dd></dl>
 
 </dd></dl>
@@ -1500,73 +1696,312 @@ are used as the base for the feature’s ‘properties’. The list of
 
 <dl class="py class">
 <dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection">
-<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">rapidtools.core.</span></span><span class="sig-name descname"><span class="pre">PhysicalAssetCollection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">assets:</span> <span class="pre">list[~rapidtools.core.physical_asset.PhysicalAsset]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection" title="Link to this definition">¶</a></dt>
-<dd><p>Represents a collection of PhysicalAsset objects.</p>
-<p>This class acts as a “smart list,” providing methods to manage and analyze
-a group of assets as a whole. It supports list-like operations such as
-iteration, len(), and indexing.</p>
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">rapidtools.core.</span></span><span class="sig-name descname"><span class="pre">PhysicalAssetCollection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">assets:</span> <span class="pre">~typing.Iterable[~rapidtools.core.physical_asset.PhysicalAsset]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection" title="Link to this definition">¶</a></dt>
+<dd><p>A specialized container for collection of PhysicalAsset objects.</p>
+<p>This class enforces unique asset IDs and provides fast, O(1), lookups.
+Internally, it uses a dictionary to store assets, but it behaves like
+a sequence for iteration and interaction.</p>
+<p>Key Features:
+* Spatial Querying: Filter assets by BoundingBox or Polygon.
+* Data I/O: Import/Export to GeoJSON and convert to Pandas DataFrames.
+* Batch Operations: Update attributes across all assets.
+* Set Operations: Merge collections with collision handling.</p>
+<p>Supported Container Operations:
+* Iteration: <code class="docutils literal notranslate"><span class="pre">for</span> <span class="pre">asset</span> <span class="pre">in</span> <span class="pre">collection:</span> <span class="pre">...</span></code>
+* Indexing: <code class="docutils literal notranslate"><span class="pre">collection['id_str']</span></code> (Fast) or <code class="docutils literal notranslate"><span class="pre">collection[0]</span></code> (Slower)
+* Length: <code class="docutils literal notranslate"><span class="pre">len(collection)</span></code>
+* Membership: <code class="docutils literal notranslate"><span class="pre">if</span> <span class="pre">'pole_01'</span> <span class="pre">in</span> <span class="pre">collection:</span> <span class="pre">...</span></code></p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>assets</strong> (<em>Iterable</em><em>[</em><a class="reference internal" href="#rapidtools.core.PhysicalAsset" title="rapidtools.core.PhysicalAsset"><em>PhysicalAsset</em></a><em>]</em>) – Assets to populate.
+Can be a list, tuple, or generator. Defaults to empty.</p>
+</dd>
+</dl>
 <dl class="py method">
-<dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.append">
-<span class="sig-name descname"><span class="pre">append</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">asset</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#rapidtools.core.PhysicalAsset" title="rapidtools.core.physical_asset.PhysicalAsset"><span class="pre">PhysicalAsset</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.append"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.append" title="Link to this definition">¶</a></dt>
-<dd><p>Adds a new PhysicalAsset to the collection, checking for a unique ID.</p>
+<dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.add">
+<span class="sig-name descname"><span class="pre">add</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">assets</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#rapidtools.core.PhysicalAsset" title="rapidtools.core.physical_asset.PhysicalAsset"><span class="pre">PhysicalAsset</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Iterable</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#rapidtools.core.PhysicalAsset" title="rapidtools.core.physical_asset.PhysicalAsset"><span class="pre">PhysicalAsset</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.add"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.add" title="Link to this definition">¶</a></dt>
+<dd><p>Add one or more assets to the collection.</p>
+<p>This method accepts a single PhysicalAsset or an iterable containing
+multiple PhysicalAsset objects.</p>
+<p>If an asset with the same ID already exists, or if an item is not a
+<code class="docutils literal notranslate"><span class="pre">PhysicalAsset</span></code>, a warning is logged and that specific item is
+skipped. It does not stop the addition of other valid assets.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>assets</strong> – A single <code class="docutils literal notranslate"><span class="pre">PhysicalAsset</span></code> or an iterable of <code class="docutils literal notranslate"><span class="pre">PhysicalAsset</span></code>
+objects.</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<p>Initialize a <code class="docutils literal notranslate"><span class="pre">PhysicalAsset</span></code>, a list of two <code class="docutils literal notranslate"><span class="pre">PhysicalAsset</span></code>
+objects and a <code class="docutils literal notranslate"><span class="pre">PhysicalAssetCollection</span></code>:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Point</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhysicalAsset</span><span class="p">,</span> <span class="n">PhysicalAssetCollection</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset1</span> <span class="o">=</span> <span class="n">PhysicalAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;pump_01&#39;</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">))</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="n">assets_list</span> <span class="o">=</span> <span class="p">[</span>
+</span><span data-line="6"><span class="gp">... </span>    <span class="n">PhysicalAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;pump_02&#39;</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="mf">10.1</span><span class="p">,</span> <span class="mf">20.1</span><span class="p">)),</span>
+</span><span data-line="7"><span class="gp">... </span>    <span class="n">PhysicalAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;pump_03&#39;</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="mf">10.2</span><span class="p">,</span> <span class="mf">20.2</span><span class="p">))</span>
+</span><span data-line="8"><span class="gp">... </span><span class="p">]</span>
+</span><span data-line="9"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span> <span class="o">=</span> <span class="n">PhysicalAssetCollection</span><span class="p">()</span>
+</span></pre></div>
+</div>
+<p>Add a single asset to the <code class="docutils literal notranslate"><span class="pre">PhysicalAssetCollection</span></code>:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">asset1</span><span class="p">)</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="o">.</span><span class="n">summary</span>
+</span><span data-line="3"><span class="go">PhysicalAssetCollection.summary of PhysicalAssetCollection(</span>
+</span><span data-line="4"><span class="go">_data={&#39;pump_01&#39;: &lt;PhysicalAsset id=&#39;pump_01&#39; asset_type=&#39;N/A&#39;</span>
+</span><span data-line="5"><span class="go">geometry=&#39;Point&#39;})</span>
+</span></pre></div>
+</div>
+<p>Add multiple assets at once:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">assets_list</span><span class="p">)</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">collection</span><span class="p">)</span>
+</span><span data-line="3"><span class="go">3</span>
+</span></pre></div>
+</div>
+<p>Try to add a list of assets including duplicates and incorrect
+types. In the batch below, ‘pump_01’ is a duplicate, ‘NotAnAsset’
+is the wrong type, so only ‘pump_04’ is added:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">mixed_batch</span> <span class="o">=</span> <span class="p">[</span>
+</span><span data-line="2"><span class="gp">... </span>    <span class="n">PhysicalAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;pump_04&#39;</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="mf">10.3</span><span class="p">,</span> <span class="mf">20.3</span><span class="p">)),</span>
+</span><span data-line="3"><span class="gp">... </span>    <span class="n">PhysicalAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;pump_01&#39;</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">)),</span>
+</span><span data-line="4"><span class="gp">... </span>    <span class="s1">&#39;NotAnAsset&#39;</span>
+</span><span data-line="5"><span class="gp">... </span><span class="p">]</span>
+</span><span data-line="6"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">mixed_batch</span><span class="p">)</span>
+</span><span data-line="7"><span class="go">WARNING: Skipping duplicate asset with ID &#39;pump_01&#39; (already exists).</span>
+</span><span data-line="8"><span class="go">WARNING: Skipping invalid item: Expected PhysicalAsset, got &#39;str&#39;.</span>
+</span><span data-line="9"><span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">collection</span><span class="p">)</span>
+</span><span data-line="10"><span class="go">4</span>
+</span></pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.add_attribute_to_all">
+<span class="sig-name descname"><span class="pre">add_attribute_to_all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.add_attribute_to_all"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.add_attribute_to_all" title="Link to this definition">¶</a></dt>
+<dd><p>Add or update a specific attribute for every asset.</p>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.combined_bounding_box">
 <em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">combined_bounding_box</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#rapidtools.core.BoundingBox" title="rapidtools.core.bounding_box.BoundingBox"><span class="pre">BoundingBox</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.combined_bounding_box" title="Link to this definition">¶</a></dt>
-<dd><p>Calculates the total bounding box that encloses all assets in the collection.</p>
+<dd><p>Calculates the total bounding box that encloses all assets.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A <code class="docutils literal notranslate"><span class="pre">BoundingBox</span></code> object encompassing all assets, or <code class="docutils literal notranslate"><span class="pre">None</span></code> if the
+collection is empty.</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<p>If a <code class="docutils literal notranslate"><span class="pre">PhysicalAssetCollection</span></code> is empty, it’s
+<code class="docutils literal notranslate"><span class="pre">combined_bounding_box</span></code> will be None:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhysicalAssetCollection</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span> <span class="o">=</span> <span class="n">PhysicalAssetCollection</span><span class="p">()</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="o">.</span><span class="n">combined_bounding_box</span> <span class="ow">is</span> <span class="kc">None</span>
+</span><span data-line="4"><span class="go">True</span>
+</span></pre></div>
+</div>
+<p>Combined bounds reflect the min/max extents across all assets:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Point</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhysicalAsset</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">PhysicalAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;a1&quot;</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)))</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">PhysicalAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;a2&quot;</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">)))</span>
+</span><span data-line="6"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">PhysicalAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;a3&quot;</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">)))</span>
+</span><span data-line="7"><span class="gp">&gt;&gt;&gt; </span><span class="n">bbox</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">combined_bounding_box</span>
+</span><span data-line="8"><span class="gp">&gt;&gt;&gt; </span><span class="p">(</span><span class="n">bbox</span><span class="o">.</span><span class="n">lon1</span><span class="p">,</span> <span class="n">bbox</span><span class="o">.</span><span class="n">lat1</span><span class="p">,</span> <span class="n">bbox</span><span class="o">.</span><span class="n">lon2</span><span class="p">,</span> <span class="n">bbox</span><span class="o">.</span><span class="n">lat2</span><span class="p">)</span>
+</span><span data-line="9"><span class="go">(-1.0, 0.0, 2.0, 5.0)</span>
+</span></pre></div>
+</div>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.filter_by_attribute">
 <span class="sig-name descname"><span class="pre">filter_by_attribute</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">attribute_key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attribute_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection" title="rapidtools.core.physical_asset.PhysicalAssetCollection"><span class="pre">PhysicalAssetCollection</span></a></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.filter_by_attribute"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.filter_by_attribute" title="Link to this definition">¶</a></dt>
-<dd><p>Filters the collection and returns a new PhysicalAssetCollection.</p>
+<dd><p>Returns a new collection with assets matching the attribute value.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.filter_by_bbox">
+<span class="sig-name descname"><span class="pre">filter_by_bbox</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#rapidtools.core.BoundingBox" title="rapidtools.core.bounding_box.BoundingBox"><span class="pre">BoundingBox</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection" title="rapidtools.core.physical_asset.PhysicalAssetCollection"><span class="pre">PhysicalAssetCollection</span></a></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.filter_by_bbox"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.filter_by_bbox" title="Link to this definition">¶</a></dt>
+<dd><p>Returns a new collection with assets intersecting the bounding box.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.filter_by_polygon">
+<span class="sig-name descname"><span class="pre">filter_by_polygon</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">polygon</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">BaseGeometry</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection" title="rapidtools.core.physical_asset.PhysicalAssetCollection"><span class="pre">PhysicalAssetCollection</span></a></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.filter_by_polygon"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.filter_by_polygon" title="Link to this definition">¶</a></dt>
+<dd><p>Returns a new collection with assets intersecting the Shapely polygon.</p>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.from_geojson">
 <span class="sig-name descname"><span class="pre">from_geojson</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection" title="rapidtools.core.physical_asset.PhysicalAssetCollection"><span class="pre">PhysicalAssetCollection</span></a></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.from_geojson"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.from_geojson" title="Link to this definition">¶</a></dt>
 <dd><p>Populate the collection with assets from a GeoJSON source.</p>
-<p>Includes a progress bar and O(N) optimization for bulk imports.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.get">
+<span class="sig-name descname"><span class="pre">get</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">asset_ids</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Iterable</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.PhysicalAsset" title="rapidtools.core.physical_asset.PhysicalAsset"><span class="pre">PhysicalAsset</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Any</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#rapidtools.core.PhysicalAsset" title="rapidtools.core.physical_asset.PhysicalAsset"><span class="pre">PhysicalAsset</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.get"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.get" title="Link to this definition">¶</a></dt>
+<dd><p>Safely retrieve assets by unique ID(s).</p>
+<p>This method is polymorphic:
+1. If <code class="docutils literal notranslate"><span class="pre">asset_ids</span></code> is a <code class="docutils literal notranslate"><span class="pre">str</span></code>, it returns a single <code class="docutils literal notranslate"><span class="pre">PhysicalAsset</span></code></p>
+<blockquote>
+<div><p>(or default).</p>
+</div></blockquote>
+<ol class="arabic simple" start="2">
+<li><p>If <code class="docutils literal notranslate"><span class="pre">asset_ids</span></code> is an <code class="docutils literal notranslate"><span class="pre">Iterable</span></code> (list, tuple, etc.), it returns
+a <code class="docutils literal notranslate"><span class="pre">list</span></code> of results in the same order as the requested IDs.</p></li>
+</ol>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>source</strong> – GeoJSON dictionary or file path.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>asset_ids</strong> – A single asset ID string OR an iterable of ID strings.</p></li>
+<li><p><strong>default</strong> – Value to return if an ID is not found. Defaults to <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+</ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The current instance (self).</p>
+<dd class="field-even"><p><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">PhysicalAsset</span></code> (or default) if input is a single string.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">list[PhysicalAsset</span> <span class="pre">|</span> <span class="pre">Any]</span></code> if input is a list/iterable.</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>TypeError</strong> – If <code class="docutils literal notranslate"><span class="pre">asset_ids</span></code> is not a <code class="docutils literal notranslate"><span class="pre">str</span></code> or <code class="docutils literal notranslate"><span class="pre">Iterable</span></code>.</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<p>Create a <code class="docutils literal notranslate"><span class="pre">PhysicalAssetCollection</span></code> consisting of two
+<code class="docutils literal notranslate"><span class="pre">PhysicalAsset</span></code> objects:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Point</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhysicalAsset</span><span class="p">,</span> <span class="n">PhysicalAssetCollection</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span> <span class="o">=</span> <span class="n">PhysicalAssetCollection</span><span class="p">()</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">PhysicalAsset</span><span class="p">(</span>
+</span><span data-line="6"><span class="gp">&gt;&gt;&gt; </span>    <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;pump_01&#39;</span><span class="p">,</span>
+</span><span data-line="7"><span class="gp">&gt;&gt;&gt; </span>    <span class="n">geometry</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">)</span>
+</span><span data-line="8"><span class="gp">&gt;&gt;&gt; </span><span class="p">))</span>
+</span><span data-line="9"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">PhysicalAsset</span><span class="p">(</span>
+</span><span data-line="10"><span class="gp">&gt;&gt;&gt; </span>    <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;pump_02&#39;</span><span class="p">,</span>
+</span><span data-line="11"><span class="gp">&gt;&gt;&gt; </span>    <span class="n">geometry</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+</span><span data-line="12"><span class="gp">&gt;&gt;&gt; </span><span class="p">))</span>
+</span></pre></div>
+</div>
+<p>Single lookup (returns <code class="docutils literal notranslate"><span class="pre">PhysicalAsset</span></code> or <code class="docutils literal notranslate"><span class="pre">None</span></code>):</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;pump_01&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">id</span>
+</span><span data-line="3"><span class="go">&#39;pump_01&#39;</span>
+</span></pre></div>
+</div>
+<p>Batch lookup (returns a list of <code class="docutils literal notranslate"><span class="pre">PhysicalAsset</span></code> objects):</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">results</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">get</span><span class="p">([</span><span class="s1">&#39;pump_01&#39;</span><span class="p">,</span> <span class="s1">&#39;pump_02&#39;</span><span class="p">,</span> <span class="s1">&#39;missing_id&#39;</span><span class="p">])</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+</span><span data-line="3"><span class="go">[&lt;PhysicalAsset id=&#39;pump_01&#39; asset_type=&#39;N/A&#39; geometry=&#39;Point&#39;&gt;,</span>
+</span><span data-line="4"><span class="go">&lt;PhysicalAsset id=&#39;pump_02&#39; asset_type=&#39;N/A&#39; geometry=&#39;Point&#39;&gt;,</span>
+</span><span data-line="5"><span class="go">None]</span>
+</span></pre></div>
+</div>
+<p># Set a custom default value:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;missing_id&#39;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s1">&#39;Not Found&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="go">&#39;Not Found&#39;</span>
+</span></pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.get_all_image_assets">
+<span class="sig-name descname"><span class="pre">get_all_image_assets</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.ImageCollection" title="rapidtools.core.image_asset.ImageCollection"><span class="pre">ImageCollection</span></a></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.get_all_image_assets"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.get_all_image_assets" title="Link to this definition">¶</a></dt>
+<dd><p>Aggregates all images from every physical asset into a single
+ImageCollection.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.merge">
+<span class="sig-name descname"><span class="pre">merge</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">other</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection" title="rapidtools.core.physical_asset.PhysicalAssetCollection"><span class="pre">PhysicalAssetCollection</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">strategy</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'skip'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.merge"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.merge" title="Link to this definition">¶</a></dt>
+<dd><p>Merge another collection into this one.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>other</strong> – The PhysicalAssetCollection to merge in.</p></li>
+<li><p><strong>strategy</strong> – ‘skip’ (default): Keep existing, ignore new.
+‘overwrite’: Replace existing with new.
+‘raise’: Error on duplicate.</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.get_asset_by_id">
-<span class="sig-name descname"><span class="pre">get_asset_by_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">asset_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.PhysicalAsset" title="rapidtools.core.physical_asset.PhysicalAsset"><span class="pre">PhysicalAsset</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.get_asset_by_id"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.get_asset_by_id" title="Link to this definition">¶</a></dt>
-<dd><p>Finds and returns an asset by its unique ID.</p>
+<dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.remove">
+<span class="sig-name descname"><span class="pre">remove</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">asset_ids</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Iterable</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.remove"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.remove" title="Link to this definition">¶</a></dt>
+<dd><p>Remove one or more assets from the collection by ID.</p>
+<p>This method is polymorphic:
+1. If <code class="docutils literal notranslate"><span class="pre">asset_ids</span></code> is a <code class="docutils literal notranslate"><span class="pre">str</span></code>, it removes that single asset.
+2. If <code class="docutils literal notranslate"><span class="pre">asset_ids</span></code> is an <code class="docutils literal notranslate"><span class="pre">Iterable</span></code>, it iterates and removes all IDs</p>
+<blockquote>
+<div><p>found.</p>
+</div></blockquote>
+<p>If an ID is not found in the collection, the operation is skipped for
+that specific ID and a warning is logged.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>asset_ids</strong> – A single asset ID string OR an iterable of ID strings.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If <code class="docutils literal notranslate"><span class="pre">asset_ids</span></code> is not a <code class="docutils literal notranslate"><span class="pre">str</span></code> or an <code class="docutils literal notranslate"><span class="pre">Iterable</span></code>.</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<p>Create a <code class="docutils literal notranslate"><span class="pre">PhysicalAssetCollection</span></code> consisting of two
+<code class="docutils literal notranslate"><span class="pre">PhysicalAsset</span></code> objects:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Point</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhysicalAsset</span><span class="p">,</span> <span class="n">PhysicalAssetCollection</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span> <span class="o">=</span> <span class="n">PhysicalAssetCollection</span><span class="p">()</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="o">.</span><span class="n">add</span><span class="p">([</span>
+</span><span data-line="6"><span class="gp">... </span>    <span class="n">PhysicalAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;p1&#39;</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">)),</span>
+</span><span data-line="7"><span class="gp">... </span>    <span class="n">PhysicalAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;p2&#39;</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span>
+</span><span data-line="8"><span class="gp">... </span><span class="p">])</span>
+</span></pre></div>
+</div>
+<p>Remove the <code class="docutils literal notranslate"><span class="pre">PhysicalAsset</span></code> with ID:<code class="docutils literal notranslate"><span class="pre">'p1'</span></code> from the collection:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s1">&#39;p1&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">collection</span><span class="p">)</span>
+</span><span data-line="3"><span class="go">PhysicalAssetCollection(_data={&#39;p2&#39;: &lt;PhysicalAsset id=&#39;p2&#39;</span>
+</span><span data-line="4"><span class="go">asset_type=&#39;N/A&#39; geometry=&#39;Point&#39;&gt;})</span>
+</span></pre></div>
+</div>
+<p>Try to remove a non-matching item:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s1">&#39;p99&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="go">WARNING: Asset ID &#39;p99&#39; not found. Skipping removal.</span>
+</span></pre></div>
+</div>
+<p># Batch remove multiple assets:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="o">.</span><span class="n">remove</span><span class="p">([</span><span class="s1">&#39;p2&#39;</span><span class="p">,</span> <span class="s1">&#39;p99&#39;</span><span class="p">])</span>
+</span><span data-line="2"><span class="go">WARNING: Asset ID &#39;p99&#39; not found. Skipping removal.</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">collection</span><span class="p">)</span>
+</span><span data-line="4"><span class="go">0</span>
+</span></pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.summary">
+<span class="sig-name descname"><span class="pre">summary</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.summary"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.summary" title="Link to this definition">¶</a></dt>
+<dd><p>Generate statistics about the collection.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.to_dataframe">
+<span class="sig-name descname"><span class="pre">to_dataframe</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.to_dataframe"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.to_dataframe" title="Link to this definition">¶</a></dt>
+<dd><p>Convert the collection to a Pandas DataFrame.</p>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.to_geojson">
 <span class="sig-name descname"><span class="pre">to_geojson</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">indent</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">2</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.to_geojson"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.to_geojson" title="Link to this definition">¶</a></dt>
 <dd><p>Serialize the collection into a GeoJSON FeatureCollection.</p>
-<p>By default, the output is pretty-printed with an indentation of 2
-spaces. Callers can change or disable pretty-printing by passing a
-different <cite>indent</cite> value (e.g., <cite>indent=None</cite> for compact output).</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>file</strong> – Optional path to a file where the GeoJSON should be written. If
-None, nothing is written to disk.</p></li>
-<li><p><strong>indent</strong> – Number of spaces for JSON indentation when writing to a file.
-Use None for compact output. Defaults to 2.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The GeoJSON FeatureCollection as a dictionary.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>dict</p>
-</dd>
-</dl>
 </dd></dl>
 
 </dd></dl>

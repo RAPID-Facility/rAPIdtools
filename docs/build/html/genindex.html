@@ -61,7 +61,6 @@ data-aria-dark="Switch to auto color mode">
  | <a href="#D"><strong>D</strong></a>
  | <a href="#F"><strong>F</strong></a>
  | <a href="#G"><strong>G</strong></a>
- | <a href="#H"><strong>H</strong></a>
  | <a href="#I"><strong>I</strong></a>
  | <a href="#L"><strong>L</strong></a>
  | <a href="#M"><strong>M</strong></a>
@@ -70,21 +69,26 @@ data-aria-dark="Switch to auto color mode">
  | <a href="#R"><strong>R</strong></a>
  | <a href="#S"><strong>S</strong></a>
  | <a href="#T"><strong>T</strong></a>
- | <a href="#W"><strong>W</strong></a>
  
 </div>
 <h2 id="A">A</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#rapidtools.core.ImageCollection.add">add() (rapidtools.core.ImageCollection method)</a>
+
+      <ul>
+        <li><a href="api.html#rapidtools.core.PhysicalAssetCollection.add">(rapidtools.core.PhysicalAssetCollection method)</a>
 </li>
-      <li><a href="api.html#rapidtools.core.PhysicalAsset.add_attributes">add_attributes() (rapidtools.core.PhysicalAsset method)</a>
+      </ul></li>
+      <li><a href="api.html#rapidtools.core.PhysicalAssetCollection.add_attribute_to_all">add_attribute_to_all() (rapidtools.core.PhysicalAssetCollection method)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api.html#rapidtools.core.PhysicalAsset.add_attributes">add_attributes() (rapidtools.core.PhysicalAsset method)</a>
+</li>
       <li><a href="api.html#rapidtools.core.PhysicalAsset.add_image_assets">add_image_assets() (rapidtools.core.PhysicalAsset method)</a>
 </li>
-      <li><a href="api.html#rapidtools.core.PhysicalAssetCollection.append">append() (rapidtools.core.PhysicalAssetCollection method)</a>
+      <li><a href="api.html#rapidtools.core.BoundingBox.area">area (rapidtools.core.BoundingBox property)</a>
 </li>
       <li><a href="api.html#rapidtools.core.PhysicalAsset.asset_type">asset_type (rapidtools.core.PhysicalAsset property)</a>
 </li>
@@ -106,22 +110,26 @@ data-aria-dark="Switch to auto color mode">
 </li>
       <li><a href="api.html#rapidtools.core.BoundingBox">BoundingBox (class in rapidtools.core)</a>
 </li>
+      <li><a href="api.html#rapidtools.core.BoundingBox.buffer">buffer() (rapidtools.core.BoundingBox method)</a>
+</li>
   </ul></td>
 </tr></table>
 
 <h2 id="C">C</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api.html#rapidtools.core.BoundingBox.centroid">centroid (rapidtools.core.BoundingBox property)</a>
+</li>
       <li><a href="api.html#rapidtools.inference.ClaudeClient">ClaudeClient (class in rapidtools.inference)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#rapidtools.core.ImageAsset.combine_with">combine_with() (rapidtools.core.ImageAsset method)</a>
 
       <ul>
         <li><a href="api.html#rapidtools.core.ImageCollection.combine_with">(rapidtools.core.ImageCollection method)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#rapidtools.core.PhysicalAssetCollection.combined_bounding_box">combined_bounding_box (rapidtools.core.PhysicalAssetCollection property)</a>
 </li>
   </ul></td>
@@ -162,11 +170,17 @@ data-aria-dark="Switch to auto color mode">
 </li>
       <li><a href="api.html#rapidtools.core.ImageCollection.filter">filter() (rapidtools.core.ImageCollection method)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#rapidtools.core.PhysicalAssetCollection.filter_by_attribute">filter_by_attribute() (rapidtools.core.PhysicalAssetCollection method)</a>
 </li>
       <li><a href="api.html#rapidtools.core.ImageCollection.filter_by_bbox">filter_by_bbox() (rapidtools.core.ImageCollection method)</a>
+
+      <ul>
+        <li><a href="api.html#rapidtools.core.PhysicalAssetCollection.filter_by_bbox">(rapidtools.core.PhysicalAssetCollection method)</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api.html#rapidtools.core.PhysicalAssetCollection.filter_by_polygon">filter_by_polygon() (rapidtools.core.PhysicalAssetCollection method)</a>
 </li>
       <li><a href="api.html#rapidtools.core.ImageCollection.filter_by_property">filter_by_property() (rapidtools.core.ImageCollection method)</a>
 </li>
@@ -176,6 +190,10 @@ data-aria-dark="Switch to auto color mode">
 </li>
       <li><a href="api.html#rapidtools.core.PhysicalAsset.from_geojson_feature">from_geojson_feature() (rapidtools.core.PhysicalAsset class method)</a>
 </li>
+      <li><a href="api.html#rapidtools.core.BoundingBox.from_geometry">from_geometry() (rapidtools.core.BoundingBox class method)</a>
+</li>
+      <li><a href="api.html#rapidtools.core.BoundingBox.from_union">from_union() (rapidtools.core.BoundingBox class method)</a>
+</li>
   </ul></td>
 </tr></table>
 
@@ -184,7 +202,9 @@ data-aria-dark="Switch to auto color mode">
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#rapidtools.inference.GeminiClient">GeminiClient (class in rapidtools.inference)</a>
 </li>
-      <li><a href="api.html#rapidtools.core.PhysicalAssetCollection.get_asset_by_id">get_asset_by_id() (rapidtools.core.PhysicalAssetCollection method)</a>
+      <li><a href="api.html#rapidtools.core.PhysicalAssetCollection.get">get() (rapidtools.core.PhysicalAssetCollection method)</a>
+</li>
+      <li><a href="api.html#rapidtools.core.PhysicalAssetCollection.get_all_image_assets">get_all_image_assets() (rapidtools.core.PhysicalAssetCollection method)</a>
 </li>
       <li><a href="api.html#rapidtools.core.PhysicalAsset.get_attributes">get_attributes() (rapidtools.core.PhysicalAsset method)</a>
 </li>
@@ -205,14 +225,6 @@ data-aria-dark="Switch to auto color mode">
       <li><a href="api.html#rapidtools.core.ImageAsset.get_mask_path">get_mask_path() (rapidtools.core.ImageAsset method)</a>
 </li>
       <li><a href="api.html#rapidtools.core.ImageAsset.get_property">get_property() (rapidtools.core.ImageAsset method)</a>
-</li>
-  </ul></td>
-</tr></table>
-
-<h2 id="H">H</h2>
-<table style="width: 100%" class="indextable genindextable"><tr>
-  <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#rapidtools.core.BoundingBox.height">height (rapidtools.core.BoundingBox property)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -251,6 +263,8 @@ data-aria-dark="Switch to auto color mode">
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#rapidtools.data_sources.MapillaryClient">MapillaryClient (class in rapidtools.data_sources)</a>
+</li>
+      <li><a href="api.html#rapidtools.core.PhysicalAssetCollection.merge">merge() (rapidtools.core.PhysicalAssetCollection method)</a>
 </li>
       <li>
     module
@@ -334,7 +348,11 @@ data-aria-dark="Switch to auto color mode">
 </li>
       </ul></li>
       <li><a href="api.html#rapidtools.core.ImageCollection.remove">remove() (rapidtools.core.ImageCollection method)</a>
+
+      <ul>
+        <li><a href="api.html#rapidtools.core.PhysicalAssetCollection.remove">(rapidtools.core.PhysicalAssetCollection method)</a>
 </li>
+      </ul></li>
       <li><a href="api.html#rapidtools.core.PhysicalAsset.remove_attributes">remove_attributes() (rapidtools.core.PhysicalAsset method)</a>
 </li>
       <li><a href="api.html#rapidtools.core.PhysicalAsset.remove_image_assets">remove_image_assets() (rapidtools.core.PhysicalAsset method)</a>
@@ -355,10 +373,10 @@ data-aria-dark="Switch to auto color mode">
 </li>
       <li><a href="api.html#rapidtools.core.ImageAsset.set_mask">set_mask() (rapidtools.core.ImageAsset method)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#rapidtools.core.ImageAsset.show">show() (rapidtools.core.ImageAsset method)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#rapidtools.inference.GeminiClient.show_supported_models">show_supported_models() (rapidtools.inference.GeminiClient static method)</a>
 </li>
       <li><a href="api.html#rapidtools.core.BoundingBox.split">split() (rapidtools.core.BoundingBox method)</a>
@@ -366,6 +384,8 @@ data-aria-dark="Switch to auto color mode">
       <li><a href="api.html#rapidtools.core.ImageAsset.stem">stem (rapidtools.core.ImageAsset property)</a>
 </li>
       <li><a href="api.html#rapidtools.core.ImageCollection.subset">subset() (rapidtools.core.ImageCollection method)</a>
+</li>
+      <li><a href="api.html#rapidtools.core.PhysicalAssetCollection.summary">summary() (rapidtools.core.PhysicalAssetCollection method)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -378,7 +398,11 @@ data-aria-dark="Switch to auto color mode">
       <li><a href="api.html#rapidtools.data_sources.tile_utils.TileUtils">TileUtils (class in rapidtools.data_sources.tile_utils)</a>
 </li>
       <li><a href="api.html#rapidtools.core.ImageCollection.to_dataframe">to_dataframe() (rapidtools.core.ImageCollection method)</a>
+
+      <ul>
+        <li><a href="api.html#rapidtools.core.PhysicalAssetCollection.to_dataframe">(rapidtools.core.PhysicalAssetCollection method)</a>
 </li>
+      </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#rapidtools.core.PhysicalAssetCollection.to_geojson">to_geojson() (rapidtools.core.PhysicalAssetCollection method)</a>
@@ -386,14 +410,6 @@ data-aria-dark="Switch to auto color mode">
       <li><a href="api.html#rapidtools.core.PhysicalAsset.to_geojson_feature">to_geojson_feature() (rapidtools.core.PhysicalAsset method)</a>
 </li>
       <li><a href="api.html#rapidtools.core.ImageCollection.to_json">to_json() (rapidtools.core.ImageCollection method)</a>
-</li>
-  </ul></td>
-</tr></table>
-
-<h2 id="W">W</h2>
-<table style="width: 100%" class="indextable genindextable"><tr>
-  <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#rapidtools.core.BoundingBox.width">width (rapidtools.core.BoundingBox property)</a>
 </li>
   </ul></td>
 </tr></table>
