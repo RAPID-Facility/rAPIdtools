@@ -37,28 +37,40 @@
 # Last updated:
 # 01-28-2026
 
+from typing import Self
+
 import pytest
-from shapely.geometry import Polygon, Point, LineString
+from shapely.geometry import LineString, Point, Polygon
+from shapely.geometry.base import BaseGeometry
+
 from rapidtools.core.region import Region
+
 
 # 1. Update Dummy Implementation
 # We must implement 'buffer' now because it is an abstract method in the base
 # class:
 class ConcreteRegion(Region):
     """A minimal concrete implementation of Region for testing."""
+
     def __init__(self, geometry):
         self._geom = geometry
 
     def get_bounding_box(self):
         return 'mock_bbox'
-    
+
     def buffer(self, distance: float) -> 'Region':
         # Return self just to satisfy the abstract contract for testing:
         return self
 
+    @classmethod
+    def from_geometry(cls, geometry: BaseGeometry) -> Self:
+        # Simple factory implementation for testing
+        return cls(geometry)
+
+
 # 2. Test Suite
 class TestRegionABC:
-    
+
     @pytest.fixture
     def square_geom(self):
         """Returns a 10x10 square polygon starting at 0,0."""
@@ -68,6 +80,14 @@ class TestRegionABC:
     def region(self, square_geom):
         """Returns an instance of our dummy concrete class."""
         return ConcreteRegion(square_geom)
+
+    # --- Abstract Factory Tests ---
+
+    def test_from_geometry_factory(self, square_geom):
+        """Test the abstract factory method implementation."""
+        region = ConcreteRegion.from_geometry(square_geom)
+        assert isinstance(region, ConcreteRegion)
+        assert region.geometry == square_geom
 
     # --- Basic Properties ---
 
@@ -98,7 +118,7 @@ class TestRegionABC:
         assert isinstance(geo, dict)
         assert geo['type'] == 'Polygon'
         assert len(geo['coordinates']) == 1
-        
+
     def test_wkt_property(self, region, square_geom):
         """Test that wkt returns the correct string representation."""
         assert region.wkt == square_geom.wkt
@@ -146,17 +166,17 @@ class TestRegionABC:
         """Test geometric equality logic."""
         # 1. Identity check:
         assert region == region
-        
+
         # 2. Geometric equality (same points, different object):
         other_region = ConcreteRegion(
             Polygon([(0, 0), (10, 0), (10, 10), (0, 10), (0, 0)])
         )
         assert region == other_region
-        
+
         # 3. Inequality:
-        diff_region = ConcreteRegion(Polygon([(0,0), (1,1), (0,1)]))
+        diff_region = ConcreteRegion(Polygon([(0, 0), (1, 1), (0, 1)]))
         assert region != diff_region
-        
+
         # 4. Type mismatch:
         assert region != 'Not a Region'
 
@@ -223,14 +243,14 @@ class TestRegionABC:
         """Verify that properties are cached."""
         initial_area = region.area
         assert initial_area == 100.0
-        
+
         # Modify the internal geometry directly
         # (Simulating a state change that should not happen in immutable
         # objects):
-        region._geom = Point(0,0) 
-        
+        region._geom = Point(0, 0)
+
         # .area should STILL be 100.0 because it is cached:
         assert region.area == 100.0
-        
+
         # Proof: If we access the raw geometry, it is different:
         assert region.geometry.area == 0.0
