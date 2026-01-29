@@ -88,6 +88,11 @@ rapidtools = ["py.typed"]
 # ==============================================================================
 # This section centralizes configuration for your development tools.
 
+# --- Black (Code formatter) ---
+[tool.black]
+line-length = 88
+target-version = ['py311']
+
 # --- Ruff (Linter & Formatter) ---
 [tool.ruff]
 line-length = 88
@@ -101,12 +106,14 @@ select = [
     "I",   # isort
     "UP",  # pyupgrade
     "B",   # flake8-bugbear
+    "Q",   # flake8-quotes (quote style)
 ]
 
-# --- Black (Code formatter) ---
-[tool.black]
-line-length = 88
-target-version = ['py311']
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "single"
+
+[tool.ruff.format]
+quote-style = "single"
 
 # --- MyPy (Static type checker) ---
 [tool.mypy]
