@@ -41,9 +41,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from functools import cached_property
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self
 
 from shapely.geometry import Polygon
+from shapely.geometry.base import BaseGeometry
 
 if TYPE_CHECKING:
     from .bounding_box import BoundingBox
@@ -59,9 +60,9 @@ class Region(ABC):
     Implementation Contract:
         Concrete subclasses are responsible for:
         1. Initializing the ``_geom`` attribute with a valid Shapely
-           ``Polygon`` in their ``__init__`` method.
-        2. Implementing the abstract methods: ``get_bounding_box`` and
-           ``buffer``.
+           ``Polygon`` or ``MultiPolygon`` in their ``__init__`` method.
+        2. Implementing the abstract methods: ``get_bounding_box``,
+           ``buffer``, and ``from_geometry``.
     """
 
     # All subclasses will have an internal shapely object for geometric
@@ -102,7 +103,7 @@ class Region(ABC):
 
         # Truncate long geometries for cleaner logs:
         if len(wkt) > 55:
-            wkt = f"{wkt[:52]}..."
+            wkt = f'{wkt[:52]}...'
         return f"{self.__class__.__name__}(wkt='{wkt}')"
 
     @property
@@ -239,14 +240,14 @@ class Region(ABC):
         centroid = self._geom.centroid
         return (centroid.x, centroid.y)
 
-    def contains(self, other: Polygon | Region) -> bool:
+    def contains(self, other: BaseGeometry | Region) -> bool:
         """
         Check if the region completely encloses another geometry.
 
         This is a wrapper around the Shapely ``contains`` predicate.
 
         Args:
-            other (Polygon | Region):
+            other (BaseGeometry | Region):
                 The region to test for containment.
 
         Returns:
@@ -258,12 +259,12 @@ class Region(ABC):
             return self.geometry.contains(other.geometry)
         return self.geometry.contains(other)
 
-    def distance(self, other: Polygon | Region) -> float:
+    def distance(self, other: BaseGeometry | Region) -> float:
         """
         Calculate the minimum Euclidean distance to another region or geometry.
 
         Args:
-            other (Polygon | Region):
+            other (BaseGeometry | Region):
                 The region to calculate the distance to.
 
         Returns:
@@ -275,14 +276,14 @@ class Region(ABC):
             return self.geometry.distance(other.geometry)
         return self.geometry.distance(other)
 
-    def intersects(self, other: Polygon | Region) -> bool:
+    def intersects(self, other: BaseGeometry | Region) -> bool:
         """
         Determine if the region spatially intersects with another geometry.
 
         This is a wrapper around the Shapely ``intersects`` predicate.
 
         Args:
-            other (Polygon | Region):
+            other (BaseGeometry | Region):
                 The region to test for intersection with.
 
         Returns:
@@ -294,7 +295,7 @@ class Region(ABC):
         return self.geometry.intersects(other)
 
     @abstractmethod
-    def buffer(self, distance: float) -> Region:
+    def buffer(self, distance: float) -> Self:
         """
         Create a new Region expanded (or shrunk) by a constant distance.
 
@@ -307,8 +308,23 @@ class Region(ABC):
                 system (e.g., degrees for WGS84, meters for UTM).
 
         Returns:
-            Region:
+            Self:
                 A new concrete Region instance representing the buffered area.
+        """
+
+    @classmethod
+    @abstractmethod
+    def from_geometry(cls, geometry: BaseGeometry) -> Self:
+        """
+        Create a new Region instance from a Shapely BaseGeometry.
+
+        Args:
+            geometry (BaseGeometry):
+                Any Shapely geometry (Polygon, Point, LineString, etc.) used
+                to construct the region.
+
+        Returns:
+            Self: An instance of the concrete Region subclass.
         """
 
     @abstractmethod
