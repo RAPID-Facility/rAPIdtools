@@ -326,14 +326,6 @@ class BoundingBox(Region):
         n_cols = math.ceil(math.sqrt(total_tiles_needed * aspect_ratio))
         n_rows = math.ceil(math.sqrt(total_tiles_needed / aspect_ratio))
 
-        # Ensure there are enough tiles to cover the bounding box:
-        while (n_cols * n_rows) < total_tiles_needed:
-            # Add a row or col depending on which dimension is fuller:
-            if (self.width / n_cols) > (self.height / n_rows):
-                n_cols += 1
-            else:
-                n_rows += 1
-
         logging.info(
             f'Tiling BoundingBox into {n_cols}x{n_rows} grid '
             f'(Target Area: {max_area}, Total Tiles: {n_cols * n_rows})'
