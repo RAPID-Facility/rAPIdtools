@@ -130,16 +130,15 @@ data-aria-dark="Switch to auto color mode">
 </li>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection"><code class="docutils literal notranslate"><span class="pre">PhysicalAssetCollection</span></code></a><ul>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.add"><code class="docutils literal notranslate">add()</span></code></a></li>
-<li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.add_attribute_to_all"><code class="docutils literal notranslate">add_attribute_to_all()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.combined_bounding_box"><code class="docutils literal notranslate">combined_bounding_box</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.filter_by_attribute"><code class="docutils literal notranslate">filter_by_attribute()</span></code></a></li>
-<li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.filter_by_bbox"><code class="docutils literal notranslate">filter_by_bbox()</span></code></a></li>
-<li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.filter_by_polygon"><code class="docutils literal notranslate">filter_by_polygon()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.filter_by_geometry"><code class="docutils literal notranslate">filter_by_geometry()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.from_geojson"><code class="docutils literal notranslate">from_geojson()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.get"><code class="docutils literal notranslate">get()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.get_all_image_assets"><code class="docutils literal notranslate">get_all_image_assets()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.merge"><code class="docutils literal notranslate">merge()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.remove"><code class="docutils literal notranslate">remove()</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.set_attribute"><code class="docutils literal notranslate">set_attribute()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.summary"><code class="docutils literal notranslate">summary()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.to_dataframe"><code class="docutils literal notranslate">to_dataframe()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection.to_geojson"><code class="docutils literal notranslate">to_geojson()</span></code></a></li>
@@ -1779,12 +1778,6 @@ is the wrong type, so only ‘pump_04’ is added:</p>
 </div>
 </dd></dl>
 
-<dl class="py method">
-<dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.add_attribute_to_all">
-<span class="sig-name descname"><span class="pre">add_attribute_to_all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.add_attribute_to_all"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.add_attribute_to_all" title="Link to this definition">¶</a></dt>
-<dd><p>Add or update a specific attribute for every asset.</p>
-</dd></dl>
-
 <dl class="py property">
 <dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.combined_bounding_box">
 <em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">combined_bounding_box</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#rapidtools.core.BoundingBox" title="rapidtools.core.bounding_box.BoundingBox"><span class="pre">BoundingBox</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.combined_bounding_box" title="Link to this definition">¶</a></dt>
@@ -1820,20 +1813,206 @@ collection is empty.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.filter_by_attribute">
-<span class="sig-name descname"><span class="pre">filter_by_attribute</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">attribute_key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attribute_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection" title="rapidtools.core.physical_asset.PhysicalAssetCollection"><span class="pre">PhysicalAssetCollection</span></a></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.filter_by_attribute"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.filter_by_attribute" title="Link to this definition">¶</a></dt>
-<dd><p>Returns a new collection with assets matching the attribute value.</p>
+<span class="sig-name descname"><span class="pre">filter_by_attribute</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">operator</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'=='</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">warn_if_missing</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection" title="rapidtools.core.physical_asset.PhysicalAssetCollection"><span class="pre">PhysicalAssetCollection</span></a></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.filter_by_attribute"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.filter_by_attribute" title="Link to this definition">¶</a></dt>
+<dd><p>Return a new collection of assets with specified attribute criteria.</p>
+<p>This method filters the collection based on the <cite>key</cite> existing in an
+asset’s <cite>attributes</cite> dictionary and comparing it against <cite>value</cite> using
+the specified <cite>operator</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>key</strong> (<em>str</em>) – The dictionary key to look up in <cite>asset.attributes</cite>.</p></li>
+<li><p><strong>value</strong> (<em>Any</em>) – The value to compare against.</p></li>
+<li><p><strong>operator</strong> (<em>str</em><em>, </em><em>optional</em>) – <p>The comparison operator to use.
+Supported options:
+- <code class="docutils literal notranslate"><span class="pre">'=='</span></code>: Exact match (default).
+- <code class="docutils literal notranslate"><span class="pre">'!='</span></code>: Not equal.
+- <code class="docutils literal notranslate"><span class="pre">'&gt;'</span></code>, <code class="docutils literal notranslate"><span class="pre">'&gt;='</span></code>, <code class="docutils literal notranslate"><span class="pre">'&lt;'</span></code>, <code class="docutils literal notranslate"><span class="pre">'&lt;='</span></code>: Numeric/Lexical</p>
+<blockquote>
+<div><p>comparison.</p>
+</div></blockquote>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">'in'</span></code>: Checks if asset attribute is in the provided
+<code class="docutils literal notranslate"><span class="pre">value</span></code> (list/set).</p></li>
+<li><dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">'contains'</span></code>: Checks if asset attribute CONTAINS the</dt><dd><p>provided <code class="docutils literal notranslate"><span class="pre">value</span></code>.</p>
+</dd>
+</dl>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">'exists'</span></code>: Checks if the key exists (value argument is
+ignored).</p></li>
+</ul>
+</p></li>
+<li><p><strong>warn_if_missing</strong> – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, logs a warning for every asset that does not
+contain the <code class="docutils literal notranslate"><span class="pre">key</span></code>. Defaults to <code class="docutils literal notranslate"><span class="pre">False</span></code> to prevent log spam
+on sparse data.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A new collection containing only the matching assets.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection" title="rapidtools.core.PhysicalAssetCollection">PhysicalAssetCollection</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If the provided <cite>operator</cite> string is not supported.</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Point</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhysicalAsset</span><span class="p">,</span> <span class="n">PhysicalAssetCollection</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span> <span class="o">=</span> <span class="n">PhysicalAssetCollection</span><span class="p">()</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="o">.</span><span class="n">add</span><span class="p">([</span>
+</span><span data-line="6"><span class="gp">... </span>    <span class="n">PhysicalAsset</span><span class="p">(</span>
+</span><span data-line="7"><span class="gp">... </span>        <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;a1&#39;</span><span class="p">,</span>
+</span><span data-line="8"><span class="gp">... </span>        <span class="n">geometry</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">),</span>
+</span><span data-line="9"><span class="gp">... </span>        <span class="n">attributes</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;status&#39;</span><span class="p">:</span> <span class="s1">&#39;active&#39;</span><span class="p">,</span> <span class="s1">&#39;age&#39;</span><span class="p">:</span> <span class="mi">5</span><span class="p">}</span>
+</span><span data-line="10"><span class="gp">... </span>    <span class="p">),</span>
+</span><span data-line="11"><span class="gp">... </span>    <span class="n">PhysicalAsset</span><span class="p">(</span>
+</span><span data-line="12"><span class="gp">... </span>        <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;a2&#39;</span><span class="p">,</span>
+</span><span data-line="13"><span class="gp">... </span>        <span class="n">geometry</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">),</span>
+</span><span data-line="14"><span class="gp">... </span>        <span class="n">attributes</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;status&#39;</span><span class="p">:</span> <span class="s1">&#39;inactive&#39;</span><span class="p">,</span> <span class="s1">&#39;age&#39;</span><span class="p">:</span> <span class="mi">10</span><span class="p">}</span>
+</span><span data-line="15"><span class="gp">... </span>    <span class="p">),</span>
+</span><span data-line="16"><span class="gp">... </span>    <span class="n">PhysicalAsset</span><span class="p">(</span>
+</span><span data-line="17"><span class="gp">... </span>        <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;a3&#39;</span><span class="p">,</span>
+</span><span data-line="18"><span class="gp">... </span>        <span class="n">geometry</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">),</span>
+</span><span data-line="19"><span class="gp">... </span>        <span class="n">attributes</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;status&#39;</span><span class="p">:</span> <span class="s1">&#39;active&#39;</span><span class="p">,</span> <span class="s1">&#39;age&#39;</span><span class="p">:</span> <span class="mi">15</span><span class="p">}</span>
+</span><span data-line="20"><span class="gp">... </span>    <span class="p">)</span>
+</span><span data-line="21"><span class="gp">... </span><span class="p">])</span>
+</span></pre></div>
+</div>
+<p>Filter for exact match (default behavior):</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">active</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">filter_by_attribute</span><span class="p">(</span><span class="s1">&#39;status&#39;</span><span class="p">,</span> <span class="s1">&#39;active&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">active</span><span class="p">)</span>
+</span><span data-line="3"><span class="go">2</span>
+</span></pre></div>
+</div>
+<p>Filter using inequalities (get assets older than 8):</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">old</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">filter_by_attribute</span><span class="p">(</span><span class="s1">&#39;age&#39;</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="n">operator</span><span class="o">=</span><span class="s1">&#39;&gt;&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">old</span><span class="p">)</span>
+</span><span data-line="3"><span class="go">2</span>
+</span></pre></div>
+</div>
+<p>Filter using ‘in’ to find assets matching ANY value in a list
+(OR logic). In this example, we keep the asset if status is
+‘active’ OR ‘repair’. If no assets are ‘repair’, it simply returns
+the ‘active’ ones:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">subset</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">filter_by_attribute</span><span class="p">(</span>
+</span><span data-line="2"><span class="gp">... </span>    <span class="s1">&#39;status&#39;</span><span class="p">,</span>
+</span><span data-line="3"><span class="gp">... </span>    <span class="p">[</span><span class="s1">&#39;active&#39;</span><span class="p">,</span> <span class="s1">&#39;repair&#39;</span><span class="p">],</span>
+</span><span data-line="4"><span class="gp">... </span>    <span class="n">operator</span><span class="o">=</span><span class="s1">&#39;in&#39;</span>
+</span><span data-line="5"><span class="gp">... </span><span class="p">)</span>
+</span><span data-line="6"><span class="gp">&gt;&gt;&gt; </span><span class="n">subset</span><span class="o">.</span><span class="n">summary</span><span class="p">()</span>
+</span><span data-line="7"><span class="gp">&gt;&gt;&gt; </span><span class="n">subset</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">attributes</span>
+</span></pre></div>
+</div>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.filter_by_bbox">
-<span class="sig-name descname"><span class="pre">filter_by_bbox</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#rapidtools.core.BoundingBox" title="rapidtools.core.bounding_box.BoundingBox"><span class="pre">BoundingBox</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection" title="rapidtools.core.physical_asset.PhysicalAssetCollection"><span class="pre">PhysicalAssetCollection</span></a></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.filter_by_bbox"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.filter_by_bbox" title="Link to this definition">¶</a></dt>
-<dd><p>Returns a new collection with assets intersecting the bounding box.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.filter_by_polygon">
-<span class="sig-name descname"><span class="pre">filter_by_polygon</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">polygon</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">BaseGeometry</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection" title="rapidtools.core.physical_asset.PhysicalAssetCollection"><span class="pre">PhysicalAssetCollection</span></a></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.filter_by_polygon"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.filter_by_polygon" title="Link to this definition">¶</a></dt>
-<dd><p>Returns a new collection with assets intersecting the Shapely polygon.</p>
+<dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.filter_by_geometry">
+<span class="sig-name descname"><span class="pre">filter_by_geometry</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">geometry</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#rapidtools.core.BoundingBox" title="rapidtools.core.bounding_box.BoundingBox"><span class="pre">BoundingBox</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#rapidtools.core.PolygonRegion" title="rapidtools.core.polygon_region.PolygonRegion"><span class="pre">PolygonRegion</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">BaseGeometry</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">predicate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'intersects'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection" title="rapidtools.core.physical_asset.PhysicalAssetCollection"><span class="pre">PhysicalAssetCollection</span></a></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.filter_by_geometry"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.filter_by_geometry" title="Link to this definition">¶</a></dt>
+<dd><p>Returnsa new collection with assets matching a spatial query.</p>
+<p>This method accepts <code class="docutils literal notranslate"><span class="pre">BoundingBox</span></code>, <code class="docutils literal notranslate"><span class="pre">PolygonRegion</span></code>, or raw
+Shapely geometries. It leverages the underlying geometry for
+efficient filtering.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>geometry</strong> – The search area can be:
+- An instance of BoundingBox or PolygonRegion.
+- A raw Shapely <code class="docutils literal notranslate"><span class="pre">BaseGeometry</span></code>.</p></li>
+<li><p><strong>predicate</strong> (<em>str</em>) – <p>The spatial relationship to check. Defaults to
+‘intersects’.
+- <code class="docutils literal notranslate"><span class="pre">'intersects'</span></code>: Returns assets that touch or overlap</p>
+<blockquote>
+<div><p>(Default).</p>
+</div></blockquote>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">'within'</span></code>: Returns assets strictly inside the
+geometry.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">'contains'</span></code>: Returns assets that strictly contain the
+geometry.</p></li>
+</ul>
+</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A subset of matching assets.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#rapidtools.core.PhysicalAssetCollection" title="rapidtools.core.PhysicalAssetCollection">PhysicalAssetCollection</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<p>Create an asset collection consisting of five physical assets:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Point</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhysicalAsset</span><span class="p">,</span>                 <span class="o">...</span> <span class="n">PhysicalAssetCollection</span><span class="p">,</span> <span class="n">BoundingBox</span><span class="p">,</span> <span class="n">PolygonRegion</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="4"><span class="go">assets = [</span>
+</span><span data-line="5"><span class="go">    PhysicalAsset(</span>
+</span><span data-line="6"><span class="go">        id=&#39;pole_1&#39;,</span>
+</span><span data-line="7"><span class="go">        geometry=Point(1, 1),</span>
+</span><span data-line="8"><span class="go">        attributes={&#39;status&#39;: &#39;active&#39;, &#39;voltage&#39;: 110},</span>
+</span><span data-line="9"><span class="go">    ),</span>
+</span><span data-line="10"><span class="go">    PhysicalAsset(</span>
+</span><span data-line="11"><span class="go">        id=&#39;pole_2&#39;,</span>
+</span><span data-line="12"><span class="go">        geometry=Point(2, 2),</span>
+</span><span data-line="13"><span class="go">        attributes={&#39;status&#39;: &#39;repair&#39;, &#39;voltage&#39;: 220},</span>
+</span><span data-line="14"><span class="go">    ),</span>
+</span><span data-line="15"><span class="go">    PhysicalAsset(</span>
+</span><span data-line="16"><span class="go">        id=&#39;pole_3&#39;,</span>
+</span><span data-line="17"><span class="go">        geometry=Point(5, 5),</span>
+</span><span data-line="18"><span class="go">        attributes={&#39;status&#39;: &#39;inactive&#39;, &#39;voltage&#39;: 110},</span>
+</span><span data-line="19"><span class="go">    ),</span>
+</span><span data-line="20"><span class="go">    PhysicalAsset(</span>
+</span><span data-line="21"><span class="go">        id=&#39;pump_1&#39;,</span>
+</span><span data-line="22"><span class="go">        geometry=Point(8, 8),</span>
+</span><span data-line="23"><span class="go">        attributes={&#39;status&#39;: &#39;active&#39;, &#39;voltage&#39;: &#39;N/A&#39;},</span>
+</span><span data-line="24"><span class="go">    ),</span>
+</span><span data-line="25"><span class="go">    PhysicalAsset(</span>
+</span><span data-line="26"><span class="go">        id=&#39;pump_2&#39;,</span>
+</span><span data-line="27"><span class="go">        geometry=Point(12, 12),</span>
+</span><span data-line="28"><span class="go">        attributes={&#39;status&#39;: &#39;active&#39;, &#39;voltage&#39;: 220},</span>
+</span><span data-line="29"><span class="go">    ),</span>
+</span><span data-line="30"><span class="go">]</span>
+</span><span data-line="31"><span class="go">collection = PhysicalAssetCollection(assets)</span>
+</span></pre></div>
+</div>
+<p>Filter using BoundingBox (0,0 to 6,6):</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">bbox</span> <span class="o">=</span> <span class="n">BoundingBox</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">6</span><span class="p">)</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="n">in_box</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">filter_by_geometry</span><span class="p">(</span><span class="n">bbox</span><span class="p">)</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span>
+</span><span data-line="4"><span class="gp">... </span><span class="sa">f</span><span class="s1">&#39;Assets in BoundingBox(0,0,6,6): </span><span class="si">{</span><span class="p">[</span><span class="n">a</span><span class="o">.</span><span class="n">id</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">in_box</span><span class="p">]</span><span class="si">}</span><span class="s1">&#39;</span>
+</span><span data-line="5"><span class="gp">... </span><span class="p">)</span>
+</span><span data-line="6"><span class="go">Assets in BoundingBox(0,0,6,6): [&#39;pole_1&#39;, &#39;pole_2&#39;, &#39;pole_3&#39;]</span>
+</span></pre></div>
+</div>
+<p>Filter using a triangular PolygonRegion:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">triangle</span> <span class="o">=</span> <span class="n">PolygonRegion</span><span class="p">([(</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">3</span><span class="p">),</span> <span class="p">(</span><span class="mi">3</span><span class="p">,</span><span class="mi">0</span><span class="p">)])</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="n">in_tri</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">filter_by_geometry</span><span class="p">(</span><span class="n">triangle</span><span class="p">)</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Assets in triangle: </span><span class="si">{</span><span class="p">[</span><span class="n">a</span><span class="o">.</span><span class="n">id</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">in_tri</span><span class="p">]</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+</span><span data-line="4"><span class="go">Assets in triangle: [&#39;pole_1&#39;]</span>
+</span></pre></div>
+</div>
+<p>A comparison of a strict ‘within’ check vs ‘intersects’.
+pole_3 is at (5,5). Following BoundinBox barely touches pole_3:
+Please note that in checking for a spatial relationship,
+intersects (i.e., the default predicate) includes edges, while
+within excludes them:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">touching_box</span> <span class="o">=</span> <span class="n">BoundingBox</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="n">touching</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">filter_by_geometry</span><span class="p">(</span><span class="n">touching_box</span><span class="p">)</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Touching bounding box: </span><span class="si">{</span><span class="p">[</span><span class="n">a</span><span class="o">.</span><span class="n">id</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">touching</span><span class="p">]</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+</span><span data-line="4"><span class="go">Touching bounding box: [&#39;pole_3&#39;, &#39;pump_1&#39;]</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="6"><span class="gp">&gt;&gt;&gt; </span><span class="n">inside</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">filter_by_geometry</span><span class="p">(</span>
+</span><span data-line="7"><span class="gp">... </span>   <span class="n">touching_box</span><span class="p">,</span>
+</span><span data-line="8"><span class="gp">... </span>   <span class="n">predicate</span><span class="o">=</span><span class="s1">&#39;within&#39;</span>
+</span><span data-line="9"><span class="gp">... </span><span class="p">)</span>
+</span><span data-line="10"><span class="go">print(f&#39;Strictly inside: {[a.id for a in inside]}&#39;)</span>
+</span><span data-line="11"><span class="go">Strictly inside: [&#39;pump_1&#39;]</span>
+</span></pre></div>
+</div>
 </dd></dl>
 
 <dl class="py method">
@@ -1984,6 +2163,90 @@ that specific ID and a warning is logged.</p>
 </span><span data-line="2"><span class="go">WARNING: Asset ID &#39;p99&#39; not found. Skipping removal.</span>
 </span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">collection</span><span class="p">)</span>
 </span><span data-line="4"><span class="go">0</span>
+</span></pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.PhysicalAssetCollection.set_attribute">
+<span class="sig-name descname"><span class="pre">set_attribute</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/physical_asset.html#PhysicalAssetCollection.set_attribute"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.PhysicalAssetCollection.set_attribute" title="Link to this definition">¶</a></dt>
+<dd><p>Batch update a specific attribute across all assets in the collection.</p>
+<p>This method assigns <code class="docutils literal notranslate"><span class="pre">value</span></code> to <code class="docutils literal notranslate"><span class="pre">asset.attributes[key]</span></code>. It supports
+both static values and dynamic value generation using functions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>key</strong> (<em>str</em>) – The attribute name to set.</p></li>
+<li><p><strong>value</strong> (<em>Any</em>) – <p>The value to assign.
+- If a static value (int, str), it is assigned directly.
+- If a <strong>callable</strong> (function/lambda), it is executed for</p>
+<blockquote>
+<div><p>each asset as <code class="docutils literal notranslate"><span class="pre">value(asset)</span></code>, and the result is assigned.
+This is useful for derived properties or avoiding shared
+mutable references (see examples).</p>
+</div></blockquote>
+</p></li>
+<li><p><strong>overwrite</strong> (<em>bool</em>) – If <code class="docutils literal notranslate"><span class="pre">False</span></code>, existing attributes will be preserved
+and not updated. If <code class="docutils literal notranslate"><span class="pre">True</span></code>, the new value overwrites any
+existing value. Defaults to <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<p>Setup a collection with two assets for the examples:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Point</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhysicalAsset</span><span class="p">,</span> <span class="n">PhysicalAssetCollection</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">assets</span> <span class="o">=</span> <span class="p">[</span>
+</span><span data-line="5"><span class="gp">... </span>    <span class="n">PhysicalAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;a1&#39;</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">),</span> <span class="n">attributes</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;status&#39;</span><span class="p">:</span> <span class="s1">&#39;old&#39;</span><span class="p">}),</span>
+</span><span data-line="6"><span class="gp">... </span>    <span class="n">PhysicalAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;a2&#39;</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="n">Point</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span> <span class="c1"># No attributes</span>
+</span><span data-line="7"><span class="gp">... </span><span class="p">]</span>
+</span><span data-line="8"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span> <span class="o">=</span> <span class="n">PhysicalAssetCollection</span><span class="p">(</span><span class="n">assets</span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>Add a new tag to every asset (static assigment):</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="o">.</span><span class="n">set_attribute</span><span class="p">(</span><span class="s1">&#39;category&#39;</span><span class="p">,</span> <span class="s1">&#39;utility_pole&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="go">INFO: Updated attribute &#39;category&#39; for 2 assets.</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="p">[</span><span class="s1">&#39;a1&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s1">&#39;category&#39;</span><span class="p">]</span>
+</span><span data-line="4"><span class="go">&#39;utility_pole&#39;</span>
+</span></pre></div>
+</div>
+<p>Overwrite existing attribute values. In the example below, <code class="docutils literal notranslate"><span class="pre">'a1'</span></code>
+already has <code class="docutils literal notranslate"><span class="pre">status='old'</span></code>. By default, <code class="docutils literal notranslate"><span class="pre">set_attribute</span></code> does
+not modify an existing value. To force an update, set the
+<code class="docutils literal notranslate"><span class="pre">overwrite</span></code> argument to <code class="docutils literal notranslate"><span class="pre">True</span></code>:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="o">.</span><span class="n">set_attribute</span><span class="p">(</span><span class="s1">&#39;status&#39;</span><span class="p">,</span> <span class="s1">&#39;new&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="go">INFO: Updated attribute &#39;status&#39; for 1 asset.</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="p">[</span><span class="s1">&#39;a1&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s1">&#39;status&#39;</span><span class="p">]</span>
+</span><span data-line="4"><span class="go">&#39;old&#39;</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="o">.</span><span class="n">set_attribute</span><span class="p">(</span><span class="s1">&#39;status&#39;</span><span class="p">,</span> <span class="s1">&#39;new&#39;</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span data-line="6"><span class="go">INFO: Updated attribute &#39;status&#39; for 2 assets.</span>
+</span><span data-line="7"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="p">[</span><span class="s1">&#39;a1&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s1">&#39;status&#39;</span><span class="p">]</span>
+</span><span data-line="8"><span class="go">&#39;new&#39;</span>
+</span></pre></div>
+</div>
+<p>Derive values for each asset (Dynamic assignment). This example
+uses a lambda function to get the x coordinates of assets using
+their geometry information:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="o">.</span><span class="n">set_attribute</span><span class="p">(</span>
+</span><span data-line="2"><span class="gp">... </span>    <span class="s1">&#39;x_coord&#39;</span><span class="p">,</span>
+</span><span data-line="3"><span class="gp">... </span>    <span class="n">value</span><span class="o">=</span><span class="k">lambda</span> <span class="n">asset</span><span class="p">:</span> <span class="n">asset</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">x</span><span class="p">,</span>
+</span><span data-line="4"><span class="gp">... </span>    <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span>
+</span><span data-line="5"><span class="gp">... </span><span class="p">)</span>
+</span><span data-line="6"><span class="go">INFO: Updated attribute &#39;x_coord&#39; for 2 assets.</span>
+</span><span data-line="7"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="p">[</span><span class="s1">&#39;a2&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s1">&#39;x_coord&#39;</span><span class="p">]</span>
+</span><span data-line="8"><span class="go">1.0</span>
+</span></pre></div>
+</div>
+<p>How to initialize mutable objects safely (and not fall for the
+“List” Trap). This example uses a lambda that returns a new list
+generate a unique list for each asset, avoiding the common bug
+where all assets share the same list reference:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="o">.</span><span class="n">set_attribute</span><span class="p">(</span><span class="s1">&#39;logs&#39;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">_</span><span class="p">:</span> <span class="nb">list</span><span class="p">())</span>
+</span><span data-line="2"><span class="go">INFO: Updated attribute &#39;logs&#39; for 2 assets.</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="p">[</span><span class="s1">&#39;a1&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s1">&#39;logs&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;Log Entry 1&#39;</span><span class="p">)</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">collection</span><span class="p">[</span><span class="s1">&#39;a2&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s1">&#39;logs&#39;</span><span class="p">]</span>
+</span><span data-line="5"><span class="go">[]</span>
 </span></pre></div>
 </div>
 </dd></dl>
