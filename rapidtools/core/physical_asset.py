@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 01-26-2025
+# 01-30-2025
 
 from __future__ import annotations
 
@@ -43,16 +43,17 @@ import json
 import logging
 import uuid
 from dataclasses import asdict, dataclass, field
+import operator as op
 from pathlib import Path
-from typing import Any, ClassVar, Iterator
+from typing import Any, ClassVar, Iterable, Iterator
 
 from tqdm import tqdm
-from shapely.geometry import mapping, shape
+from shapely.geometry import box, mapping, shape
 from shapely.geometry.base import BaseGeometry
-from shapely.ops import unary_union
 
 from .bounding_box import BoundingBox
 from .image_asset import ImageAsset, ImageCollection
+from .polygon_region import PolygonRegion
 
 @dataclass(kw_only=True, repr=False)
 class PhysicalAsset:
@@ -93,24 +94,38 @@ class PhysicalAsset:
 
     def __post_init__(self):
         """
-        Validate initialization parameters.
-        
-        Ensures that:
-        - ``geometry`` is a Shapely BaseGeometry instance.
-        - ``id`` is not empty.
-        
+        Validate and normalize fields after dataclass initialization.
+    
+        This hook performs lightweight runtime checks that are not enforced by
+        type hints at runtime:
+    
+        - ``id`` must be a non-empty, non-whitespace ``str``.
+        - ``geometry`` must be a Shapely ``BaseGeometry`` instance.
+        - If ``geometry`` is present but invalid, a warning is logged.
+    
         Raises:
-            TypeError: If ``geometry`` is not a Shapely BaseGeometry.
-            ValueError: If ``id`` is empty.
-        """     
+            TypeError:
+                If ``id`` is not a ``str`` or if ``geometry`` is not a Shapely
+                geometry.
+            ValueError:
+                If ``id`` is empty or whitespace only.
+        """   
+        if not isinstance(self.id, str):
+            raise TypeError(
+                "PhysicalAsset 'id' must be a string, got "
+                f'{type(self.id).__name__}.'
+            )
+
+        if not self.id.strip():
+            raise ValueError(
+                "PhysicalAsset 'id' cannot be empty or whitespace."
+            )
+        
         if not isinstance(self.geometry, BaseGeometry):
             raise TypeError(
                 "The 'geometry' attribute must be a valid shapely geometry"
                 f' object, not {type(self.geometry)}.'
                 )
-        
-        if not self.id:
-            raise ValueError("PhysicalAsset 'id' cannot be empty.")
             
         if not self.geometry.is_valid:
             logging.warning(
@@ -461,8 +476,8 @@ class PhysicalAsset:
         # Extract and Rehydrate ImageAssets. Note that this key from the 
         # general attributes dict to eliminate duplication:
         image_data_list = properties.pop('image_assets', [])
-        rehydrated_images = []
         
+        rehydrated_images = []
         if image_data_list:
             for img_dict in image_data_list:
                 try:
@@ -904,80 +919,652 @@ class PhysicalAsset:
 @dataclass
 class PhysicalAssetCollection:
     """
-    Represents a collection of PhysicalAsset objects.
+    A specialized container for collection of PhysicalAsset objects.
 
-    This class acts as a "smart list," providing methods to manage and analyze
-    a group of assets as a whole. It supports list-like operations such as
-    iteration, len(), and indexing.
+    This class enforces unique asset IDs and provides fast, O(1), lookups. 
+    Internally, it uses a dictionary to store assets, but it behaves like 
+    a sequence for iteration and interaction.
+
+    Key Features:
+    * Spatial Querying: Filter assets by BoundingBox or Polygon.
+    * Data I/O: Import/Export to GeoJSON and convert to Pandas DataFrames.
+    * Batch Operations: Update attributes across all assets.
+    * Set Operations: Merge collections with collision handling.
+
+    Supported Container Operations:
+    * Iteration: ``for asset in collection: ...``
+    * Indexing: ``collection['id_str']`` (Fast) or ``collection[0]`` (Slower)
+    * Length: ``len(collection)``
+    * Membership: ``if 'pole_01' in collection: ...``
+
+    Args:
+        assets (Iterable[PhysicalAsset]): Assets to populate. 
+            Can be a list, tuple, or generator. Defaults to empty.
     """
-    assets: list[PhysicalAsset] = field(default_factory=list)
+    assets: Iterable[PhysicalAsset] = field(
+        default_factory=list, 
+        repr=False
+    )
+    
+    # Internal data storage:
+    _data: dict[str, PhysicalAsset] = field(init=False, default_factory=dict)
 
     def __post_init__(self):
-        if unary_union is None:
-            raise ImportError("Shapely library is required. Please run 'pip install shapely'.")
-        ids = [asset.id for asset in self.assets]
-        if len(ids) != len(set(ids)):
-            raise ValueError("Duplicate asset IDs found. All asset IDs in a collection must be unique.")
+        """
+        Populate the collection with specified assets.
+
+        This method loads any assets provided in ``assets`` into the internal 
+        storage.
+        """
+        if self.assets:
+            self.add(self.assets)
 
     def __len__(self) -> int:
-        """Returns the number of assets in the collection."""
-        return len(self.assets)
+        """Return the number of assets in the collection."""
+        return len(self._data)
 
     def __iter__(self) -> Iterator[PhysicalAsset]:
-        """Allows iterating over the assets in the collection."""
-        return iter(self.assets)
+        """Iterate over the asset objects in insertion order."""
+        return iter(self._data.values())
 
-    def __getitem__(self, index: int) -> PhysicalAsset:
-        """Allows accessing an asset by its index."""
-        return self.assets[index]
+    def __getitem__(self, key: str | int) -> PhysicalAsset:
+        """
+        Retrieve an asset by ID (str) or Index (int).
+        
+        Note: Integer indexing is O(N) because dictionaries are not 
+        positionally indexed. String lookup is O(1).
+        """
+        if isinstance(key, str):
+            if key not in self._data:
+                raise KeyError(f"Asset ID '{key}' not found.")
+            return self._data[key]
+        
+        if isinstance(key, int):
+            try:
+                # Convert view to list to access by index
+                return list(self._data.values())[key]
+            except IndexError:
+                raise IndexError('Collection index out of range.')
+            
+        raise TypeError('Index must be an asset ID (str) or integer index.')
 
-    def append(self, asset: PhysicalAsset):
-        """
-        Adds a new PhysicalAsset to the collection, checking for a unique ID.
-        """
-        if not isinstance(asset, PhysicalAsset):
-            raise TypeError(
-                'Only PhysicalAsset objects can be added to the collection.'
-            )
-        if asset.id in {a.id for a in self.assets}:
-            raise ValueError(
-                f"PhysicalAsset with ID '{asset.id}' already exists.")
-        self.assets.append(asset)
-
-    def get_asset_by_id(self, asset_id: str) -> PhysicalAsset | None:
-        """Finds and returns an asset by its unique ID."""
-        for asset in self.assets:
-            if asset.id == asset_id:
-                return asset
-        return None
-
-    def filter_by_attribute(
-            self, 
-            attribute_key: str, 
-            attribute_value: Any
-        ) -> 'PhysicalAssetCollection':
-        """
-        Filters the collection and returns a new PhysicalAssetCollection.
-        """
-        filtered_assets = [
-            asset for asset in self.assets 
-            if asset.attributes.get(attribute_key) == attribute_value
-        ]
-        return PhysicalAssetCollection(assets=filtered_assets)
+    def __contains__(self, item: str | PhysicalAsset) -> bool:
+        """Checks if an asset ID or PhysicalAsset exists in the collection."""
+        if isinstance(item, str):
+            return item in self._data
+        if hasattr(item, 'id'):
+            return item.id in self._data
+        return False
 
     @property
     def combined_bounding_box(self) -> BoundingBox | None:
         """
-        Calculates the total bounding box that encloses all assets in the collection.
+        Calculates the total bounding box that encloses all assets.
+        
+        Returns:
+            A ``BoundingBox`` object encompassing all assets, or ``None`` if the 
+            collection is empty.
+            
+        Examples:
+            If a ``PhysicalAssetCollection`` is empty, it's 
+            ``combined_bounding_box`` will be None:
+    
+            >>> from rapidtools.core import PhysicalAssetCollection
+            >>> collection = PhysicalAssetCollection()
+            >>> collection.combined_bounding_box is None
+            True
+    
+            Combined bounds reflect the min/max extents across all assets:
+    
+            >>> from shapely.geometry import Point    
+            >>> from rapidtools.core import PhysicalAsset
+            >>>
+            >>> collection.add(PhysicalAsset(id="a1", geometry=Point(0, 0)))
+            >>> collection.add(PhysicalAsset(id="a2", geometry=Point(2, 3)))
+            >>> collection.add(PhysicalAsset(id="a3", geometry=Point(-1, 5)))
+            >>> bbox = collection.combined_bounding_box
+            >>> (bbox.lon1, bbox.lat1, bbox.lon2, bbox.lat2)
+            (-1.0, 0.0, 2.0, 5.0)
         """
-        if not self.assets:
+        if not self._data:
             return None
+                
+        # Track the global min/max extents across all asset geometries.
+        # Start with infinities so the first asset always updates the extrema:
+        min_x, min_y = float('inf'), float('inf')
+        max_x, max_y = float('-inf'), float('-inf')
         
-        geometries = [asset.geometry.buffer(0) for asset in self.assets]
-        combined_geom = unary_union(geometries)
+        for asset in self._data.values():
+            # Get the bounds of each asset:
+            b_min_x, b_min_y, b_max_x, b_max_y = asset.geometry.bounds
+            
+            # Expand the global bounds to include this asset's bounds:
+            if b_min_x < min_x: min_x = b_min_x
+            if b_min_y < min_y: min_y = b_min_y
+            if b_max_x > max_x: max_x = b_max_x
+            if b_max_y > max_y: max_y = b_max_y
         
-        min_lon, min_lat, max_lon, max_lat = combined_geom.bounds
-        return BoundingBox(lon1=min_lon, lat1=min_lat, lon2=max_lon, lat2=max_lat)
+        # Construct the combined BoundingBox from the final extents:
+        return BoundingBox(min_x=min_x, min_y=min_y, max_x=max_x, max_y=max_y)
+
+    def add(self, assets: PhysicalAsset | Iterable[PhysicalAsset]) -> None:
+        """
+        Add one or more assets to the collection.
+
+        This method accepts a single PhysicalAsset or an iterable containing
+        multiple PhysicalAsset objects.
+
+        If an asset with the same ID already exists, or if an item is not a 
+        ``PhysicalAsset``, a warning is logged and that specific item is 
+        skipped. It does not stop the addition of other valid assets.
+
+        Args:
+            assets: 
+                A single ``PhysicalAsset`` or an iterable of ``PhysicalAsset``
+                objects.
+                
+        Examples:
+            Initialize a ``PhysicalAsset``, a list of two ``PhysicalAsset``
+            objects and a ``PhysicalAssetCollection``:
+                
+            >>> from shapely.geometry import Point    
+            >>> from rapidtools.core import PhysicalAsset, PhysicalAssetCollection
+            >>>
+            >>> asset1 = PhysicalAsset(id='pump_01', geometry=Point(10.0, 20.0))
+            >>> assets_list = [
+            ...     PhysicalAsset(id='pump_02', geometry=Point(10.1, 20.1)),
+            ...     PhysicalAsset(id='pump_03', geometry=Point(10.2, 20.2))
+            ... ]
+            >>> collection = PhysicalAssetCollection()
+            
+            Add a single asset to the ``PhysicalAssetCollection``:
+            
+            >>> collection.add(asset1)
+            >>> collection.summary
+            PhysicalAssetCollection.summary of PhysicalAssetCollection(
+            _data={'pump_01': <PhysicalAsset id='pump_01' asset_type='N/A' 
+            geometry='Point'})
+            
+            Add multiple assets at once:
+
+            >>> collection.add(assets_list)
+            >>> len(collection)
+            3
+            
+            Try to add a list of assets including duplicates and incorrect 
+            types. In the batch below, 'pump_01' is a duplicate, 'NotAnAsset'
+            is the wrong type, so only 'pump_04' is added:
+
+            >>> mixed_batch = [
+            ...     PhysicalAsset(id='pump_04', geometry=Point(10.3, 20.3)),
+            ...     PhysicalAsset(id='pump_01', geometry=Point(10.0, 20.0)),
+            ...     'NotAnAsset'
+            ... ]
+            >>> collection.add(mixed_batch)
+            WARNING: Skipping duplicate asset with ID 'pump_01' (already exists).
+            WARNING: Skipping invalid item: Expected PhysicalAsset, got 'str'.
+            >>> len(collection)
+            4            
+        """
+        # Normalize input so the code always iterates over a list/iterable:
+        if isinstance(assets, PhysicalAsset):
+            items_to_process = [assets]
+        elif isinstance(assets, Iterable):
+            items_to_process = assets
+        else:
+            # Handle top-level invalid input:
+            logging.warning(
+                'Input must be a PhysicalAsset or iterable of PhysicalAsset'
+                f" objects. Received input of type: '{type(assets).__name__}'."
+                ' No asset imported.'
+            )
+            return
+
+        for asset in items_to_process:
+            # Check for invalid type:
+            if not isinstance(asset, PhysicalAsset):
+                logging.warning(
+                    f"Skipping invalid item: Expected PhysicalAsset, got "
+                    f"'{type(asset).__name__}'."
+                )
+                continue
+            
+            # Check for duplicate ID:
+            if asset.id in self._data:
+                logging.warning(
+                    f"Skipping duplicate asset with ID '{asset.id}' "
+                    "(already exists)."
+                )
+                continue
+            
+            # Add to storage:
+            self._data[asset.id] = asset
+
+    def get(
+        self, 
+        asset_ids: str | Iterable[str], 
+        default: Any = None
+    ) -> PhysicalAsset | Any | list[PhysicalAsset | Any]:
+        """
+        Safely retrieve assets by unique ID(s).
+
+        This method is polymorphic:
+        1. If ``asset_ids`` is a ``str``, it returns a single ``PhysicalAsset`` 
+           (or default).
+        2. If ``asset_ids`` is an ``Iterable`` (list, tuple, etc.), it returns 
+           a ``list`` of results in the same order as the requested IDs.
+
+        Args:
+            asset_ids: 
+                A single asset ID string OR an iterable of ID strings.
+            default: 
+                Value to return if an ID is not found. Defaults to ``None``.
+
+        Returns:
+            - ``PhysicalAsset`` (or default) if input is a single string.
+            - ``list[PhysicalAsset | Any]`` if input is a list/iterable.
+        
+        Raises:
+            TypeError: If ``asset_ids`` is not a ``str`` or ``Iterable``.
+
+        Examples:
+            Create a ``PhysicalAssetCollection`` consisting of two 
+            ``PhysicalAsset`` objects:
+                
+            >>> from shapely.geometry import Point    
+            >>> from rapidtools.core import PhysicalAsset, PhysicalAssetCollection
+            >>>
+            >>> collection = PhysicalAssetCollection()
+            >>> collection.add(PhysicalAsset(
+            >>>     id='pump_01', 
+            >>>     geometry=Point(0,0)
+            >>> ))
+            >>> collection.add(PhysicalAsset(
+            >>>     id='pump_02', 
+            >>>     geometry=Point(1,1)
+            >>> ))
+
+            Single lookup (returns ``PhysicalAsset`` or ``None``):
+                
+            >>> asset = collection.get('pump_01')
+            >>> asset.id
+            'pump_01'
+
+            Batch lookup (returns a list of ``PhysicalAsset`` objects):
+                
+            >>> results = collection.get(['pump_01', 'pump_02', 'missing_id'])
+            >>> print(results)
+            [<PhysicalAsset id='pump_01' asset_type='N/A' geometry='Point'>, 
+            <PhysicalAsset id='pump_02' asset_type='N/A' geometry='Point'>, 
+            None]
+
+            # Set a custom default value:
+                
+            >>> collection.get('missing_id', default='Not Found')
+            'Not Found'
+        """
+        # Case 1: Single ID Lookup:
+        if isinstance(asset_ids, str):
+            return self._data.get(asset_ids, default)
+        
+        # Case 2: Batch Lookup:
+        if isinstance(asset_ids, Iterable):
+            return [self._data.get(k, default) for k in asset_ids]
+        
+        # Case 3: Invalid Input:
+        raise TypeError(
+            'asset_ids must be specified as a string or iterable of strings. '
+            f"Got '{type(asset_ids).__name__}'."
+        )
+        
+        return default
+
+    def filter_by_attribute(
+        self, 
+        key: str, 
+        value: Any, 
+        operator: str = '==',
+        warn_if_missing: bool = False
+    ) -> PhysicalAssetCollection:
+        """
+        Return a new collection of assets with specified attribute criteria.
+
+        This method filters the collection based on the `key` existing in an 
+        asset's `attributes` dictionary and comparing it against `value` using 
+        the specified `operator`.
+
+        Args:
+            key (str): 
+                The dictionary key to look up in `asset.attributes`.
+            value (Any): 
+                The value to compare against.
+            operator (str, optional): 
+                The comparison operator to use. 
+                Supported options:
+                - ``'=='``: Exact match (default).
+                - ``'!='``: Not equal.
+                - ``'>'``, ``'>='``, ``'<'``, ``'<='``: Numeric/Lexical
+                  comparison.
+                - ``'in'``: Checks if asset attribute is in the provided
+                  ``value`` (list/set).
+                - ``'contains'``: Checks if asset attribute CONTAINS the 
+                   provided ``value``.
+                - ``'exists'``: Checks if the key exists (value argument is 
+                  ignored).
+            warn_if_missing: 
+                If ``True``, logs a warning for every asset that does not 
+                contain the ``key``. Defaults to ``False`` to prevent log spam
+                on sparse data.
+
+        Returns:
+            PhysicalAssetCollection: 
+                A new collection containing only the matching assets.
+                
+        Raises:
+            ValueError: If the provided `operator` string is not supported.
+
+        Examples:
+            >>> from shapely.geometry import Point 
+            >>> from rapidtools.core import PhysicalAsset, PhysicalAssetCollection
+            >>>
+            >>> collection = PhysicalAssetCollection()
+            >>> collection.add([
+            ...     PhysicalAsset(
+            ...         id='a1',
+            ...         geometry=Point(0,0), 
+            ...         attributes={'status': 'active', 'age': 5}
+            ...     ),
+            ...     PhysicalAsset(
+            ...         id='a2',
+            ...         geometry=Point(1,0), 
+            ...         attributes={'status': 'inactive', 'age': 10}
+            ...     ),
+            ...     PhysicalAsset(
+            ...         id='a3',
+            ...         geometry=Point(0,1), 
+            ...         attributes={'status': 'active', 'age': 15}
+            ...     )            
+            ... ])
+
+            Filter for exact match (default behavior):
+                
+            >>> active = collection.filter_by_attribute('status', 'active')
+            >>> len(active)
+            2
+
+            Filter using inequalities (get assets older than 8):
+                
+            >>> old = collection.filter_by_attribute('age', 8, operator='>')
+            >>> len(old)
+            2
+
+            Filter using 'in' to find assets matching ANY value in a list 
+            (OR logic). In this example, we keep the asset if status is 
+            'active' OR 'repair'. If no assets are 'repair', it simply returns
+            the 'active' ones:
+                
+            >>> subset = collection.filter_by_attribute(
+            ...     'status', 
+            ...     ['active', 'repair'], 
+            ...     operator='in'
+            ... )
+            >>> subset.summary()
+            >>> subset[0].attributes
+            """
+        filtered_assets = []
+        
+        # Map string operators to actual functions:      
+        ops = {
+            "==": op.eq,
+            "!=": op.ne,
+            ">": op.gt,
+            ">=": op.ge,
+            "<": op.lt,
+            "<=": op.le,
+            "in": lambda attr_val, target: attr_val in target,
+            "contains": lambda attr_val, target: target in attr_val,
+        }
+
+        # Special handle 'exists' which does not use the 'value' param:
+        if operator == "exists":
+            return PhysicalAssetCollection(
+                assets=[a for a in self._data.values() if key in a.attributes]
+            )
+
+        if operator not in ops:
+            raise ValueError(
+                f"Unsupported operator: '{operator}'. Valid options: "
+                f'{list(ops.keys())}'
+            )
+            
+        compare_func = ops[operator]
+
+        for asset in self._data.values():
+            # Skip if attribute is missing completely:
+            if key not in asset.attributes:
+                if warn_if_missing:
+                    logging.warning(
+                        f"Missing attribute [Asset ID: '{asset.id}']: "
+                        f"Attribute '{key}' was not found. Skipping asset"
+                    )
+                continue
+                
+            attr_val = asset.attributes[key]
+            
+            # Attempt comparison with Type Mismatch handling:
+            try:
+                if compare_func(attr_val, value):
+                    filtered_assets.append(asset)
+            except TypeError:
+                # Catch errors where types are incompatible (e.g., 
+                # comparing str > int) and skip the asset:
+                logging.warning(
+                    f"Filter type mismatch [Asset ID: '{asset.id}']: "
+                    f"Cannot compare attribute '{key}' value '{attr_val}' "
+                    f"({type(attr_val).__name__}) with filter value '{value}' "
+                    f"({type(value).__name__}) using operator '{operator}'. "
+                    "Skipping asset."
+                )
+                continue
+
+        return PhysicalAssetCollection(assets=filtered_assets)
+
+    def filter_by_geometry(
+            self, 
+            geometry: BoundingBox | PolygonRegion | BaseGeometry,
+            predicate: str = 'intersects'
+        ) -> 'PhysicalAssetCollection':
+            """
+            Returnsa new collection with assets matching a spatial query.
+    
+            This method accepts ``BoundingBox``, ``PolygonRegion``, or raw 
+            Shapely geometries. It leverages the underlying geometry for 
+            efficient filtering.
+    
+            Args:
+                geometry: 
+                    The search area can be:
+                    - An instance of BoundingBox or PolygonRegion.
+                    - A raw Shapely ``BaseGeometry``.
+                predicate (str): 
+                    The spatial relationship to check. Defaults to 
+                    'intersects'.
+                    - ``'intersects'``: Returns assets that touch or overlap
+                      (Default).
+                    - ``'within'``: Returns assets strictly inside the
+                      geometry.
+                    - ``'contains'``: Returns assets that strictly contain the
+                      geometry.
+    
+            Returns:
+                PhysicalAssetCollection: A subset of matching assets.
+                
+            Examples:
+                Create an asset collection consisting of five physical assets:
+
+                >>> from shapely.geometry import Point 
+                >>> from rapidtools.core import PhysicalAsset, \
+                ... PhysicalAssetCollection, BoundingBox, PolygonRegion
+                >>>
+                assets = [
+                    PhysicalAsset(
+                        id='pole_1',
+                        geometry=Point(1, 1),
+                        attributes={'status': 'active', 'voltage': 110},
+                    ),
+                    PhysicalAsset(
+                        id='pole_2',
+                        geometry=Point(2, 2),
+                        attributes={'status': 'repair', 'voltage': 220},
+                    ),
+                    PhysicalAsset(
+                        id='pole_3',
+                        geometry=Point(5, 5),
+                        attributes={'status': 'inactive', 'voltage': 110},
+                    ),
+                    PhysicalAsset(
+                        id='pump_1',
+                        geometry=Point(8, 8),
+                        attributes={'status': 'active', 'voltage': 'N/A'},
+                    ),
+                    PhysicalAsset(
+                        id='pump_2',
+                        geometry=Point(12, 12),
+                        attributes={'status': 'active', 'voltage': 220},
+                    ),  
+                ]
+                collection = PhysicalAssetCollection(assets)
+
+                Filter using BoundingBox (0,0 to 6,6):
+                    
+                >>> bbox = BoundingBox(0, 0, 6, 6)
+                >>> in_box = collection.filter_by_geometry(bbox)
+                >>> print(
+                ... f'Assets in BoundingBox(0,0,6,6): {[a.id for a in in_box]}'
+                ... )
+                Assets in BoundingBox(0,0,6,6): ['pole_1', 'pole_2', 'pole_3']
+                
+                Filter using a triangular PolygonRegion:
+                    
+                >>> triangle = PolygonRegion([(0,0), (0,3), (3,0)])
+                >>> in_tri = collection.filter_by_geometry(triangle)
+                >>> print(f'Assets in triangle: {[a.id for a in in_tri]}')
+                Assets in triangle: ['pole_1']
+                
+                A comparison of a strict 'within' check vs 'intersects'. 
+                pole_3 is at (5,5). Following BoundinBox barely touches pole_3:
+                Please note that in checking for a spatial relationship, 
+                intersects (i.e., the default predicate) includes edges, while
+                within excludes them:
+                    
+                >>> touching_box = BoundingBox(5, 5, 10, 10)
+                >>> touching = collection.filter_by_geometry(touching_box)
+                >>> print(f'Touching bounding box: {[a.id for a in touching]}')
+                Touching bounding box: ['pole_3', 'pump_1']
+                >>>
+                >>> inside = collection.filter_by_geometry(
+                ...    touching_box, 
+                ...    predicate='within'
+                ... )
+                print(f'Strictly inside: {[a.id for a in inside]}')
+                Strictly inside: ['pump_1']
+            """
+            # All valid Shapely binary predicates are supported:
+            VALID_PREDICATES = {
+                'intersects',
+                'within',
+                'contains',
+                'touches',
+                'disjoint',
+                'overlaps'
+            }
+            
+            # Extract the search shape:
+            if hasattr(geometry, '_geom'):
+                search_shape = geometry._geom
+            elif isinstance(geometry, BaseGeometry):
+                search_shape = geometry
+            # Catch generic objects (like custom tuple wrappers) that provide
+            # standard bounds:
+            elif hasattr(geometry, 'bounds'):
+                search_shape = box(*geometry.bounds)
+            else:
+                raise TypeError(
+                    'Input must be a rapidtools BoundingBox/PolygonRegion) '
+                    'or Shapely Geometry. Got type: '
+                    f"'{type(geometry).__name__}'"
+                )
+    
+            # Validate predicate:
+            if predicate not in VALID_PREDICATES:
+                 raise ValueError(
+                     f"Invalid spatial predicate '{predicate}'. "
+                     f'Supported options: {VALID_PREDICATES}'
+                 )
+    
+            # Filter assets:
+            filtered_assets = []
+            
+            for asset in self._data.values():
+                # Dynamically retrieve the method (e.g., 
+                # asset.geometry.intersects) and call it with the search_shape:
+                if getattr(asset.geometry, predicate)(search_shape):
+                    filtered_assets.append(asset)
+    
+            return PhysicalAssetCollection(assets=filtered_assets)
+
+    def get_all_image_assets(self) -> ImageCollection:
+        """
+        Aggregates all images from every physical asset into a single 
+        ImageCollection.
+        """
+        all_images = ImageCollection()
+        for asset in self._data.values():
+            if asset.image_assets:
+                all_images.combine_with(
+                    asset.image_assets, 
+                    add_new=True, 
+                    overwrite_properties=False
+                )
+        return all_images
+
+    def merge(
+        self, 
+        other: 'PhysicalAssetCollection', 
+        strategy: str = 'skip'
+    ) -> None:
+        """
+        Merge another collection into this one.
+
+        Args:
+            other: The PhysicalAssetCollection to merge in.
+            strategy: 
+                'skip' (default): Keep existing, ignore new.
+                'overwrite': Replace existing with new.
+                'raise': Error on duplicate.
+        """
+        if not isinstance(other, PhysicalAssetCollection):
+            raise TypeError('Can only merge with another PhysicalAssetCollection.')
+
+        stats = {'added': 0, 'overwritten': 0, 'skipped': 0}
+
+        # Iterate over the OTHER collection's dictionary
+        for new_asset in other._data.values():
+            if new_asset.id in self._data:
+                if strategy == 'raise':
+                    raise ValueError(
+                        f"Duplicate asset ID '{new_asset.id}' found."
+                    )
+                elif strategy == 'overwrite':
+                    self._data[new_asset.id] = new_asset
+                    stats['overwritten'] += 1
+                else: # skip
+                    stats['skipped'] += 1
+            else:
+                self._data[new_asset.id] = new_asset
+                stats['added'] += 1
+
+        logging.info(f"Merge complete: {stats}")
 
     def from_geojson(
             self, 
@@ -985,16 +1572,8 @@ class PhysicalAssetCollection:
         ) -> 'PhysicalAssetCollection':
         """
         Populate the collection with assets from a GeoJSON source.
-
-        Includes a progress bar and O(N) optimization for bulk imports.
-
-        Args:
-            source: GeoJSON dictionary or file path.
-
-        Returns:
-            The current instance (self).
         """
-        # Load Data:
+        # Load Data
         if isinstance(source, (str, Path)):
             with open(source, 'r', encoding='utf-8') as f:
                 geojson_data = json.load(f)
@@ -1010,57 +1589,141 @@ class PhysicalAssetCollection:
         
         features = geojson_data.get('features', [])
         
-        # Create a set of existing IDs:
-        existing_ids = {asset.id for asset in self.assets}
-        
-        new_assets = []
-
-        # Iterate over each GeoJSON feature and convert it into an asset:
-        for feature_geojson in tqdm(
-                features, 
-                desc='Importing Assets', 
-                unit='asset'
-            ):
-
-            # Try to reuse an existing ID from the feature if present. We 
-            # first check a top-level "id" field, then fall back to 
-            # "properties.id":
+        for feature_geojson in tqdm(features, desc='Importing Assets', unit='asset'):
+            # Determine ID
             existing_id = feature_geojson.get('id')
             if existing_id is None:
                 existing_id = feature_geojson.get('properties', {}).get('id')
 
             if existing_id is None:
-                # If No ID found in the source data: generate a new, unique one
-                # Prefix with "gen_" to mark it as system-generated:
                 assigned_id = f'gen_{uuid.uuid4().hex}'
             else:
-                # Normalize to string for consistent ID handling:
                 assigned_id = str(existing_id)
 
-            # If this ID has already been seen in the current import session,
-            # skip this feature to avoid creating duplicate assets:
-            if assigned_id in existing_ids:
+            # Check if ID exists (O(1) lookup)
+            if assigned_id in self._data:
                 logging.warning(
                     f"Skipping duplicate asset with ID '{assigned_id}' found "
                     'in GeoJSON input.'
                 )
                 continue
-
-            # Pass the resolved ID explicitly so the PhysicalAsset constructor
-            # does not have to infer or override it:
+            
+            # Create Asset
             asset = PhysicalAsset.from_geojson_feature(
                 feature_geojson,
                 asset_id=assigned_id,
             )
 
-            # Track the new asset and remember that this ID has been used:
-            existing_ids.add(assigned_id)
-            new_assets.append(asset)
-
-        # Extend the main list once at the end
-        self.assets.extend(new_assets)
+            self._data[assigned_id] = asset
 
         return self
+
+    def set_attribute(
+        self, 
+        key: str, 
+        value: Any, 
+        overwrite: bool = False
+    ) -> None:
+        """
+        Batch update a specific attribute across all assets in the collection.
+
+        This method assigns ``value`` to ``asset.attributes[key]``. It supports 
+        both static values and dynamic value generation using functions.
+
+        Args:
+            key (str): 
+                The attribute name to set.
+            value (Any): 
+                The value to assign. 
+                - If a static value (int, str), it is assigned directly.
+                - If a **callable** (function/lambda), it is executed for 
+                  each asset as ``value(asset)``, and the result is assigned.
+                  This is useful for derived properties or avoiding shared 
+                  mutable references (see examples).
+            overwrite (bool): 
+                If ``False``, existing attributes will be preserved 
+                and not updated. If ``True``, the new value overwrites any 
+                existing value. Defaults to ``False``.
+
+        Examples:
+            Setup a collection with two assets for the examples:
+
+            >>> from shapely.geometry import Point
+            >>> from rapidtools.core import PhysicalAsset, PhysicalAssetCollection
+            >>> 
+            >>> assets = [
+            ...     PhysicalAsset(id='a1', geometry=Point(0,0), attributes={'status': 'old'}),
+            ...     PhysicalAsset(id='a2', geometry=Point(1,1)) # No attributes
+            ... ]
+            >>> collection = PhysicalAssetCollection(assets)
+
+            Add a new tag to every asset (static assigment):
+            
+            >>> collection.set_attribute('category', 'utility_pole')
+            INFO: Updated attribute 'category' for 2 assets.
+            >>> collection['a1'].attributes['category']
+            'utility_pole'
+
+            Overwrite existing attribute values. In the example below, ``'a1'``
+            already has ``status='old'``. By default, ``set_attribute`` does 
+            not modify an existing value. To force an update, set the 
+            ``overwrite`` argument to ``True``:
+            
+            >>> collection.set_attribute('status', 'new') 
+            INFO: Updated attribute 'status' for 1 asset.
+            >>> collection['a1'].attributes['status']
+            'old'
+            >>> collection.set_attribute('status', 'new', overwrite=True)
+            INFO: Updated attribute 'status' for 2 assets.
+            >>> collection['a1'].attributes['status']
+            'new'
+
+            Derive values for each asset (Dynamic assignment). This example
+            uses a lambda function to get the x coordinates of assets using
+            their geometry information:
+            
+            >>> collection.set_attribute(
+            ...     'x_coord', 
+            ...     value=lambda asset: asset.geometry.x,
+            ...     overwrite=True
+            ... )
+            INFO: Updated attribute 'x_coord' for 2 assets.
+            >>> collection['a2'].attributes['x_coord']
+            1.0
+
+            How to initialize mutable objects safely (and not fall for the 
+            "List" Trap). This example uses a lambda that returns a new list
+            generate a unique list for each asset, avoiding the common bug 
+            where all assets share the same list reference:
+
+            >>> collection.set_attribute('logs', lambda _: list())
+            INFO: Updated attribute 'logs' for 2 assets.
+            >>> collection['a1'].attributes['logs'].append('Log Entry 1')
+            >>> collection['a2'].attributes['logs']
+            []
+        """        
+        # Check if the user provided a generator function:
+        is_dynamic = callable(value)
+
+        # Keep track of the updated assets for logging:
+        count = 0
+        
+        for asset in self._data.values():
+            # Skip if the key exists but overwrite is not allowed:
+            if not overwrite and key in asset.attributes:
+                continue
+
+            # Assign value:
+            if is_dynamic:
+                asset.attributes[key] = value(asset)
+            else:
+                asset.attributes[key] = value
+            
+            count += 1
+            
+        # Use module-level logger (best practice) instead of root logging
+        suffix = 's' if count != 1 else ''
+        logging.info(f"Updated attribute '{key}' for {count} asset{suffix}.")
     
     def to_geojson(
         self,
@@ -1069,30 +1732,123 @@ class PhysicalAssetCollection:
     ) -> dict:
         """
         Serialize the collection into a GeoJSON FeatureCollection.
-    
-        By default, the output is pretty-printed with an indentation of 2 
-        spaces. Callers can change or disable pretty-printing by passing a 
-        different `indent` value (e.g., `indent=None` for compact output).
-    
-        Args:
-            file:
-                Optional path to a file where the GeoJSON should be written. If
-                None, nothing is written to disk.
-            indent:
-                Number of spaces for JSON indentation when writing to a file.
-                Use None for compact output. Defaults to 2.
-    
-        Returns:
-            dict: The GeoJSON FeatureCollection as a dictionary.
         """
         feature_collection: dict = {
-            "type": "FeatureCollection",
-            "features": [asset.to_geojson_feature() for asset in self.assets],
+            'type': 'FeatureCollection',
+            'features': [asset.to_geojson_feature() for asset in self._data.values()],
         }
     
         if file is not None:
             path = Path(file)
-            with path.open("w", encoding="utf-8") as f:
+            with path.open('w', encoding='utf-8') as f:
                 json.dump(feature_collection, f, indent=indent)
     
         return feature_collection
+
+    def to_dataframe(self) -> Any:
+        """
+        Convert the collection to a Pandas DataFrame.
+        """
+        try:
+            import pandas as pd
+        except ImportError:
+            raise ImportError('Pandas is required for to_dataframe().')
+
+        data = []
+        for asset in self._data.values():
+            row = {
+                'id': asset.id,
+                'asset_type': asset.asset_type,
+                'geometry_wkt': asset.geometry.wkt,
+                'image_count': len(asset.image_assets)
+            }
+            for k, v in asset.attributes.items():
+                row[k] = v
+            data.append(row)
+
+        return pd.DataFrame(data)
+
+    def remove(self, asset_ids: str | Iterable[str]) -> None:
+        """
+        Remove one or more assets from the collection by ID.
+
+        This method is polymorphic:
+        1. If ``asset_ids`` is a ``str``, it removes that single asset.
+        2. If ``asset_ids`` is an ``Iterable``, it iterates and removes all IDs 
+           found.
+
+        If an ID is not found in the collection, the operation is skipped for 
+        that specific ID and a warning is logged.
+
+        Args:
+            asset_ids: A single asset ID string OR an iterable of ID strings.
+
+        Raises:
+            TypeError: If ``asset_ids`` is not a ``str`` or an ``Iterable``.
+
+        Examples:
+            Create a ``PhysicalAssetCollection`` consisting of two 
+            ``PhysicalAsset`` objects:
+                
+            >>> from shapely.geometry import Point    
+            >>> from rapidtools.core import PhysicalAsset, PhysicalAssetCollection
+            >>>
+            >>> collection = PhysicalAssetCollection()
+            >>> collection.add([
+            ...     PhysicalAsset(id='p1', geometry=Point(0,0)), 
+            ...     PhysicalAsset(id='p2', geometry=Point(1,1))
+            ... ])
+
+            Remove the ``PhysicalAsset`` with ID:``'p1'`` from the collection:
+            
+            >>> collection.remove('p1')
+            >>> print(collection)
+            PhysicalAssetCollection(_data={'p2': <PhysicalAsset id='p2' 
+            asset_type='N/A' geometry='Point'>})
+            
+            Try to remove a non-matching item:
+                
+            >>> collection.remove('p99')
+            WARNING: Asset ID 'p99' not found. Skipping removal.
+            
+            # Batch remove multiple assets:
+            
+            >>> collection.remove(['p2', 'p99'])
+            WARNING: Asset ID 'p99' not found. Skipping removal.
+            >>> len(collection)
+            0
+        """
+        # Normalize input to always be an iterable:
+        if isinstance(asset_ids, str):
+            ids_to_remove = [asset_ids]
+        elif isinstance(asset_ids, Iterable):
+            ids_to_remove = asset_ids
+        else:
+            raise TypeError(
+                f"asset_id must be a string or iterable of strings. "
+                f"Got '{type(asset_ids).__name__}'."
+            )
+
+        # Remove specified IDs:
+        for uid in ids_to_remove:
+            if self._data.pop(uid, None) is None:
+                logging.warning(
+                    f"Asset ID '{uid}' not found. Skipping removal."
+                )
+
+    def summary(self) -> dict[str, Any]:
+        """Generate statistics about the collection."""
+        type_counts = {}
+        total_images = 0
+        
+        for asset in self._data.values():
+            a_type = asset.asset_type or 'Unknown'
+            type_counts[a_type] = type_counts.get(a_type, 0) + 1
+            total_images += len(asset.image_assets)
+
+        return {
+            'total_assets': len(self._data),
+            'total_images': total_images,
+            'asset_types': type_counts,
+            'bounds': self.combined_bounding_box
+        }
