@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 01-24-2025
+# 02-01-2025
 
 from __future__ import annotations
 
@@ -280,94 +280,6 @@ class ImageAsset:
             'photo'
         """
         return self.path.stem
-
-    def combine_with(
-            self, 
-            other: ImageAsset, 
-            ignore_id_mismatch: bool = False, 
-            overwrite_path: bool = False,
-            overwrite_properties: bool = True
-        ) -> None:
-        """
-        Merges data from another ImageAsset into this one.
-
-        By default, this method ensures IDs match before merging to prevent 
-        accidental data corruption.
-
-        Args:
-            other (ImageAsset): 
-                The source asset to merge data from.
-            ignore_id_mismatch (bool): 
-                If ``True``, allows merging even if self.id != other.id.
-                Defaults to ``False``.
-            overwrite_path (bool): 
-                If ``True``, updates self.path with other.path and adopts
-                its internal caches (images/masks). 
-                Defaults to ``False`` (preserves original path).
-            overwrite_properties (bool): 
-                If ``True``, other.properties, semantic_map, and instance_map
-                will overwrite existing values in self. 
-                If ``False``, only missing values are filled.
-                Defaults to ``True``.
-
-        Raises:
-            ValueError: 
-                If IDs do not match and ``ignore_id_mismatch`` is ``False``.
-                
-        Example:
-            >>> asset_a = ImageAsset("img1.jpg", properties={"temp": 20, "status": "raw"})
-            >>> asset_b = ImageAsset("img1.jpg", properties={"status": "processed", "gps": [0, 0]})
-            >>> 
-            >>> # Merge asset_b into asset_a
-            >>> asset_a.combine_with(asset_b, overwrite_properties=True)
-            >>> 
-            >>> asset_a.properties
-            {'temp': 20, 'status': 'processed', 'gps': [0, 0]}
-        """
-        # Check asset ID correspondence:
-        if self.id != other.id and not ignore_id_mismatch:
-            raise ValueError(
-                f"Cannot combine assets: IDs do not match ('{self.id}' vs "
-                f"'{other.id}'). Set ignore_id_mismatch=True to bypass this"
-                'requirement.'
-            )
-
-        # Merge asset roperties:
-        if overwrite_properties:
-            # Update existing keys and add new ones:
-            self.properties.update(other.properties)
-        else:
-            # Only add keys that do not exist:
-            for key, value in other.properties.items():
-                self.properties.setdefault(key, value)
-
-        # Merge segmentation maps. If 'other' has a map, we decide whether to
-        # take it based on the overwrite flag:
-        if other.semantic_map is not None:
-            if self.semantic_map is None or overwrite_properties:
-                self.semantic_map = other.semantic_map
-
-        if other.instance_map is not None:
-            if self.instance_map is None or overwrite_properties:
-                self.instance_map = other.instance_map
-
-        # Merge asset path:
-        if overwrite_path:
-            self.path = other.path
-            if isinstance(self.path, str):
-                self.path = Path(self.path)
-            self.path = self.path.resolve()
-            
-            # Since the path changed, the old cache is invalid. Either adopt
-            # the other's cache (if it exists) or reset to None:
-            self._pil_image = other._pil_image
-            
-            # Similarly, if the path changed, the old mask likely does not
-            # apply. Adopt the other's mask (whether it is data or None):
-            self._semantic_mask = other._semantic_mask
-            self._instance_mask = other._instance_mask
-            
-        logging.info(f"Merged asset data from {other.id} into {self.id}")
 
     def download(
             self, 
@@ -710,6 +622,94 @@ class ImageAsset:
                 f'Failed to load {mask_type} mask for {self.id}: {e}'
             )
             raise
+
+    def merge(
+            self, 
+            other: ImageAsset, 
+            ignore_id_mismatch: bool = False, 
+            overwrite_path: bool = False,
+            overwrite_properties: bool = True
+        ) -> None:
+        """
+        Merge data from another ImageAsset.
+
+        By default, this method ensures IDs match before merging to prevent 
+        accidental data corruption.
+
+        Args:
+            other (ImageAsset): 
+                The source asset to merge data from.
+            ignore_id_mismatch (bool): 
+                If ``True``, allows merging even if self.id != other.id.
+                Defaults to ``False``.
+            overwrite_path (bool): 
+                If ``True``, updates self.path with other.path and adopts
+                its internal caches (images/masks). 
+                Defaults to ``False`` (preserves original path).
+            overwrite_properties (bool): 
+                If ``True``, other.properties, semantic_map, and instance_map
+                will overwrite existing values in self. 
+                If ``False``, only missing values are filled.
+                Defaults to ``True``.
+
+        Raises:
+            ValueError: 
+                If IDs do not match and ``ignore_id_mismatch`` is ``False``.
+                
+        Example:
+            >>> asset_a = ImageAsset('img1.jpg', properties={'temp': 20, 'status': 'raw'})
+            >>> asset_b = ImageAsset('img1.jpg', properties={'status': 'processed', 'gps': [0, 0]})
+            >>> 
+            >>> # Merge asset_b into asset_a
+            >>> asset_a.merge(asset_b, overwrite_properties=True)
+            >>> 
+            >>> asset_a.properties
+            {'temp': 20, 'status': 'processed', 'gps': [0, 0]}
+        """
+        # Check asset ID correspondence:
+        if self.id != other.id and not ignore_id_mismatch:
+            raise ValueError(
+                f"Cannot combine assets: IDs do not match ('{self.id}' vs "
+                f"'{other.id}'). Set ignore_id_mismatch=True to bypass this"
+                'requirement.'
+            )
+
+        # Merge asset properties:
+        if overwrite_properties:
+            # Update existing keys and add new ones:
+            self.properties.update(other.properties)
+        else:
+            # Only add keys that do not exist:
+            for key, value in other.properties.items():
+                self.properties.setdefault(key, value)
+
+        # Merge segmentation maps. If 'other' has a map, we decide whether to
+        # take it based on the overwrite flag:
+        if other.semantic_map is not None:
+            if self.semantic_map is None or overwrite_properties:
+                self.semantic_map = other.semantic_map
+
+        if other.instance_map is not None:
+            if self.instance_map is None or overwrite_properties:
+                self.instance_map = other.instance_map
+
+        # Merge asset path:
+        if overwrite_path:
+            self.path = other.path
+            if isinstance(self.path, str):
+                self.path = Path(self.path)
+            self.path = self.path.resolve()
+            
+            # Since the path changed, the old cache is invalid. Either adopt
+            # the other's cache (if it exists) or reset to None:
+            self._pil_image = other._pil_image
+            
+            # Similarly, if the path changed, the old mask likely does not
+            # apply. Adopt the other's mask (whether it is data or None):
+            self._semantic_mask = other._semantic_mask
+            self._instance_mask = other._instance_mask
+            
+        logging.info(f"Merged asset data from {other.id} into {self.id}")
              
     def set_mask(
             self, 
@@ -1153,17 +1153,33 @@ class ImageCollection:
         """
         self._assets: list[ImageAsset] = assets if assets else []
 
-    def __repr__(self) -> str:
-        return f"<ImageCollection containing {len(self)} image assets>"
+    def __contains__(self, item: str | ImageAsset) -> bool:
+        """
+        Checks if an image ID or ImageAsset object exists in the collection.
+        """
+        # Check by string ID by looping through the assets to see if any ID
+        # matches the string:
+        if isinstance(item, str):
+            return any(asset.id == item for asset in self._assets)
+        
+        # Check by Asset object by comparing IDs to ensure matching assets are 
+        # captured even if they are different memory instances:
+        if hasattr(item, 'id'):
+            return any(asset.id == item.id for asset in self._assets)
+            
+        return False
 
-    def __len__(self) -> int:
-        return len(self._assets)
+    def __getitem__(self, index: int) -> ImageAsset:
+        return self._assets[index]    
 
     def __iter__(self) -> Iterator[ImageAsset]:
         return iter(self._assets)
 
-    def __getitem__(self, index: int) -> ImageAsset:
-        return self._assets[index]
+    def __len__(self) -> int:
+        return len(self._assets)
+
+    def __repr__(self) -> str:
+        return f"<ImageCollection containing {len(self)} image assets>"
 
     def add(
         self, 
@@ -1211,70 +1227,51 @@ class ImageCollection:
                 # Update map to handle duplicates within the input list itself:
                 id_map[asset.id] = len(self._assets) - 1
 
-    def combine_with(
-            self, 
-            other: 'ImageCollection', 
-            overwrite_path: bool = False,
-            overwrite_properties: bool = True,
-            add_new: bool = False
-        ) -> None:
-            """
-            Merge with another ImageCollection.
-    
-            Args:
-                other (ImageCollection): 
-                    The collection to merge.
-                overwrite_path (bool): 
-                    If ``True``, existing assets will update their file paths
-                    to match the incoming assets.
-                overwrite_properties (bool): 
-                    If ``True``, incoming properties overwrite existing ones.
-                add_new (bool):
-                    If ``True``, assets in ``other`` that do not share an ID
-                    with any asset in will be added to the collection. 
-                    If False, they are ignored. Defaults to False.
-            """
-            # Create a lookup map for the current assets for fast access
-            # We ignore None IDs here because we cannot reliably match them.
-            current_map = {
-                asset.id: asset 
-                for asset in self._assets 
-                if asset.id is not None
-            }
-            
-            count_merged = 0
-            count_added = 0
-            count_skipped = 0
-    
-            for incoming_asset in other:
-                # If a match is found, merge:
-                if incoming_asset.id is not None and \
-                    incoming_asset.id in current_map:
-                    existing_asset = current_map[incoming_asset.id]
-                    existing_asset.combine_with(
-                        incoming_asset,
-                        ignore_id_mismatch=False,
-                        overwrite_path=overwrite_path,
-                        overwrite_properties=overwrite_properties
-                    )
-                    count_merged += 1
-                
-                # If there is no Match (or ID is None) and add_new is True:
-                elif add_new:
-                    self._assets.append(incoming_asset)
-                    # Update map in case 'other' has duplicates of this new ID:
-                    if incoming_asset.id is not None:
-                        current_map[incoming_asset.id] = incoming_asset
-                    count_added += 1
-                
-                # If there is no Match (or ID is None) and add_new is False:
-                else:
-                    count_skipped += 1
-    
-            logging.info(
-                f'Merge complete: {count_merged} merged, {count_added} added, '
-                f'{count_skipped} skipped.'
-            )
+    def merge(
+        self, 
+        other: ImageCollection, 
+        overwrite_path: bool = False,
+        overwrite_properties: bool = True,
+        add_new: bool = False
+    ) -> None:
+        """
+        Merge with another ImageCollection.
+
+        This method iterates through the incoming collection and either merges 
+        properties into existing assets (if IDs match) or adds new assets 
+        (if ``add_new`` is ``True``).
+
+        Args:
+            other (ImageCollection): 
+                The collection to merge with.
+            overwrite_path (bool): 
+                If ``True``, existing assets will update their file paths
+                to match the incoming assets. Defaults to ``False``.
+            overwrite_properties (bool): 
+                If ``True``, incoming properties (metadata) overwrite existing 
+                ones on match. Defaults to ``True``.
+            add_new (bool):
+                If ``True``, assets in ``other`` that do not share an ID
+                with any asset in this collection will be appended. 
+                If ``False``, unmatched assets are ignored. Defaults to 
+                ``False``.
+
+        Examples:
+            >>> master_images.merge(new_images, add_new=True)
+            INFO: Merge complete: 5 merged, 2 added, 0 skipped.
+        """
+        # Call the internal core to do the work
+        merged, added, skipped = self._merge_core(
+            other, 
+            overwrite_path=overwrite_path,
+            overwrite_properties=overwrite_properties, 
+            add_new=add_new
+        )
+
+        logging.info(
+            f'Merge complete: {merged} merged, {added} added, '
+            f'{skipped} skipped.'
+        )
 
     def filter(self, func: Callable[[ImageAsset], bool]) -> ImageCollection:
         """
@@ -1361,90 +1358,59 @@ class ImageCollection:
         return [asset.id for asset in self._assets]
 
     def remove(self, items: ImageAsset | str | list[ImageAsset | str]) -> None:
-            """
-            Remove one or more assets from the collection.
-    
-            This method accepts a single ImageAsset, a single ID string, or a 
-            list containing a mix of both.
-    
-            Args:
-                items: 
-                    An ImageAsset object, a string ID, or a list of these to 
-                    remove.
-    
-            Examples:
-                Initialize an ImageCollection:
-                    
-                >>> from rapidtools.core import ImageAsset, ImageCollection
-                >>> 
-                >>> # Initialize a collection with some assets
-                >>> img1 = ImageAsset(id='img_001', path='path/to/1.jpg', 
-                ... allow_missing_file=True)
-                >>> img2 = ImageAsset(id='img_002', path='path/to/2.jpg',
-                ... allow_missing_file=True)                      
-                >>> img3 = ImageAsset(id='img_003', path='path/to/3.jpg',
-                ... allow_missing_file=True)
-                >>> collection = ImageCollection([img1, img2, img3])
+        """
+        Remove one or more assets from the collection.
+
+        This method accepts a single ImageAsset, a single ID string, or a 
+        list containing a mix of both.
+
+        Args:
+            items: 
+                An ImageAsset object, a string ID, or a list of these to 
+                remove.
+
+        Examples:
+            Initialize an ImageCollection:
                 
-                Remove by ID:
-                >>> collection.remove('img_001')
-                Removed 1 assets from the collection.
-                >>> len(collection)
-                2
-                
-                Remove by Object:
-                >>> collection.remove(img2)
-                Removed 1 assets from the collection.
-                >>> len(collection)
-                1
-                
-                Remove a list of mixed types:
-                >>> collection.add([img1, img2]) 
-                >>> collection.remove(['img_001', img2])
-                Removed 2 assets from the collection.
-                >>> len(collection)
-                1
-            """
-            # Normalize input to a list
-            items_to_remove = items if isinstance(items, list) else [items]
+            >>> from rapidtools.core import ImageAsset, ImageCollection
+            >>> 
+            >>> # Initialize a collection with some assets
+            >>> img1 = ImageAsset(id='img_001', path='path/to/1.jpg', 
+            ... allow_missing_file=True)
+            >>> img2 = ImageAsset(id='img_002', path='path/to/2.jpg',
+            ... allow_missing_file=True)                      
+            >>> img3 = ImageAsset(id='img_003', path='path/to/3.jpg',
+            ... allow_missing_file=True)
+            >>> collection = ImageCollection([img1, img2, img3])
             
-            ids_to_remove = set()
-            object_addresses_to_remove = set()
+            Remove by ID:
+            >>> collection.remove('img_001')
+            Removed 1 assets from the collection.
+            >>> len(collection)
+            2
             
-            for item in items_to_remove:
-                if isinstance(item, str):
-                    ids_to_remove.add(item)
-                elif hasattr(item, 'id'): 
-                    # Store the memory address of the object for identity 
-                    # comparison:
-                    object_addresses_to_remove.add(id(item))
-                    
-                    # Also track the ID string if it exists:
-                    if item.id is not None:
-                        ids_to_remove.add(item.id)
+            Remove by Object:
+            >>> collection.remove(img2)
+            Removed 1 assets from the collection.
+            >>> len(collection)
+            1
             
-            initial_count = len(self._assets)
-            
-            # Rebuild the list preserving order.
-            # We keep the asset if:
-            # 1. Its ID string is NOT in the removal set
-            #    AND
-            # 2. Its memory address is NOT in the removal set
-            self._assets = [
-                asset for asset in self._assets
-                if asset.id not in ids_to_remove and id(asset) \
-                    not in object_addresses_to_remove
-            ]
-            
-            removed_count = initial_count - len(self._assets)
-            removed_item = 'asset' if removed_count==1 else 'assets'
-            if removed_count > 0:
-                logging.info(
-                    f'Removed {removed_count} {removed_item} from the '
-                    'collection.'
-                )
-            else:
-                logging.warning('No matching assets found to remove.')
+            Remove a list of mixed types:
+            >>> collection.add([img1, img2]) 
+            >>> collection.remove(['img_001', img2])
+            Removed 2 assets from the collection.
+            >>> len(collection)
+            1
+        """
+        removed_count = self._remove_core(items)
+        
+        if removed_count > 0:
+            suffix = 's' if removed_count != 1 else ''
+            logging.info(
+                f"Removed {removed_count} asset{suffix} from the collection."
+            )
+        else:
+            logging.warning('No matching assets found to remove.')
 
     def subset(self, indices: list[int]) -> 'ImageCollection':
         """
@@ -1547,4 +1513,106 @@ class ImageCollection:
         ]
         with open(filepath, 'w') as f:
             json.dump(data, f, indent=2, default=str)
+            
+    def _merge_core(
+        self, 
+        other: ImageCollection, 
+        overwrite_path: bool,
+        overwrite_properties: bool,
+        add_new: bool
+    ) -> tuple[int, int, int]:
+        """
+        Internal logic to merge with another ImageCollection.
+        
+        See :meth:`merge` for argument definitions.
+
+        Returns:
+            tuple[int, int, int]: 
+                A tuple containing counts for 
+            (merged, added, skipped).
+        """
+        # Create a lookup map for the current assets for fast access:
+        current_map = {
+            asset.id: asset 
+            for asset in self._assets 
+            if asset.id is not None
+        }
+        
+        count_merged = 0
+        count_added = 0
+        count_skipped = 0
+
+        for incoming_asset in other:
+            # Merge if a match is found:
+            if incoming_asset.id is not None and \
+                incoming_asset.id in current_map:
+                
+                existing_asset = current_map[incoming_asset.id]
+                existing_asset.merge(
+                    incoming_asset,
+                    ignore_id_mismatch=False,
+                    overwrite_path=overwrite_path,
+                    overwrite_properties=overwrite_properties
+                )
+                count_merged += 1
+            
+            # If no match is found and add_new=True, add the asset:
+            elif add_new:
+                self._assets.append(incoming_asset)
+                # Update map in case 'other' has duplicates of this new ID:
+                if incoming_asset.id is not None:
+                    current_map[incoming_asset.id] = incoming_asset
+                count_added += 1
+            
+            # If no match is found and add_new=False, skip:
+            else:
+                count_skipped += 1
+        
+        return count_merged, count_added, count_skipped
+    
+    def _remove_core(
+            self, 
+            items: ImageAsset | str | list[ImageAsset | str]
+        ) -> int:
+        """
+        Core logic to remove assets.
+
+        This performs the list filtering without logging side effects.
+        See :meth:`remove` for argument definitions.
+
+        Returns:
+            int: The number of assets removed.
+        """
+        # Normalize input to a list
+        items_to_remove = items if isinstance(items, list) else [items]
+        
+        ids_to_remove = set()
+        object_addresses_to_remove = set()
+        
+        for item in items_to_remove:
+            if isinstance(item, str):
+                ids_to_remove.add(item)
+            elif hasattr(item, 'id'): 
+                # Store the memory address of the object for identity 
+                # comparison:
+                object_addresses_to_remove.add(id(item))
+                
+                # Also track the ID string if it exists:
+                if item.id is not None:
+                    ids_to_remove.add(item.id)
+        
+        initial_count = len(self._assets)
+        
+        # Rebuild the list preserving order.
+        # We keep the asset if:
+        # 1. Its ID string is NOT in the removal set
+        #    AND
+        # 2. Its memory address is NOT in the removal set
+        self._assets = [
+            asset for asset in self._assets
+            if asset.id not in ids_to_remove and id(asset) \
+                not in object_addresses_to_remove
+        ]
+        
+        return initial_count - len(self._assets)
 

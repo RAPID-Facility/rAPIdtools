@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 01-26-2025
+# 02-01-2026
 
 from io import BytesIO
 
@@ -222,12 +222,12 @@ def test_save_interactive_html(sample_image, temp_dir):
 # --- 5. Download & Combine Tests ---
 
 
-def test_combine_with(sample_image):
+def test_merge(sample_image):
     asset1 = ImageAsset(path=sample_image, id='A', properties={'a': 1})
     asset2 = ImageAsset(path=sample_image, id='A', properties={'b': 2})
 
-    # Merge 2 into 1
-    asset1.combine_with(asset2)
+    # Merge 2 into 1:
+    asset1.merge(asset2)
 
     assert asset1.properties['a'] == 1
     assert asset1.properties['b'] == 2
