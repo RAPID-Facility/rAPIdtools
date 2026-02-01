@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 01-22-2025
+# 01-31-2025
 
 import base64
 import gzip
@@ -459,7 +459,7 @@ class MapillaryClient:
             logging.info('Downloaded data for all detected images.')
             
             # Merge the rich data back into our tile-based collection:
-            final_collection.combine_with(
+            final_collection.merge(
                rich_collection,
                overwrite_properties = True,
                overwrite_path = save_to_disk,
