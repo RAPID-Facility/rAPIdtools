@@ -35,10 +35,11 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 01-20-2025
+# 02-02-2025
 
 """Configuration utilities for the rapidtools package."""
 
+from enum import StrEnum
 import requests
 from requests.adapters import HTTPAdapter, Retry
 
@@ -72,7 +73,12 @@ REQUESTS_RETRY_STRATEGY = Retry(
 
 REQUESTS_TIMEOUT_VAL = 30
 
-# Segmentation Visualization Configuration:
+# Mask & Segmentation Configuration:
+class MaskType(StrEnum):
+    """Central definition for available mask types."""
+    SEMANTIC = 'semantic'
+    INSTANCE = 'instance' 
+    
 DEFAULT_SEMANTIC_CMAP = 'tab20'
 DEFAULT_INSTANCE_CMAP = 'nipy_spectral'   
 
