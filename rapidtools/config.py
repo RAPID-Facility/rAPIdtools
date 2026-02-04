@@ -40,6 +40,7 @@
 """Configuration utilities for the rapidtools package."""
 
 from enum import StrEnum
+
 import requests
 from requests.adapters import HTTPAdapter, Retry
 
@@ -68,7 +69,7 @@ REQUESTS_RETRY_STRATEGY = Retry(
     total=5,
     backoff_factor=1,
     status_forcelist=[429, 500, 502, 503, 504],
-    allowed_methods=["HEAD", "GET", "OPTIONS"]
+    allowed_methods=['HEAD', 'GET', 'OPTIONS']
 )
 
 REQUESTS_TIMEOUT_VAL = 30
@@ -77,27 +78,27 @@ REQUESTS_TIMEOUT_VAL = 30
 class MaskType(StrEnum):
     """Central definition for available mask types."""
     SEMANTIC = 'semantic'
-    INSTANCE = 'instance' 
-    
+    INSTANCE = 'instance'
+
 DEFAULT_SEMANTIC_CMAP = 'tab20'
-DEFAULT_INSTANCE_CMAP = 'nipy_spectral'   
+DEFAULT_INSTANCE_CMAP = 'nipy_spectral'
 
 # Helper functions:
 def get_configured_session() -> requests.Session:
     """
     Create a requests Session with global retry logic, timeouts, and headers.
-    
+
     Returns:
         requests.Session: A configured session object ready for use.
     """
     session = requests.Session()
-    
+
     # Apply standard headers:
     session.headers.update(REQUESTS_HEADERS)
-    
+
     # Mount the retry adapter to both HTTP and HTTPS:
     adapter = HTTPAdapter(max_retries=REQUESTS_RETRY_STRATEGY)
-    session.mount("https://", adapter)
-    session.mount("http://", adapter)
-    
+    session.mount('https://', adapter)
+    session.mount('http://', adapter)
+
     return session
