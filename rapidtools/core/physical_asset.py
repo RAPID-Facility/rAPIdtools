@@ -1165,6 +1165,8 @@ class PhysicalAssetCollection:
             4
         """
         # Normalize input so the code always iterates over a list/iterable:
+        items_to_process: Iterable[PhysicalAsset]    
+            
         if isinstance(assets, PhysicalAsset):
             items_to_process = [assets]
         elif isinstance(assets, Iterable):
@@ -1969,6 +1971,8 @@ class PhysicalAssetCollection:
             0
         """
         # Normalize input to always be an iterable:
+        ids_to_remove: Iterable[str]    
+            
         if isinstance(asset_ids, str):
             ids_to_remove = [asset_ids]
         elif isinstance(asset_ids, Iterable):

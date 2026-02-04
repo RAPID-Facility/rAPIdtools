@@ -2061,7 +2061,7 @@ class ImageCollection:
             A new ImageCollection containing only the assets within the bounds.
         """
         # Extract bounds from the internal shapely geometry of the BoundingBox:
-        min_lon, min_lat, max_lon, max_lat = bbox.shapely.bounds
+        min_lon, min_lat, max_lon, max_lat = bbox.bounds
 
         def inside_box(asset: ImageAsset) -> bool:
             lat = asset.properties.get('latitude')
