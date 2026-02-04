@@ -191,16 +191,25 @@ def test_load_image_from_url_success(requests_mock):
 
 def test_load_image_from_url_cached(asset):
     """Test early exit if image is already in memory."""
-    mock_img = Image.new('RGB', (1,1))
+    # 1. Setup: Put a mock image in the internal cache
+    mock_img = Image.new('RGB', (1, 1))
     asset._pil_image = mock_img
 
-    # The implementation returns None (implicit return) when hitting the cache,
-    # it does not return the image object itself in this specific branch.
-    res = asset.load_image_from_url(url='http://bad.url')
+    # 2. Execution: Call the method
+    # We use a patch here to ensure that if the code fails to "early exit",
+    # it will crash or we can verify requests.get wasn't called.
+    with patch('requests.get') as mock_get:
+        res = asset.load_image_from_url(url='http://bad.url')
 
-    assert res is None
-    # Verify the cache wasn't overwritten
-    assert asset._pil_image is mock_img
+        # 3. Assertions:
+        # The method returns the cached image object, NOT None
+        assert res is mock_img
+
+        # Verify the cache wasn't overwritten or cleared
+        assert asset._pil_image is mock_img
+
+        # Verify that no network request was even attempted
+        mock_get.assert_not_called()
 
 def test_load_image_from_url_failure(asset, caplog):
     """Test exception handling in load_url."""
