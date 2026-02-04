@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-01-2025
+# 02-04-2025
 
 from __future__ import annotations
 
@@ -1002,21 +1002,19 @@ class PhysicalAssetCollection:
             # Calculate start/stop/step handling negative indices (e.g. [:-1]):
             start, stop, step = key.indices(len(self._data))
 
+            # Explicitly type the variable to Iterator to satisfy MyPy:
+            subset: Iterator[PhysicalAsset]
+
             if step < 0:
                 # islice cannot handle negative steps (reversing).
                 # Fallback to list conversion for this specific case:
-                subset = list(self._data.values())[key]
+                subset = iter(list(self._data.values())[key])
             else:
                 # Use iterator slicing:
                 subset = islice(self._data.values(), start, stop, step)
 
             # Create a new instance of the same class:
             return self.__class__(assets=subset)
-
-        raise TypeError(
-            'Index must be an asset ID (str), integer, or slice. Got '
-            f'{type(key).__name__}.'
-        )
 
         raise TypeError(
             'Index must be an asset ID (str), integer, or slice. Got '
@@ -1774,7 +1772,7 @@ class PhysicalAssetCollection:
         # Check for raw Shapely Geometry first:
         if isinstance(geometry, BaseGeometry):
             search_shape = geometry
-        # Then check for custom wrappers (like PolygonRegion) that hold the 
+        # Then check for custom wrappers (like PolygonRegion) that hold the
         # geom internally:
         elif hasattr(geometry, '_geom'):
             search_shape = geometry._geom
@@ -2150,7 +2148,7 @@ class PhysicalAssetCollection:
             >>> print(stats['asset_types'])
             {'Pole': 2, 'Valve': 1, 'Unknown': 1}
         """
-        type_counts = Counter()
+        type_counts: Counter[str] = Counter()
         total_images = 0
 
         for asset in self._data.values():
