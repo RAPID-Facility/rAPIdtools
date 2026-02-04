@@ -75,7 +75,7 @@ class ImageAsset:
     A single image asset, its location, metadata, and segmentation info.
     """
 
-    path: Path | str
+    path: Path
     id: str | None = field(default=None)
 
     # User-facing metadata (location, photographer, tags, etc.):
@@ -725,7 +725,7 @@ class ImageAsset:
         apply_exif_orientation: bool = True,
         verbose: bool = True,
         session: requests.Session | None = None,
-    ) -> None:
+    ) -> PillowImage.Image:
         """
         Download the image into memory and cache it.
 
@@ -815,7 +815,7 @@ class ImageAsset:
         # If an image is already loaded and force reload is set to False,
         # exit method execution:
         if self._pil_image is not None and not force_reload:
-            return
+            return self._pil_image
 
         # Determine the image URL:
         target_url = url or self.properties.get(url_key)
@@ -1111,7 +1111,7 @@ class ImageAsset:
     def save_interactive_html(
         self,
         output_path: Path | str | None = None,
-        mask_type: MaskType = 'semantic',
+        mask_type: MaskType = MaskType.SEMANTIC,
         opacity: float = 0.5,
         min_area: int = 10,
     ) -> None:
