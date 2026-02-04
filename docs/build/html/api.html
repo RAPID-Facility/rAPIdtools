@@ -98,6 +98,7 @@ data-aria-dark="Switch to auto color mode">
 <li><a class="reference internal" href="#rapidtools.core.ImageAsset.set_mask"><code class="docutils literal notranslate">set_mask()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.ImageAsset.show"><code class="docutils literal notranslate">show()</span></code></a></li>
 <li><a class="reference internal" href="#rapidtools.core.ImageAsset.stem"><code class="docutils literal notranslate">stem</span></code></a></li>
+<li><a class="reference internal" href="#rapidtools.core.ImageAsset.summary"><code class="docutils literal notranslate">summary()</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#rapidtools.core.ImageCollection"><code class="docutils literal notranslate"><span class="pre">ImageCollection</span></code></a><ul>
@@ -460,7 +461,7 @@ units:</p>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="rapidtools.core.ImageAsset">
-<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">rapidtools.core.</span></span><span class="sig-name descname"><span class="pre">ImageAsset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path:</span> <span class="pre">~pathlib.Path</span> <span class="pre">|</span> <span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">id:</span> <span class="pre">str</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">properties:</span> <span class="pre">dict[str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">~typing.Any]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">semantic_map:</span> <span class="pre">dict[int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">str]</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">instance_map:</span> <span class="pre">dict[int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">~typing.Any]</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">allow_missing_file:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset" title="Link to this definition">¶</a></dt>
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">rapidtools.core.</span></span><span class="sig-name descname"><span class="pre">ImageAsset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path:</span> <span class="pre">~pathlib.Path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">id:</span> <span class="pre">str</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">properties:</span> <span class="pre">dict[str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">~typing.Any]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">semantic_map:</span> <span class="pre">dict[int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">str]</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">instance_map:</span> <span class="pre">dict[int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">~typing.Any]</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">allow_missing_file:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset" title="Link to this definition">¶</a></dt>
 <dd><p>A single image asset, its location, metadata, and segmentation info.</p>
 <dl class="py property">
 <dt class="sig sig-object py" id="rapidtools.core.ImageAsset.directory">
@@ -479,10 +480,11 @@ units:</p>
 useful for lazy-loading assets from an API or database where the
 local file may not yet exist, allowing for metadata manipulation
 without disk overhead.</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">image</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span>
-</span><span data-line="2"><span class="gp">... </span>    <span class="n">path</span><span class="o">=</span><span class="s1">&#39;/projects/data/image.jpg&#39;</span><span class="p">,</span>
-</span><span data-line="3"><span class="gp">... </span>    <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span>
-</span><span data-line="4"><span class="gp">... </span><span class="p">)</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageAsset</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="n">image</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span>
+</span><span data-line="3"><span class="gp">... </span>    <span class="n">path</span><span class="o">=</span><span class="s1">&#39;/projects/data/image.jpg&#39;</span><span class="p">,</span>
+</span><span data-line="4"><span class="gp">... </span>    <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span>
+</span><span data-line="5"><span class="gp">... </span><span class="p">)</span>
 </span></pre></div>
 </div>
 <p>The property returns a standard <code class="docutils literal notranslate"><span class="pre">pathlib.Path</span></code> object:</p>
@@ -501,15 +503,15 @@ related files in the same folder:</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="rapidtools.core.ImageAsset.download">
 <span class="sig-name descname"><span class="pre">download</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">url_key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'thumb_original_url'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">session</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Session</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.download"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.download" title="Link to this definition">¶</a></dt>
-<dd><p>Downloads the image file to self.path.</p>
+<dd><p>Download the image file to self.path.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>url</strong> (<em>str</em><em>, </em><em>optional</em>) – The direct download link. If provided, this takes precedence
 over properties.</p></li>
-<li><p><strong>url_key</strong> (<em>str</em>) – The key in self.properties to look for if ‘url’ is None.
-Defaults to ‘thumb_original_url’.
-Useful for downloading specific sizes (e.g. ‘thumb_2048_url’).</p></li>
+<li><p><strong>url_key</strong> (<em>str</em>) – The key in self.properties to look for if <code class="docutils literal notranslate"><span class="pre">'url'</span></code> is <code class="docutils literal notranslate"><span class="pre">None</span></code>.
+Defaults to <code class="docutils literal notranslate"><span class="pre">'thumb_original_url'</span></code>.
+Useful for downloading specific sizes (e.g. <code class="docutils literal notranslate"><span class="pre">'thumb_2048_url'</span></code>).</p></li>
 <li><p><strong>overwrite</strong> (<em>bool</em>) – If True, forces download even if file exists.</p></li>
 <li><p><strong>session</strong> (<em>requests.Session</em><em>, </em><em>optional</em>) – An existing requests session to speed up connections.</p></li>
 </ul>
@@ -521,6 +523,76 @@ Useful for downloading specific sizes (e.g. ‘thumb_2048_url’).</p></li>
 </ul>
 </dd>
 </dl>
+<p class="rubric">Examples</p>
+<p>Basic usage through automatic URL Lookup:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageAsset</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span>
+</span><span data-line="4"><span class="gp">... </span>    <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;img_01&#39;</span><span class="p">,</span>
+</span><span data-line="5"><span class="gp">... </span>    <span class="n">path</span><span class="o">=</span><span class="s1">&#39;data/img_01.jpg&#39;</span><span class="p">,</span>
+</span><span data-line="6"><span class="gp">... </span>    <span class="n">properties</span><span class="o">=</span><span class="p">{</span>
+</span><span data-line="7"><span class="gp">... </span>        <span class="s1">&#39;thumb_original_url&#39;</span><span class="p">:</span>
+</span><span data-line="8"><span class="gp">... </span>            <span class="sa">r</span><span class="s1">&#39;https://upload.wikimedia.org/wikipedia/commons/1&#39;</span>
+</span><span data-line="9"><span class="gp">... </span>            <span class="sa">r</span><span class="s1">&#39;/1e/Suzzallo_Reading_Room%2C_May_2016.jpg&#39;</span>
+</span><span data-line="10"><span class="gp">... </span>            <span class="p">},</span>
+</span><span data-line="11"><span class="gp">... </span>    <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span>
+</span><span data-line="12"><span class="gp">... </span><span class="p">)</span>
+</span><span data-line="13"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">download</span><span class="p">()</span>
+</span><span data-line="14"><span class="go">INFO: Downloading &#39;img_01&#39; from https://upload.wikimedia.org/</span>
+</span><span data-line="15"><span class="go">wikipedia/commons/1/1e/Suzzallo_Reading_Room%2C_May_2016.jpg...</span>
+</span><span data-line="16"><span class="go">INFO: Successfully downloaded: img_01.jpg</span>
+</span></pre></div>
+</div>
+<p>Usage through providing explicit URL:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">download</span><span class="p">(</span>
+</span><span data-line="2"><span class="gp">... </span>    <span class="n">url</span><span class="o">=</span><span class="sa">r</span><span class="s1">&#39;https://upload.wikimedia.org/wikipedia/commons/1&#39;</span>
+</span><span data-line="3"><span class="gp">... </span>    <span class="sa">r</span><span class="s1">&#39;/1e/Suzzallo_Reading_Room%2C_May_2016.jpg&#39;</span>
+</span><span data-line="4"><span class="gp">... </span><span class="p">)</span>
+</span><span data-line="5"><span class="go">INFO: Downloading &#39;img_01&#39; from https://upload.wikimedia.org/</span>
+</span><span data-line="6"><span class="go">wikipedia/commons/1/1e/Suzzallo_Reading_Room%2C_May_2016.jpg...</span>
+</span><span data-line="7"><span class="go">INFO: Successfully downloaded: img_01.jpg</span>
+</span></pre></div>
+</div>
+<p>Download using a session (recommended for batch operations):</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">assets</span> <span class="o">=</span> <span class="p">[</span>
+</span><span data-line="4"><span class="gp">... </span>    <span class="n">ImageAsset</span><span class="p">(</span>
+</span><span data-line="5"><span class="gp">... </span>        <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;wiki_A&#39;</span><span class="p">,</span>
+</span><span data-line="6"><span class="gp">... </span>        <span class="n">path</span><span class="o">=</span><span class="s1">&#39;data/wiki_a.jpg&#39;</span><span class="p">,</span>
+</span><span data-line="7"><span class="gp">... </span>        <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+</span><span data-line="8"><span class="gp">... </span>        <span class="n">properties</span><span class="o">=</span><span class="p">{</span>
+</span><span data-line="9"><span class="gp">... </span>            <span class="s1">&#39;src&#39;</span><span class="p">:</span> <span class="p">(</span>
+</span><span data-line="10"><span class="gp">... </span>                <span class="s1">&#39;https://upload.wikimedia.org/wikipedia/commons/&#39;</span>
+</span><span data-line="11"><span class="gp">... </span>                <span class="s1">&#39;a/a9/Example.jpg&#39;</span>
+</span><span data-line="12"><span class="gp">... </span>            <span class="p">),</span>
+</span><span data-line="13"><span class="gp">... </span>        <span class="p">},</span>
+</span><span data-line="14"><span class="gp">... </span>    <span class="p">),</span>
+</span><span data-line="15"><span class="gp">... </span>    <span class="n">ImageAsset</span><span class="p">(</span>
+</span><span data-line="16"><span class="gp">... </span>        <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;wiki_B&#39;</span><span class="p">,</span>
+</span><span data-line="17"><span class="gp">... </span>        <span class="n">path</span><span class="o">=</span><span class="s1">&#39;data/wiki_b.jpg&#39;</span><span class="p">,</span>
+</span><span data-line="18"><span class="gp">... </span>        <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+</span><span data-line="19"><span class="gp">... </span>        <span class="n">properties</span><span class="o">=</span><span class="p">{</span>
+</span><span data-line="20"><span class="gp">... </span>            <span class="s1">&#39;src&#39;</span><span class="p">:</span> <span class="p">(</span>
+</span><span data-line="21"><span class="gp">... </span>                <span class="s1">&#39;https://upload.wikimedia.org/wikipedia/commons/5&#39;</span>
+</span><span data-line="22"><span class="gp">... </span>                <span class="s1">&#39;/50/Smile_Image.png&#39;</span>
+</span><span data-line="23"><span class="gp">... </span>            <span class="p">),</span>
+</span><span data-line="24"><span class="gp">... </span>        <span class="p">},</span>
+</span><span data-line="25"><span class="gp">... </span>    <span class="p">)</span>
+</span><span data-line="26"><span class="gp">... </span><span class="p">]</span>
+</span><span data-line="27"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="28"><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">requests</span><span class="o">.</span><span class="n">Session</span><span class="p">()</span> <span class="k">as</span> <span class="n">s</span><span class="p">:</span>
+</span><span data-line="29"><span class="gp">... </span>    <span class="n">s</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s1">&#39;User-Agent&#39;</span><span class="p">:</span> <span class="s1">&#39;RapidTools/1.0&#39;</span><span class="p">})</span>
+</span><span data-line="30"><span class="gp">... </span>    <span class="k">for</span> <span class="n">asset</span> <span class="ow">in</span> <span class="n">assets</span><span class="p">:</span>
+</span><span data-line="31"><span class="gp">... </span>        <span class="n">asset</span><span class="o">.</span><span class="n">download</span><span class="p">(</span><span class="n">url_key</span><span class="o">=</span><span class="s1">&#39;src&#39;</span><span class="p">,</span> <span class="n">session</span><span class="o">=</span><span class="n">s</span><span class="p">)</span>
+</span><span data-line="32"><span class="go">INFO: Downloading &#39;wiki_A&#39; from https://upload.wikimedia.org/</span>
+</span><span data-line="33"><span class="go">wikipedia/commons/a/a9/Example.jpg...</span>
+</span><span data-line="34"><span class="go">INFO: Successfully downloaded: wiki_a.jpg</span>
+</span><span data-line="35"><span class="go">INFO: Downloading &#39;wiki_B&#39; from https://upload.wikimedia.org/</span>
+</span><span data-line="36"><span class="go">wikipedia/commons/5/50/Smile_Image.png...</span>
+</span><span data-line="37"><span class="go">INFO: Successfully downloaded: wiki_b.jpg</span>
+</span></pre></div>
+</div>
 </dd></dl>
 
 <dl class="py property">
@@ -540,19 +612,20 @@ Useful for downloading specific sizes (e.g. ‘thumb_2048_url’).</p></li>
 allows the asset to be initialized and its naming metadata to
 be accessed even if the file has not yet been downloaded to the
 local file system.</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">image</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span>
-</span><span data-line="2"><span class="gp">... </span>    <span class="n">path</span><span class="o">=</span><span class="s1">&#39;/data/projects/panoramas/image_001.jpg&#39;</span><span class="p">,</span>
-</span><span data-line="3"><span class="gp">... </span>    <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span>
-</span><span data-line="4"><span class="gp">... </span><span class="p">)</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageAsset</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="n">image</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span>
+</span><span data-line="3"><span class="gp">... </span>    <span class="n">path</span><span class="o">=</span><span class="s1">&#39;/data/projects/panoramas/image_001.jpg&#39;</span><span class="p">,</span>
+</span><span data-line="4"><span class="gp">... </span>    <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span>
+</span><span data-line="5"><span class="gp">... </span><span class="p">)</span>
 </span></pre></div>
 </div>
-<p>The filename property extracts only the final component of the
+<p>The <code class="docutils literal notranslate"><span class="pre">filename</span></code> property extracts only the final component of the
 path:</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">image</span><span class="o">.</span><span class="n">filename</span>
 </span><span data-line="2"><span class="go">&#39;image_001.jpg&#39;</span>
 </span></pre></div>
 </div>
-<p>This is property useful for generating logs, status reports,
+<p>This property is useful for generating logs, status reports,
 or matching image data with external database records:</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Processing asset: </span><span class="si">{</span><span class="n">image</span><span class="o">.</span><span class="n">filename</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
 </span><span data-line="2"><span class="go">Processing asset: image_001.jpg</span>
@@ -562,8 +635,8 @@ or matching image data with external database records:</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="rapidtools.core.ImageAsset.get_mask_path">
-<span class="sig-name descname"><span class="pre">get_mask_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mask_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'semantic'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'instance'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">override_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Path</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.get_mask_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.get_mask_path" title="Link to this definition">¶</a></dt>
-<dd><p>Determines the filename for the mask.</p>
+<span class="sig-name descname"><span class="pre">get_mask_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mask_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">MaskType</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">override_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Path</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.get_mask_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.get_mask_path" title="Link to this definition">¶</a></dt>
+<dd><p>Determine the filename for the mask.</p>
 <dl class="simple">
 <dt>Default Convention:</dt><dd><ul class="simple">
 <li><p>Image:    photo.jpg</p></li>
@@ -575,39 +648,124 @@ or matching image data with external database records:</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>mask_type</strong> – The type of mask (‘semantic’ or ‘instance’).</p></li>
-<li><p><strong>override_path</strong> – If provided, this specific path is used instead
-of the automatic naming convention.</p></li>
+<li><p><strong>mask_type</strong> – The type of mask (<code class="docutils literal notranslate"><span class="pre">'semantic'</span></code> or <code class="docutils literal notranslate"><span class="pre">'instance'</span></code>).</p></li>
+<li><p><strong>override_path</strong> – If provided, this specific path is used instead of the
+automatic naming convention.</p></li>
 </ul>
 </dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The resolved path object for the mask.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Path</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">mask_type</span></code> is not a valid <code class="docutils literal notranslate"><span class="pre">MaskType</span></code>.</p>
+</dd>
 </dl>
+<p class="rubric">Examples</p>
+<p>Create an <code class="docutils literal notranslate"><span class="pre">ImageAsset</span></code>:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageAsset</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">MaskType</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span>
+</span><span data-line="4"><span class="gp">... </span>    <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;A1&#39;</span><span class="p">,</span>
+</span><span data-line="5"><span class="gp">... </span>    <span class="n">path</span><span class="o">=</span><span class="s1">&#39;/tmp/scene_01.jpg&#39;</span><span class="p">,</span>
+</span><span data-line="6"><span class="gp">... </span>    <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span>
+</span><span data-line="7"><span class="gp">... </span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>Getting mask path by providing a mask type:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">path</span> <span class="o">=</span> <span class="n">asset</span><span class="o">.</span><span class="n">get_mask_path</span><span class="p">(</span><span class="s1">&#39;instance&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+</span><span data-line="3"><span class="go">/tmp/scene_01_instance.png</span>
+</span></pre></div>
+</div>
+<p>Getting mask path using a manual override. This option is useful
+when masks are stored in a completely different folder:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">path</span> <span class="o">=</span> <span class="n">asset</span><span class="o">.</span><span class="n">get_mask_path</span><span class="p">(</span>
+</span><span data-line="2"><span class="gp">... </span>    <span class="s1">&#39;semantic&#39;</span><span class="p">,</span>
+</span><span data-line="3"><span class="gp">... </span>    <span class="n">override_path</span><span class="o">=</span><span class="s1">&#39;/masks/custom_01.png&#39;</span>
+</span><span data-line="4"><span class="gp">... </span><span class="p">)</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+</span><span data-line="6"><span class="go">/masks/custom_01.png</span>
+</span></pre></div>
+</div>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="rapidtools.core.ImageAsset.get_property">
-<span class="sig-name descname"><span class="pre">get_property</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.get_property"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.get_property" title="Link to this definition">¶</a></dt>
-<dd><p>Safely retrieves a metadata property from the asset.</p>
+<span class="sig-name descname"><span class="pre">get_property</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Iterable</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.get_property"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.get_property" title="Link to this definition">¶</a></dt>
+<dd><p>Safely retrieve one or more metadata properties from the asset.</p>
+<p>This method is polymorphic:</p>
+<blockquote>
+<div><ol class="arabic simple">
+<li><p>If <code class="docutils literal notranslate"><span class="pre">key</span></code> is a <code class="docutils literal notranslate"><span class="pre">str</span></code>, it returns the single value.</p></li>
+<li><p>If <code class="docutils literal notranslate"><span class="pre">key</span></code> is a list/tuple, it returns a dictionary of
+<code class="docutils literal notranslate"><span class="pre">{key:</span> <span class="pre">value}</span></code>.</p></li>
+</ol>
+</div></blockquote>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>key</strong> (<em>str</em>) – The name of the property to retrieve (e.g., ‘compass_angle’).</p></li>
-<li><p><strong>default</strong> (<em>Any</em><em>, </em><em>optional</em>) – The value to return if the key is not found.</p></li>
+<li><p><strong>key</strong> (<em>str</em><em> or </em><em>Iterable</em><em>[</em><em>str</em><em>]</em>) – A single property name or a list of names to retrieve.</p></li>
+<li><p><strong>default</strong> (<em>Any</em><em>, </em><em>optional</em>) – The value to return for any key that is not found.
+Defaults to <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The value of the property, or the default value.</p>
+<dd class="field-even"><p><ul class="simple">
+<li><p>The value (if input was a single string).</p></li>
+<li><p>A dictionary of values (if input was an iterable).</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Any or dict[str, Any]</p>
 </dd>
 </dl>
+<p class="rubric">Examples</p>
+<p>Set up an <code class="docutils literal notranslate"><span class="pre">ImageAsset</span></code></p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageAsset</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span>
+</span><span data-line="3"><span class="gp">... </span>    <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;img_01&#39;</span><span class="p">,</span>
+</span><span data-line="4"><span class="gp">... </span>    <span class="n">path</span><span class="o">=</span><span class="s1">&#39;photo.jpg&#39;</span><span class="p">,</span>
+</span><span data-line="5"><span class="gp">... </span>    <span class="n">properties</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;width&#39;</span><span class="p">:</span> <span class="mi">1920</span><span class="p">,</span> <span class="s1">&#39;height&#39;</span><span class="p">:</span> <span class="mi">1080</span><span class="p">,</span> <span class="s1">&#39;iso&#39;</span><span class="p">:</span> <span class="mi">100</span><span class="p">},</span>
+</span><span data-line="6"><span class="gp">... </span>    <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span>
+</span><span data-line="7"><span class="gp">... </span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>Request the values of individual properties:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">get_property</span><span class="p">(</span><span class="s1">&#39;width&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="go">1920</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">get_property</span><span class="p">(</span><span class="s1">&#39;shutter_speed&#39;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s1">&#39;Auto&#39;</span><span class="p">)</span>
+</span><span data-line="4"><span class="go">&#39;Auto&#39;</span>
+</span></pre></div>
+</div>
+<p>Request the values of multiple properties at once:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">get_property</span><span class="p">([</span><span class="s1">&#39;width&#39;</span><span class="p">,</span> <span class="s1">&#39;height&#39;</span><span class="p">])</span>
+</span><span data-line="2"><span class="go">{&#39;width&#39;: 1920, &#39;height&#39;: 1080}</span>
+</span></pre></div>
+</div>
+<p>Request the values of multiple properties, including some that
+exist and some that are missing:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">get_property</span><span class="p">([</span><span class="s1">&#39;iso&#39;</span><span class="p">,</span> <span class="s1">&#39;aperture&#39;</span><span class="p">],</span> <span class="n">default</span><span class="o">=</span><span class="s1">&#39;Unknown&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="go">{&#39;iso&#39;: 100, &#39;aperture&#39;: &#39;Unknown&#39;}</span>
+</span></pre></div>
+</div>
 </dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="rapidtools.core.ImageAsset.is_downloaded">
 <em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">is_downloaded</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="headerlink" href="#rapidtools.core.ImageAsset.is_downloaded" title="Link to this definition">¶</a></dt>
 <dd><p>Check whether the image file exists on disk and is non-empty.</p>
-<p>This property verifies that:
-- The path exists.
-- The path points to a regular file (not a directory).
-- The file size is greater than zero bytes.</p>
+<p>This property verifies that:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>The path exists.</p></li>
+<li><p>The path points to a regular file (not a directory).</p></li>
+<li><p>The file size is greater than zero bytes.</p></li>
+</ul>
+</div></blockquote>
 <dl class="field-list simple">
 <dt class="field-odd">Returns<span class="colon">:</span></dt>
 <dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">True</span></code> if a non-empty image file exists at image path,
@@ -623,9 +781,10 @@ initialized lazily. Here, by using <code class="docutils literal notranslate"><s
 can  work with an asset’s metadata and only trigger a download if
 this property returns <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p>
 <p>Case 1: The file exists on the local file system:</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">image</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span><span class="s1">&#39;exists.jpg&#39;</span><span class="p">)</span>
-</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="n">image</span><span class="o">.</span><span class="n">is_downloaded</span>
-</span><span data-line="3"><span class="go">True</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageAsset</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="n">image</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span><span class="s1">&#39;exists.jpg&#39;</span><span class="p">)</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">image</span><span class="o">.</span><span class="n">is_downloaded</span>
+</span><span data-line="4"><span class="go">True</span>
 </span></pre></div>
 </div>
 <p>Case 2: The file is missing or has not been downloaded yet. We use
@@ -641,7 +800,7 @@ this property returns <code class="docutils literal notranslate"><span class="pr
 </span><span data-line="3"><span class="gp">... </span>        <span class="n">url</span><span class="o">=</span><span class="sa">r</span><span class="s1">&#39;https://upload.wikimedia.org/wikipedia/commons/1&#39;</span>
 </span><span data-line="4"><span class="gp">... </span>            <span class="sa">r</span><span class="s1">&#39;/1e/Suzzallo_Reading_Room%2C_May_2016.jpg&#39;</span>
 </span><span data-line="5"><span class="gp">... </span>    <span class="p">)</span>
-</span><span data-line="6"><span class="gp">... </span>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Downloaded: </span><span class="si">{</span><span class="n">image</span><span class="o">.</span><span class="n">is_downloaded</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span data-line="6"><span class="gp">... </span>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Downloaded: </span><span class="si">{</span><span class="n">image</span><span class="o">.</span><span class="n">is_downloaded</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
 </span><span data-line="7"><span class="go">INFO: Downloading missing...</span>
 </span><span data-line="8"><span class="go">INFO: Successfully downloaded: missing.jpg</span>
 </span><span data-line="9"><span class="go">Downloaded: True</span>
@@ -651,22 +810,30 @@ this property returns <code class="docutils literal notranslate"><span class="pr
 
 <dl class="py method">
 <dt class="sig sig-object py" id="rapidtools.core.ImageAsset.load_image_from_disk">
-<span class="sig-name descname"><span class="pre">load_image_from_disk</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">force_reload</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">convert_mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Image</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.load_image_from_disk"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.load_image_from_disk" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">load_image_from_disk</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">force_reload</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">convert_mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">apply_exif_orientation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Image</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.load_image_from_disk"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.load_image_from_disk" title="Link to this definition">¶</a></dt>
 <dd><p>Load the image from disk using Pillow and caches it.</p>
-<p>Behavior:
-- Lazy-caches by default (returns cached image if present).
-- Always fully decodes and then closes the underlying file handle.
-Optionally converts to a target mode (e.g., “RGB”).
-- Optional force reload to bypass cache.</p>
+<p>Behavior:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Lazy-caches by default (returns cached image if present).</p></li>
+<li><p>Always fully decodes and then closes the underlying file handle.
+Optionally converts to a target mode (e.g., <code class="docutils literal notranslate"><span class="pre">'RGB'</span></code>).</p></li>
+<li><p>Optional force reload to bypass cache.</p></li>
+</ul>
+</div></blockquote>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>force_reload</strong> – Reload from disk even if already cached.</p></li>
+<li><p><strong>force_reload</strong> – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, re-reads the file from disk even if an image is
+currently cached. Defaults to <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
 <li><p><strong>convert_mode</strong> – If provided, converts image to the specified PIL mode. Some
 options are <code class="docutils literal notranslate"><span class="pre">L</span></code> (Grayscale), <code class="docutils literal notranslate"><span class="pre">1</span></code> (Black and White),
 <code class="docutils literal notranslate"><span class="pre">CMYK</span></code> (Cyan, Magenta, Yellow, Key/Black), <code class="docutils literal notranslate"><span class="pre">I</span></code>
 (32-bit signed integer pixels), and <code class="docutils literal notranslate"><span class="pre">HSV</span></code> (Hue, Saturation,
 Value color space).</p></li>
+<li><p><strong>apply_exif_orientation</strong> (<em>bool</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, reads the EXIF tags and rotates the image to appear
+upright (e.g., fixing sideways smartphone photos).
+Defaults to <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -677,17 +844,75 @@ Value color space).</p></li>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
 <dd class="field-even"><ul class="simple">
-<li><p><strong>FileNotFoundError</strong> – If the file is missing/empty.</p></li>
-<li><p><strong>Exception</strong> – Propagates Pillow/IO errors with logging.</p></li>
+<li><p><strong>FileNotFoundError</strong> – If the file does not exist or has not been downloaded.</p></li>
+<li><p><strong>OSError</strong> – If the file exists but cannot be opened (corruption/permissions).</p></li>
 </ul>
 </dd>
 </dl>
+<p class="rubric">Examples</p>
+<p>Create a dummy red 100x100 RGB image for testing:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">PIL</span><span class="w"> </span><span class="kn">import</span> <span class="n">Image</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageAsset</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="n">temp_path</span> <span class="o">=</span> <span class="s1">&#39;temp_example.jpg&#39;</span>
+</span><span data-line="6"><span class="gp">&gt;&gt;&gt; </span><span class="n">Image</span><span class="o">.</span><span class="n">new</span><span class="p">(</span><span class="s1">&#39;RGB&#39;</span><span class="p">,</span> <span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">100</span><span class="p">),</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;red&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">temp_path</span><span class="p">)</span>
+</span><span data-line="7"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="8"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;img_01&#39;</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="n">temp_path</span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>Basic loading from a file. The first call reads the file from disk,
+subsequent calls return the cached result:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">img1</span> <span class="o">=</span> <span class="n">asset</span><span class="o">.</span><span class="n">load_image_from_disk</span><span class="p">()</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">img1</span><span class="o">.</span><span class="n">format</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">img1</span><span class="o">.</span><span class="n">size</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">img1</span><span class="o">.</span><span class="n">mode</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+</span><span data-line="3"><span class="go">INFO: Loading image data from: temp_example.jpg</span>
+</span><span data-line="4"><span class="go">None (100, 100) RGB</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="6"><span class="gp">&gt;&gt;&gt; </span><span class="n">img2</span> <span class="o">=</span> <span class="n">asset</span><span class="o">.</span><span class="n">load_image_from_disk</span><span class="p">()</span>
+</span><span data-line="7"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">img1</span> <span class="ow">is</span> <span class="n">img2</span><span class="p">)</span>
+</span><span data-line="8"><span class="go">True</span>
+</span></pre></div>
+</div>
+<p>Loading an image with mode conversion and force reload. Here force
+reload is enabled to ignore the cache, and the image is converted
+to Grayscale (<code class="docutils literal notranslate"><span class="pre">'L'</span></code>):</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">img_gray</span> <span class="o">=</span> <span class="n">asset</span><span class="o">.</span><span class="n">load_image_from_disk</span><span class="p">(</span>
+</span><span data-line="2"><span class="gp">... </span>    <span class="n">force_reload</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+</span><span data-line="3"><span class="gp">... </span>    <span class="n">convert_mode</span><span class="o">=</span><span class="s1">&#39;L&#39;</span>
+</span><span data-line="4"><span class="gp">... </span><span class="p">)</span>
+</span><span data-line="5"><span class="go">INFO: Loading image data from: temp_example.jpg</span>
+</span><span data-line="6"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">img_gray</span><span class="o">.</span><span class="n">mode</span><span class="p">)</span>
+</span><span data-line="7"><span class="go">L</span>
+</span></pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">load_image_from_disk</span></code> raises a <code class="docutils literal notranslate"><span class="pre">FileNotFoundError</span></code> if the file
+does not exist locally (or has not yet been downloaded) or raises an
+<code class="docutils literal notranslate"><span class="pre">OSError</span></code> if the file exists but cannot be opened (e.g., due to
+corruption or insufficient permissions). The following example shows
+a sample error handling situation:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">missing_asset</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span>
+</span><span data-line="2"><span class="gp">... </span>    <span class="nb">id</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+</span><span data-line="3"><span class="gp">... </span>    <span class="n">path</span><span class="o">=</span><span class="s1">&#39;ghost.jpg&#39;</span><span class="p">,</span>
+</span><span data-line="4"><span class="gp">... </span>    <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+</span><span data-line="5"><span class="gp">... </span><span class="p">)</span>
+</span><span data-line="6"><span class="gp">&gt;&gt;&gt; </span><span class="k">try</span><span class="p">:</span>
+</span><span data-line="7"><span class="gp">... </span>    <span class="n">missing_asset</span><span class="o">.</span><span class="n">load_image_from_disk</span><span class="p">()</span>
+</span><span data-line="8"><span class="gp">... </span><span class="k">except</span> <span class="ne">FileNotFoundError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+</span><span data-line="9"><span class="gp">... </span>    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Caught error&#39;</span><span class="p">)</span>
+</span><span data-line="10"><span class="go">Caught error</span>
+</span></pre></div>
+</div>
+<p>Finally, run the following line to delete the temporary image
+file created for this example:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">temp_path</span><span class="p">)</span>
+</span></pre></div>
+</div>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="rapidtools.core.ImageAsset.load_image_from_url">
-<span class="sig-name descname"><span class="pre">load_image_from_url</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">url_key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'thumb_original_url'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">convert_mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_reload</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">session</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Session</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.load_image_from_url"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.load_image_from_url" title="Link to this definition">¶</a></dt>
-<dd><p>Download the image into memory and save it to self._pil_image.</p>
+<span class="sig-name descname"><span class="pre">load_image_from_url</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">url_key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'thumb_original_url'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">convert_mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_reload</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">apply_exif_orientation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">session</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Session</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Image</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.load_image_from_url"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.load_image_from_url" title="Link to this definition">¶</a></dt>
+<dd><p>Download the image into memory and cache it.</p>
 <p>This method bypasses <code class="docutils literal notranslate"><span class="pre">path</span></code> for the image entirely.
 Note that the <code class="docutils literal notranslate"><span class="pre">is_downloaded</span></code> property of the image will remain
 <code class="docutils literal notranslate"><span class="pre">False</span></code> after this method completes execution (unless the file
@@ -697,34 +922,98 @@ happened to exist previously).</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>url</strong> (<em>str</em><em>, </em><em>optional</em>) – Direct URL to download from. If <code class="docutils literal notranslate"><span class="pre">None</span></code>, checks
 image properties to find the URL.</p></li>
-<li><p><strong>url_key</strong> (<em>str</em>) – Property key to use for URL if direct url is <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
-<li><p><strong>convert_mode</strong> (<em>str</em><em>, </em><em>optional</em>) – Mode to convert the loaded image to (e.g., “RGB”).</p></li>
-<li><p><strong>force_reload</strong> (<em>bool</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, re-downloads even if _pil_image is already
-set.</p></li>
+<li><p><strong>url_key</strong> (<em>str</em>) – Property key to use for URL if direct url is <code class="docutils literal notranslate"><span class="pre">None</span></code>.
+Defaults to ‘thumb_original_url’.</p></li>
+<li><p><strong>convert_mode</strong> (<em>str</em><em>, </em><em>optional</em>) – Mode to convert the loaded image to (e.g., <code class="docutils literal notranslate"><span class="pre">'RGB'</span></code>).</p></li>
+<li><p><strong>force_reload</strong> (<em>bool</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, re-downloads even if _pil_image is already set.</p></li>
+<li><p><strong>apply_exif_orientation</strong> (<em>bool</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, rotates the image based on EXIF data (e.g.,
+fixing sideways phone photos). Defaults to <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
 <li><p><strong>verbose</strong> (<em>bool</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, logs standard info messages. Set to <code class="docutils literal notranslate"><span class="pre">False</span></code>
 to suppress the “Downloading into memory” log. Defaults to
 <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
 <li><p><strong>session</strong> (<em>requests.Session</em><em>, </em><em>optional</em>) – Session for efficient connection pooling during download.</p></li>
 </ul>
 </dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The loaded PIL image object.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>PillowImage.Image</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>ValueError</strong> – If the URL cannot be determined.</p></li>
+<li><p><strong>requests.RequestException</strong> – If the network request fails.</p></li>
+<li><p><strong>IOError</strong> – If the bytes cannot be decoded as an image.</p></li>
+</ul>
+</dd>
 </dl>
+<p class="rubric">Examples</p>
+<p>Setup an asset defined only by metadata (no local file yet):</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageAsset</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span>
+</span><span data-line="3"><span class="gp">... </span>    <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;wiki_cat&#39;</span><span class="p">,</span>
+</span><span data-line="4"><span class="gp">... </span>    <span class="n">path</span><span class="o">=</span><span class="s1">&#39;virtual_cat.jpg&#39;</span><span class="p">,</span>
+</span><span data-line="5"><span class="gp">... </span>    <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+</span><span data-line="6"><span class="gp">... </span>    <span class="n">properties</span><span class="o">=</span><span class="p">{</span>
+</span><span data-line="7"><span class="gp">... </span>        <span class="s1">&#39;thumb_original_url&#39;</span><span class="p">:</span> <span class="p">(</span>
+</span><span data-line="8"><span class="gp">... </span>            <span class="s1">&#39;https://upload.wikimedia.org/wikipedia/commons/&#39;</span>
+</span><span data-line="9"><span class="gp">... </span>            <span class="s1">&#39;3/3a/Cat03.jpg&#39;</span>
+</span><span data-line="10"><span class="gp">... </span>        <span class="p">),</span>
+</span><span data-line="11"><span class="gp">... </span>        <span class="s1">&#39;backup_url&#39;</span><span class="p">:</span> <span class="p">(</span>
+</span><span data-line="12"><span class="gp">... </span>            <span class="s1">&#39;https://upload.wikimedia.org/wikipedia/commons/&#39;</span>
+</span><span data-line="13"><span class="gp">... </span>            <span class="s1">&#39;4/47/PNG_transparency_demonstration_1.png&#39;</span>
+</span><span data-line="14"><span class="gp">... </span>        <span class="p">),</span>
+</span><span data-line="15"><span class="gp">... </span>    <span class="p">},</span>
+</span><span data-line="16"><span class="gp">... </span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>Loading image from the URL in properties (loads from
+<code class="docutils literal notranslate"><span class="pre">'thumb_original_url'</span></code> by default) into memory:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">img</span> <span class="o">=</span> <span class="n">asset</span><span class="o">.</span><span class="n">load_image_from_url</span><span class="p">()</span>
+</span><span data-line="2"><span class="go">INFO: Downloading wiki_cat into memory...</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">img</span><span class="o">.</span><span class="n">size</span><span class="p">)</span>
+</span><span data-line="4"><span class="go">(1600, 1598)</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">asset</span><span class="o">.</span><span class="n">is_downloaded</span><span class="p">)</span>
+</span><span data-line="6"><span class="go">False</span>
+</span></pre></div>
+</div>
+<p>Load from a specific key, convert to Grayscale (<code class="docutils literal notranslate"><span class="pre">'L'</span></code>), force a
+re-download, and suppress the log message:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">img_small</span> <span class="o">=</span> <span class="n">asset</span><span class="o">.</span><span class="n">load_image_from_url</span><span class="p">(</span>
+</span><span data-line="2"><span class="gp">... </span>    <span class="n">url_key</span><span class="o">=</span><span class="s1">&#39;backup_url&#39;</span><span class="p">,</span>
+</span><span data-line="3"><span class="gp">... </span>    <span class="n">convert_mode</span><span class="o">=</span><span class="s1">&#39;L&#39;</span><span class="p">,</span>
+</span><span data-line="4"><span class="gp">... </span>    <span class="n">force_reload</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+</span><span data-line="5"><span class="gp">... </span>    <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span>
+</span><span data-line="6"><span class="gp">... </span><span class="p">)</span>
+</span><span data-line="7"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">img_small</span><span class="o">.</span><span class="n">mode</span><span class="p">)</span>
+</span><span data-line="8"><span class="go">L</span>
+</span></pre></div>
+</div>
+<p>Load an image using a Session (recommended for batch
+processing. This example uses the TCP connection for speed:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">requests</span><span class="o">.</span><span class="n">Session</span><span class="p">()</span> <span class="k">as</span> <span class="n">session</span><span class="p">:</span>
+</span><span data-line="3"><span class="gp">... </span>    <span class="n">asset</span><span class="o">.</span><span class="n">load_image_from_url</span><span class="p">(</span><span class="n">session</span><span class="o">=</span><span class="n">session</span><span class="p">)</span>
+</span></pre></div>
+</div>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="rapidtools.core.ImageAsset.load_mask">
-<span class="sig-name descname"><span class="pre">load_mask</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mask_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'semantic'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'instance'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_reload</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.load_mask"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.load_mask" title="Link to this definition">¶</a></dt>
-<dd><p>Lazy-loads the segmentation mask from disk into a NumPy array.</p>
+<span class="sig-name descname"><span class="pre">load_mask</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mask_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">MaskType</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_reload</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.load_mask"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.load_mask" title="Link to this definition">¶</a></dt>
+<dd><p>Lazy-load the segmentation mask from disk into a NumPy array.</p>
 <p>This method handles caching automatically. It checks if the mask is
 already loaded in memory (e.g. <cite>_semantic_mask</cite>) before attempting
 file I/O.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>mask_type</strong> (<em>str</em>) – The type of mask to load. Standard values are ‘semantic’ or
-‘instance’. Defaults to ‘semantic’.</p></li>
+<li><p><strong>mask_type</strong> (<em>str</em>) – The type of mask to load. Standard values are <code class="docutils literal notranslate"><span class="pre">'semantic'</span></code> or
+<code class="docutils literal notranslate"><span class="pre">'instance'</span></code>. Defaults to <code class="docutils literal notranslate"><span class="pre">'semantic'</span></code>.</p></li>
 <li><p><strong>force_reload</strong> (<em>bool</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, ignores the internal cache and re-reads the file
 from disk. Defaults to <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
-<li><p><strong>custom_path</strong> (<em>Path</em><em> | </em><em>str</em><em> | </em><em>None</em>) – If provided, loads the mask from this specific path instead
+<li><p><strong>custom_path</strong> (<em>Path</em><em>, or </em><em>str</em><em>, or </em><em>None</em>) – If provided, loads the mask from this specific path instead
 of deriving the filename from the image asset’s path.</p></li>
 </ul>
 </dd>
@@ -736,13 +1025,52 @@ of deriving the filename from the image asset’s path.</p></li>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
 <dd class="field-even"><ul class="simple">
+<li><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">mask_type</span></code> is invalid.</p></li>
 <li><p><strong>FileNotFoundError</strong> – If the mask file does not exist at the calculated or provided
     path.</p></li>
-<li><p><strong>Exception</strong> – If the file exists but cannot be opened or decoded
+<li><p><strong>OSError</strong> – If the file exists but cannot be opened or decoded
     (e.g. corruption).</p></li>
 </ul>
 </dd>
 </dl>
+<p class="rubric">Examples</p>
+<p>Create a mock environment with a real mask file by creating a dummy
+asset and a semantic mask file matching the expected naming
+convention:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">PIL</span><span class="w"> </span><span class="kn">import</span> <span class="n">Image</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">MaskType</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageAsset</span>
+</span><span data-line="6"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="7"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span>
+</span><span data-line="8"><span class="gp">... </span>    <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;scene_01&#39;</span><span class="p">,</span>
+</span><span data-line="9"><span class="gp">... </span>    <span class="n">path</span><span class="o">=</span><span class="s1">&#39;test_scene.jpg&#39;</span><span class="p">,</span>
+</span><span data-line="10"><span class="gp">... </span>    <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span>
+</span><span data-line="11"><span class="gp">... </span><span class="p">)</span>
+</span><span data-line="12"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="13"><span class="gp">&gt;&gt;&gt; </span><span class="n">mask_data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
+</span><span data-line="14"><span class="gp">&gt;&gt;&gt; </span><span class="n">mask_data</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">5</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="mi">1</span>  <span class="c1"># Top half is class 1</span>
+</span><span data-line="15"><span class="gp">&gt;&gt;&gt; </span><span class="n">mask_path</span> <span class="o">=</span> <span class="s1">&#39;test_scene_semantic.png&#39;</span>
+</span><span data-line="16"><span class="gp">&gt;&gt;&gt; </span><span class="n">Image</span><span class="o">.</span><span class="n">fromarray</span><span class="p">(</span><span class="n">mask_data</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">mask_path</span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>Load the semantic segmentation mask from ‘test_scene_semantic.png’
+Please note that the <code class="docutils literal notranslate"><span class="pre">load_mask</span></code> method infers this filename
+automatically from the image filename and the provided mask_type
+by appending _semantic before the file extension
+(e.g., test_scene.png turns into test_scene_semantic.png):</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">loaded_mask</span> <span class="o">=</span> <span class="n">asset</span><span class="o">.</span><span class="n">load_mask</span><span class="p">(</span><span class="n">MaskType</span><span class="o">.</span><span class="n">SEMANTIC</span><span class="p">)</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">loaded_mask</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+</span><span data-line="3"><span class="go">(10, 10)</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">loaded_mask</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
+</span><span data-line="5"><span class="go">1</span>
+</span></pre></div>
+</div>
+<p>To delete the generated mask file, please run:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">mask_path</span><span class="p">)</span>
+</span></pre></div>
+</div>
 </dd></dl>
 
 <dl class="py method">
@@ -767,18 +1095,49 @@ Defaults to <code class="docutils literal notranslate"><span class="pre">True</s
 </ul>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>ValueError</strong> – If IDs do not match and <code class="docutils literal notranslate"><span class="pre">ignore_id_mismatch</span></code> is <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>TypeError</strong> – If <code class="docutils literal notranslate"><span class="pre">other</span></code> is not an <code class="docutils literal notranslate"><span class="pre">ImageAsset</span></code>.</p></li>
+<li><p><strong>ValueError</strong> – If IDs do not match and <code class="docutils literal notranslate"><span class="pre">ignore_id_mismatch</span></code> is <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+</ul>
 </dd>
 </dl>
-<p class="rubric">Example</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset_a</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span><span class="s1">&#39;img1.jpg&#39;</span><span class="p">,</span> <span class="n">properties</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;temp&#39;</span><span class="p">:</span> <span class="mi">20</span><span class="p">,</span> <span class="s1">&#39;status&#39;</span><span class="p">:</span> <span class="s1">&#39;raw&#39;</span><span class="p">})</span>
-</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset_b</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span><span class="s1">&#39;img1.jpg&#39;</span><span class="p">,</span> <span class="n">properties</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;status&#39;</span><span class="p">:</span> <span class="s1">&#39;processed&#39;</span><span class="p">,</span> <span class="s1">&#39;gps&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]})</span>
-</span><span data-line="3"><span class="gp">&gt;&gt;&gt;</span>
-</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="c1"># Merge asset_b into asset_a</span>
-</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset_a</span><span class="o">.</span><span class="n">merge</span><span class="p">(</span><span class="n">asset_b</span><span class="p">,</span> <span class="n">overwrite_properties</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-</span><span data-line="6"><span class="gp">&gt;&gt;&gt;</span>
-</span><span data-line="7"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset_a</span><span class="o">.</span><span class="n">properties</span>
-</span><span data-line="8"><span class="go">{&#39;temp&#39;: 20, &#39;status&#39;: &#39;processed&#39;, &#39;gps&#39;: [0, 0]}</span>
+<p class="rubric">Examples</p>
+<p>Create two ImageAsset objects:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageAsset</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset_a</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span>
+</span><span data-line="4"><span class="gp">... </span>    <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;1&#39;</span><span class="p">,</span>
+</span><span data-line="5"><span class="gp">... </span>    <span class="n">path</span><span class="o">=</span><span class="s1">&#39;a.jpg&#39;</span><span class="p">,</span>
+</span><span data-line="6"><span class="gp">... </span>    <span class="n">properties</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;temp&#39;</span><span class="p">:</span> <span class="mi">20</span><span class="p">},</span>
+</span><span data-line="7"><span class="gp">... </span>    <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+</span><span data-line="8"><span class="gp">... </span><span class="p">)</span>
+</span><span data-line="9"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset_b</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span>
+</span><span data-line="10"><span class="gp">... </span>    <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;1&#39;</span><span class="p">,</span>
+</span><span data-line="11"><span class="gp">... </span>    <span class="n">path</span><span class="o">=</span><span class="s1">&#39;b.jpg&#39;</span><span class="p">,</span>
+</span><span data-line="12"><span class="gp">... </span>    <span class="n">properties</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;temp&#39;</span><span class="p">:</span> <span class="mi">25</span><span class="p">,</span> <span class="s1">&#39;gps&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]},</span>
+</span><span data-line="13"><span class="gp">... </span>    <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+</span><span data-line="14"><span class="gp">... </span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>Merge <code class="docutils literal notranslate"><span class="pre">asset_b</span></code>’s properties into <code class="docutils literal notranslate"><span class="pre">asset_a</span></code> using the default
+behavior that overwrites conflicts:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset_a</span><span class="o">.</span><span class="n">merge</span><span class="p">(</span><span class="n">asset_b</span><span class="p">,</span> <span class="n">overwrite_properties</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">asset_a</span><span class="o">.</span><span class="n">properties</span><span class="p">)</span>
+</span><span data-line="3"><span class="go">{&#39;temp&#39;: 25, &#39;gps&#39;: [0, 0]}</span>
+</span></pre></div>
+</div>
+<p>Merge without overwriting existing keys. Here, <code class="docutils literal notranslate"><span class="pre">'gps'</span></code> is added
+(it was not present on <code class="docutils literal notranslate"><span class="pre">asset_a</span></code>), <code class="docutils literal notranslate"><span class="pre">'temp'</span></code> is NOT overwritten
+(stays 20):</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset_a</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span>
+</span><span data-line="2"><span class="gp">... </span>    <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;1&#39;</span><span class="p">,</span>
+</span><span data-line="3"><span class="gp">... </span>    <span class="n">path</span><span class="o">=</span><span class="s1">&#39;a.jpg&#39;</span><span class="p">,</span>
+</span><span data-line="4"><span class="gp">... </span>    <span class="n">properties</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;temp&#39;</span><span class="p">:</span> <span class="mi">20</span><span class="p">},</span>
+</span><span data-line="5"><span class="gp">... </span>    <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+</span><span data-line="6"><span class="gp">... </span><span class="p">)</span>
+</span><span data-line="7"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset_a</span><span class="o">.</span><span class="n">merge</span><span class="p">(</span><span class="n">asset_b</span><span class="p">,</span> <span class="n">overwrite_properties</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span><span data-line="8"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">asset_a</span><span class="o">.</span><span class="n">properties</span><span class="p">)</span>
+</span><span data-line="9"><span class="go">{&#39;temp&#39;: 20, &#39;gps&#39;: [0, 0]}</span>
 </span></pre></div>
 </div>
 </dd></dl>
@@ -786,17 +1145,17 @@ Defaults to <code class="docutils literal notranslate"><span class="pre">True</s
 <dl class="py method">
 <dt class="sig sig-object py" id="rapidtools.core.ImageAsset.save_image">
 <span class="sig-name descname"><span class="pre">save_image</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">format</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">quality</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">100</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.save_image"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.save_image" title="Link to this definition">¶</a></dt>
-<dd><p>Saves the currently cached PIL image to disk.</p>
+<dd><p>Saves the cached PIL image to disk.</p>
 <p>This method writes the in-memory image data to a file. It automatically
 creates any necessary parent directories.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>output_path</strong> (<em>Path</em><em> | </em><em>str</em><em> | </em><em>None</em>) – The file path where the image will be saved. If <code class="docutils literal notranslate"><span class="pre">None</span></code>,
+<li><p><strong>output_path</strong> (<em>Path</em><em>, or </em><em>str</em><em>, or </em><em>None</em>) – The file path where the image will be saved. If <code class="docutils literal notranslate"><span class="pre">None</span></code>,
 defaults to <code class="docutils literal notranslate"><span class="pre">self.path</span></code>, which will <strong>overwrite</strong> the
 original image file.</p></li>
-<li><p><strong>format</strong> (<em>str</em><em> | </em><em>None</em>) – The image format to use (e.g., ‘JPEG’, ‘PNG’). If <code class="docutils literal notranslate"><span class="pre">None</span></code>,
-the format is inferred from the file extension of the
+<li><p><strong>format</strong> (<em>str</em><em>, or </em><em>None</em>) – The image format to use (e.g., <code class="docutils literal notranslate"><span class="pre">'JPEG'</span></code>, <code class="docutils literal notranslate"><span class="pre">'PNG'</span></code>). If
+<code class="docutils literal notranslate"><span class="pre">None</span></code>, the format is inferred from the file extension of the
 output path.</p></li>
 <li><p><strong>quality</strong> (<em>int</em>) – The compression quality (1-100) for lossy formats like JPEG.
 Higher numbers mean better quality but larger file size.
@@ -804,58 +1163,167 @@ Defaults to 100.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>ValueError</strong> – If no image is currently loaded in memory (i.e.,
+<dd class="field-even"><ul class="simple">
+<li><p><strong>ValueError</strong> – If no image is currently loaded in memory (i.e.,
     <code class="docutils literal notranslate"><span class="pre">load_image_from_disk()</span></code>, <code class="docutils literal notranslate"><span class="pre">load_image_from_url</span></code> has not
-    been called).</p>
+    been called).</p></li>
+<li><p><strong>OSError</strong> – If the file cannot be written (e.g., permission errors).</p></li>
+</ul>
 </dd>
 </dl>
+<p class="rubric">Examples</p>
+<p>Create an asset with a cached image:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">PIL</span><span class="w"> </span><span class="kn">import</span> <span class="n">Image</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageAsset</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;A1&#39;</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="s1">&#39;input.jpg&#39;</span><span class="p">,</span> <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span data-line="6"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">_pil_image</span> <span class="o">=</span> <span class="n">Image</span><span class="o">.</span><span class="n">new</span><span class="p">(</span><span class="s1">&#39;RGB&#39;</span><span class="p">,</span> <span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">100</span><span class="p">),</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;blue&#39;</span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p><strong>Example 1: Save to a new path</strong></p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">save_image</span><span class="p">(</span><span class="n">output_path</span><span class="o">=</span><span class="s1">&#39;output.png&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="go">INFO: Saving image to output.png</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="s1">&#39;output.png&#39;</span><span class="p">))</span>
+</span><span data-line="4"><span class="go">True</span>
+</span></pre></div>
+</div>
+<p><strong>Example 2: Save as JPEG with specific quality</strong></p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">save_image</span><span class="p">(</span><span class="n">output_path</span><span class="o">=</span><span class="s1">&#39;compressed.jpg&#39;</span><span class="p">,</span> <span class="n">quality</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+</span><span data-line="2"><span class="go">INFO: Saving image to compressed.jpg</span>
+</span></pre></div>
+</div>
+<p><strong>Cleanup</strong></p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;output.png&#39;</span><span class="p">,</span> <span class="s1">&#39;compressed.jpg&#39;</span><span class="p">]:</span>
+</span><span data-line="2"><span class="gp">... </span>    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">f</span><span class="p">):</span> <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+</span></pre></div>
+</div>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="rapidtools.core.ImageAsset.save_interactive_html">
-<span class="sig-name descname"><span class="pre">save_interactive_html</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'semantic'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'instance'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'semantic'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">opacity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_area</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.save_interactive_html"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.save_interactive_html" title="Link to this definition">¶</a></dt>
-<dd><p>Create an interactive HMTL file to view segmentation masks.</p>
+<span class="sig-name descname"><span class="pre">save_interactive_html</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">MaskType</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">MaskType.SEMANTIC</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">opacity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_area</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.save_interactive_html"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.save_interactive_html" title="Link to this definition">¶</a></dt>
+<dd><blockquote>
+<div><p>Create an interactive HMTL file to view segmentation masks.</p>
 <p>Generates an interactive HTML file where masks are converted to SVG
 polygons. Hovering over a polygon shows its label from the asset’s
 mapping data.</p>
 <p>This method converts the raster NumPy mask into vector polygons
 on the fly.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>output_path</strong> – File path to save the HTML. Defaults to
-{filename}_{mask_type}.html.</p></li>
-<li><p><strong>mask_type</strong> – Type of segmentation mask displayed, i.e., ‘semantic’ or
-‘instance’.</p></li>
-<li><p><strong>opacity</strong> – Opacity of the polygon fill (0.0 to 1.0).</p></li>
-<li><p><strong>min_area</strong> – Minimum number of vertices to generate a polygon for. Helps
-reduce noise/dust in the SVG.</p></li>
-</ul>
+<dl class="simple">
+<dt>Args:</dt><dd><dl class="simple">
+<dt>output_path (Path, or str, or None):</dt><dd><p>File path to save the HTML. Defaults to
+{filename}_{mask_type}.html.</p>
+</dd>
+<dt>mask_type (str):</dt><dd><p>Type of segmentation mask displayed, i.e., ‘semantic’ or
+‘instance’.</p>
+</dd>
+<dt>opacity (float):</dt><dd><p>Opacity of the polygon fill (0.0 to 1.0).</p>
+</dd>
+<dt>min_area (int):</dt><dd><p>Minimum number of vertices to generate a polygon for. Helps
+reduce noise/dust in the SVG.</p>
 </dd>
 </dl>
+</dd>
+</dl>
+</div></blockquote>
+<p class="rubric">Examples</p>
+<p>Create a dummy image and a corresponding mask:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">PIL</span><span class="w"> </span><span class="kn">import</span> <span class="n">Image</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageAsset</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">MaskType</span>
+</span><span data-line="6"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="7"><span class="gp">&gt;&gt;&gt; </span><span class="n">img_path</span> <span class="o">=</span> <span class="s1">&#39;html_test.jpg&#39;</span>
+</span><span data-line="8"><span class="gp">&gt;&gt;&gt; </span><span class="n">Image</span><span class="o">.</span><span class="n">new</span><span class="p">(</span><span class="s1">&#39;RGB&#39;</span><span class="p">,</span> <span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">100</span><span class="p">),</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;white&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">img_path</span><span class="p">)</span>
+</span><span data-line="9"><span class="gp">&gt;&gt;&gt; </span><span class="n">mask_data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">100</span><span class="p">,</span> <span class="mi">100</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
+</span><span data-line="10"><span class="gp">&gt;&gt;&gt; </span><span class="n">mask_data</span><span class="p">[</span><span class="mi">10</span><span class="p">:</span><span class="mi">50</span><span class="p">,</span> <span class="mi">10</span><span class="p">:</span><span class="mi">50</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span> <span class="c1"># Square object</span>
+</span><span data-line="11"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="12"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;viz&#39;</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="n">img_path</span><span class="p">,</span> <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span data-line="13"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">set_mask</span><span class="p">(</span><span class="n">mask_data</span><span class="p">,</span> <span class="n">MaskType</span><span class="o">.</span><span class="n">SEMANTIC</span><span class="p">,</span> <span class="n">map_data</span><span class="o">=</span><span class="p">{</span><span class="mi">1</span><span class="p">:</span> <span class="s1">&#39;Square&#39;</span><span class="p">})</span>
+</span></pre></div>
+</div>
+<p>Create an interactive HTML:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">save_interactive_html</span><span class="p">(</span><span class="n">mask_type</span><span class="o">=</span><span class="n">MaskType</span><span class="o">.</span><span class="n">SEMANTIC</span><span class="p">)</span>
+</span><span data-line="2"><span class="go">INFO: Loading image data from: html_test.jpg</span>
+</span><span data-line="3"><span class="go">INFO: Generating HTML polygons for 1 semantics...</span>
+</span><span data-line="4"><span class="go">INFO: Saved interactive HTML to: html_test_semantic.html</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="s1">&#39;html_test_semantic.html&#39;</span><span class="p">))</span>
+</span><span data-line="6"><span class="go">True</span>
+</span></pre></div>
+</div>
+<p>Please run the following lines to remove the created files:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="p">[</span><span class="n">img_path</span><span class="p">,</span> <span class="s1">&#39;html_test_semantic.html&#39;</span><span class="p">]:</span>
+</span><span data-line="2"><span class="gp">... </span>    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">f</span><span class="p">):</span> <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+</span></pre></div>
+</div>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="rapidtools.core.ImageAsset.save_mask">
-<span class="sig-name descname"><span class="pre">save_mask</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mask_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'semantic'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'instance'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.save_mask"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.save_mask" title="Link to this definition">¶</a></dt>
-<dd><p>Saves the specified segmentation mask to disk as a PNG image.</p>
+<span class="sig-name descname"><span class="pre">save_mask</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mask_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">MaskType</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.save_mask"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.save_mask" title="Link to this definition">¶</a></dt>
+<dd><p>Save the specified image mask to disk as a PNG image.</p>
+<p>This method retrieves the mask (from memory cache or by reloading the
+source file) and writes it to the specified location. It strictly
+enforces the PNG format to ensure lossless storage of integer class IDs.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>mask_type</strong> – ‘semantic’ or ‘instance’.</p></li>
-<li><p><strong>output_path</strong> – Where to save. Defaults to standard naming convention
-(e.g., image_semantic.png).</p></li>
+<li><p><strong>mask_type</strong> (<em>MaskType</em>) – The type of mask to save (e.g., <code class="docutils literal notranslate"><span class="pre">'instance'</span></code> or <code class="docutils literal notranslate"><span class="pre">'semantic'</span></code>).</p></li>
+<li><p><strong>output_path</strong> (<em>Path</em><em>, or </em><em>str</em><em>, or </em><em>None</em>) – The destination path. If <code class="docutils literal notranslate"><span class="pre">None</span></code>, the method calculates the
+default path (e.g., <code class="docutils literal notranslate"><span class="pre">image_name_semantic.png</span></code>) in the same
+directory as the source image.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>ValueError</strong> – If the requested mask is not loaded.</p>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">mask_type</span></code> is invalid or if the mask data cannot be found
+    (neither in memory nor on disk).</p></li>
+<li><p><strong>OSError</strong> – If the file cannot be written (e.g., permission denied).</p></li>
+</ul>
 </dd>
 </dl>
+<p class="rubric">Examples</p>
+<p>Create an <code class="docutils literal notranslate"><span class="pre">ImageAsset</span></code> with an in-memory dummy mask (10x10 numpy
+array):</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageAsset</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">MaskType</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="6"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span>
+</span><span data-line="7"><span class="gp">... </span>    <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;A1&#39;</span><span class="p">,</span>
+</span><span data-line="8"><span class="gp">... </span>    <span class="n">path</span><span class="o">=</span><span class="s1">&#39;temp_asset.jpg&#39;</span><span class="p">,</span>
+</span><span data-line="9"><span class="gp">... </span>    <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+</span><span data-line="10"><span class="gp">... </span><span class="p">)</span>
+</span><span data-line="11"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="12"><span class="gp">&gt;&gt;&gt; </span><span class="n">mask_data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
+</span><span data-line="13"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">set_mask</span><span class="p">(</span><span class="n">mask_data</span><span class="p">,</span> <span class="n">MaskType</span><span class="o">.</span><span class="n">SEMANTIC</span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>Save the mask using the default naming convention:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">save_mask</span><span class="p">(</span><span class="s1">&#39;semantic&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="go">INFO: Saving semantic mask to temp_asset_semantic.png</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="s1">&#39;temp_asset_semantic.png&#39;</span><span class="p">))</span>
+</span><span data-line="4"><span class="go">True</span>
+</span></pre></div>
+</div>
+<p>Save to a specific custom path:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">save_mask</span><span class="p">(</span><span class="s1">&#39;semantic&#39;</span><span class="p">,</span> <span class="n">output_path</span><span class="o">=</span><span class="s1">&#39;custom_mask.png&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="go">INFO: Saving semantic mask to custom_mask.png</span>
+</span></pre></div>
+</div>
+<p>Remove the created files:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;temp_asset_semantic.png&#39;</span><span class="p">,</span> <span class="s1">&#39;custom_mask.png&#39;</span><span class="p">]:</span>
+</span><span data-line="2"><span class="gp">... </span>    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">f</span><span class="p">):</span> <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+</span></pre></div>
+</div>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="rapidtools.core.ImageAsset.set_mask">
-<span class="sig-name descname"><span class="pre">set_mask</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'semantic'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'instance'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">map_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.set_mask"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.set_mask" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">set_mask</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">MaskType</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">map_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.set_mask"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.set_mask" title="Link to this definition">¶</a></dt>
 <dd><p>Manually attaches a segmentation mask from memory.</p>
 <p>Use this when you have generated a mask in code
 (e.g., model inference) instead of loading it from a file.</p>
@@ -863,12 +1331,53 @@ reduce noise/dust in the SVG.</p></li>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>data</strong> – The array containing the mask.</p></li>
-<li><p><strong>mask_type</strong> – Mask type, i.e., ‘semantic’ or ‘instance’.</p></li>
+<li><p><strong>mask_type</strong> – Mask type, i.e., <code class="docutils literal notranslate"><span class="pre">'semantic'</span></code> or <code class="docutils literal notranslate"><span class="pre">'instance'</span></code>.</p></li>
 <li><p><strong>map_data</strong> – Optional dictionary to update the class/instance mapping.
-If provided, it REPLACES the existing map for this asset.</p></li>
+If provided, it replaces the existing map for this asset.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>TypeError</strong> – If <code class="docutils literal notranslate"><span class="pre">data</span></code> is not a NumPy array.</p></li>
+<li><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">mask_type</span></code> is not ‘semantic’ or ‘instance’.</p></li>
 </ul>
 </dd>
 </dl>
+<p class="rubric">Example</p>
+<p>Setup a virtual asset and mock segmentation data (representing
+output from an AI model):</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageAsset</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span>
+</span><span data-line="5"><span class="gp">... </span>    <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;img_01&#39;</span><span class="p">,</span>
+</span><span data-line="6"><span class="gp">... </span>    <span class="n">path</span><span class="o">=</span><span class="s1">&#39;virtual.jpg&#39;</span><span class="p">,</span>
+</span><span data-line="7"><span class="gp">... </span>    <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span>
+</span><span data-line="8"><span class="gp">... </span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>Create a dummy 10x10 mask where 1=Sky, 2=Grass:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">fake_mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="n">fake_mask</span><span class="p">[:</span><span class="mi">5</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="mi">1</span>  <span class="c1"># Top half is Sky</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">fake_mask</span><span class="p">[</span><span class="mi">5</span><span class="p">:,</span> <span class="p">:]</span> <span class="o">=</span> <span class="mi">2</span>  <span class="c1"># Bottom half is Grass</span>
+</span></pre></div>
+</div>
+<p>Define what the numbers mean (i.e., a segmentation map):</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">labels</span> <span class="o">=</span> <span class="p">{</span><span class="mi">1</span><span class="p">:</span> <span class="s1">&#39;Sky&#39;</span><span class="p">,</span> <span class="mi">2</span><span class="p">:</span> <span class="s1">&#39;Grass&#39;</span><span class="p">}</span>
+</span></pre></div>
+</div>
+<p>Attach the mask and the labels to the asset:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">set_mask</span><span class="p">(</span><span class="n">fake_mask</span><span class="p">,</span> <span class="s1">&#39;semantic&#39;</span><span class="p">,</span> <span class="n">map_data</span><span class="o">=</span><span class="n">labels</span><span class="p">)</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">asset</span><span class="o">.</span><span class="n">semantic_map</span><span class="p">)</span>
+</span><span data-line="3"><span class="go">{1: &#39;Sky&#39;, 2: &#39;Grass&#39;}</span>
+</span></pre></div>
+</div>
+<p>Verify the mask is cached and retrievable:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">retrieved</span> <span class="o">=</span> <span class="n">asset</span><span class="o">.</span><span class="n">load_mask</span><span class="p">(</span><span class="s1">&#39;semantic&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">retrieved</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+</span><span data-line="3"><span class="go">(10, 10)</span>
+</span></pre></div>
+</div>
 </dd></dl>
 
 <dl class="py method">
@@ -878,21 +1387,72 @@ If provided, it REPLACES the existing map for this asset.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>output_type</strong> – <ul>
-<li><p>‘image’: Show raw image only.</p></li>
-<li><p>’semantic’: Show semanOpenstic mask only (colored).</p></li>
-<li><p>’instance’: Show instance mask only.</p></li>
-<li><p>’overlay_semantic’: Image + Semantic Mask.</p></li>
-<li><p>’overlay_instance’: Image + Instance Mask.</p></li>
+<li><p><strong>output_type</strong> (<em>str</em>) – <p>The type of visualization to generate. Options:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">'image'</span></code>: Show raw image only.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">'semantic'</span></code>: Show semantic mask only (colored).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">'instance'</span></code>: Show instance mask only.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">'overlay_semantic'</span></code>: Image + Semantic Mask.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">'overlay_instance'</span></code>: Image + Instance Mask.</p></li>
 </ul>
 </p></li>
-<li><p><strong>alpha</strong> – Transparency of the mask in overlay modes (0.0 to 1.0), where
+<li><p><strong>alpha</strong> (<em>float</em>) – Transparency of the mask in overlay modes (0.0 to 1.0), where
 0 is fully transparent, 0.5 is 50% Transparent (see-through),
 and 1 is a solid color (blocks anything underneath it)</p></li>
-<li><p><strong>cmap</strong> – Matplotlib colormap name (e.g., ‘tab20’, ‘jet’).</p></li>
+<li><p><strong>cmap</strong> (<em>str</em><em>, </em><em>optional</em>) – Matplotlib colormap name (e.g., <code class="docutils literal notranslate"><span class="pre">'tab20'</span></code>, <code class="docutils literal notranslate"><span class="pre">'jet'</span></code>).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>ValueError</strong> – If the provided <code class="docutils literal notranslate"><span class="pre">cmap</span></code> is not a valid Matplotlib colormap name.</p></li>
+<li><p><strong>OSError</strong> – If a mask file exists but cannot be opened (e.g., file corruption),
+    as this method only catches <code class="docutils literal notranslate"><span class="pre">FileNotFoundError</span></code> for masks.</p></li>
 </ul>
 </dd>
 </dl>
+<p class="rubric">Examples</p>
+<p>Create a dummy base image (100x100 gray square) and dummy semantic
+mask (inner square is class 1) and initialize an <code class="docutils literal notranslate"><span class="pre">ImageAsset</span></code>
+with this image and its mask:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">PIL</span><span class="w"> </span><span class="kn">import</span> <span class="n">Image</span>
+</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageAsset</span>
+</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">MaskType</span>
+</span><span data-line="6"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="7"><span class="gp">&gt;&gt;&gt; </span><span class="n">img_path</span> <span class="o">=</span> <span class="s2">&quot;temp_viz_test.jpg&quot;</span>
+</span><span data-line="8"><span class="gp">&gt;&gt;&gt; </span><span class="n">Image</span><span class="o">.</span><span class="n">new</span><span class="p">(</span><span class="s1">&#39;RGB&#39;</span><span class="p">,</span> <span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">100</span><span class="p">),</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;gray&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">img_path</span><span class="p">)</span>
+</span><span data-line="9"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="10"><span class="gp">&gt;&gt;&gt; </span><span class="n">mask_path</span> <span class="o">=</span> <span class="s2">&quot;temp_viz_test_semantic.png&quot;</span>
+</span><span data-line="11"><span class="gp">&gt;&gt;&gt; </span><span class="n">mask_data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">100</span><span class="p">,</span> <span class="mi">100</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
+</span><span data-line="12"><span class="gp">&gt;&gt;&gt; </span><span class="n">mask_data</span><span class="p">[</span><span class="mi">25</span><span class="p">:</span><span class="mi">75</span><span class="p">,</span> <span class="mi">25</span><span class="p">:</span><span class="mi">75</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+</span><span data-line="13"><span class="gp">&gt;&gt;&gt; </span><span class="n">Image</span><span class="o">.</span><span class="n">fromarray</span><span class="p">(</span><span class="n">mask_data</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">mask_path</span><span class="p">)</span>
+</span><span data-line="14"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="15"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s1">&#39;viz_test&#39;</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="n">img_path</span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>View base image:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">show</span><span class="p">(</span><span class="n">output_type</span><span class="o">=</span><span class="s1">&#39;image&#39;</span><span class="p">)</span>
+</span><span data-line="2"><span class="go">Loading image data from: temp_viz_test.jpg</span>
+</span></pre></div>
+</div>
+<p>View semantic mask:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">show</span><span class="p">(</span><span class="n">output_type</span><span class="o">=</span><span class="s1">&#39;semantic&#39;</span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>Overlay the semantic mask with custom settings:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">show</span><span class="p">(</span>
+</span><span data-line="2"><span class="gp">... </span>    <span class="n">output_type</span><span class="o">=</span><span class="s1">&#39;overlay_semantic&#39;</span><span class="p">,</span>
+</span><span data-line="3"><span class="gp">... </span>    <span class="n">alpha</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span>
+</span><span data-line="4"><span class="gp">... </span>    <span class="n">cmap</span><span class="o">=</span><span class="s1">&#39;viridis&#39;</span>
+</span><span data-line="5"><span class="gp">... </span><span class="p">)</span>
+</span></pre></div>
+</div>
+<p>Remove dummy image and mask files:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">img_path</span><span class="p">)</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">mask_path</span><span class="p">)</span>
+</span></pre></div>
+</div>
 </dd></dl>
 
 <dl class="py property">
@@ -907,13 +1467,53 @@ and 1 is a solid color (blocks anything underneath it)</p></li>
 <dd class="field-even"><p>str</p>
 </dd>
 </dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageAsset</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span>
+</span><span data-line="4"><span class="gp">... </span>    <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;scene&#39;</span><span class="p">,</span>
+</span><span data-line="5"><span class="gp">... </span>    <span class="n">path</span><span class="o">=</span><span class="s1">&#39;/data/images/scene_01.tif&#39;</span><span class="p">,</span>
+</span><span data-line="6"><span class="gp">... </span>    <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span>
+</span><span data-line="7"><span class="gp">... </span><span class="p">)</span>
+</span><span data-line="8"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">stem</span>
+</span><span data-line="9"><span class="go">&#39;scene_01&#39;</span>
+</span><span data-line="10"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="11"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span>
+</span><span data-line="12"><span class="gp">... </span>    <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;photo&#39;</span><span class="p">,</span>
+</span><span data-line="13"><span class="gp">... </span>    <span class="n">path</span><span class="o">=</span><span class="s1">&#39;photo.jpg&#39;</span><span class="p">,</span>
+</span><span data-line="14"><span class="gp">... </span>    <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span>
+</span><span data-line="15"><span class="gp">... </span><span class="p">)</span>
+</span><span data-line="16"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">stem</span>
+</span><span data-line="17"><span class="go">&#39;photo&#39;</span>
+</span></pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="rapidtools.core.ImageAsset.summary">
+<span class="sig-name descname"><span class="pre">summary</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="_modules/rapidtools/core/image_asset.html#ImageAsset.summary"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#rapidtools.core.ImageAsset.summary" title="Link to this definition">¶</a></dt>
+<dd><p>Print a human-readable summary of the image asset.</p>
+<p>This method prints details including the asset’s ID, filename, path,
+status (downloaded/in-memory), file size (if available), and
+segmentation mask availability.</p>
 <p class="rubric">Example</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span><span class="s1">&#39;/data/images/scene_01.tif&#39;</span><span class="p">)</span>
-</span><span data-line="2"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">stem</span>
-</span><span data-line="3"><span class="go">&#39;scene_01&#39;</span>
-</span><span data-line="4"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span><span class="s1">&#39;photo.jpg&#39;</span><span class="p">)</span>
-</span><span data-line="5"><span class="gp">&gt;&gt;&gt; </span><span class="n">asset</span><span class="o">.</span><span class="n">stem</span>
-</span><span data-line="6"><span class="go">&#39;photo&#39;</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">rapidtools.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageAsset</span>
+</span><span data-line="2"><span class="gp">&gt;&gt;&gt;</span>
+</span><span data-line="3"><span class="gp">&gt;&gt;&gt; </span><span class="n">img</span> <span class="o">=</span> <span class="n">ImageAsset</span><span class="p">(</span>
+</span><span data-line="4"><span class="gp">... </span>    <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;img_01&#39;</span><span class="p">,</span>
+</span><span data-line="5"><span class="gp">... </span>    <span class="n">path</span><span class="o">=</span><span class="s1">&#39;/tmp/photo.jpg&#39;</span><span class="p">,</span>
+</span><span data-line="6"><span class="gp">... </span>    <span class="n">allow_missing_file</span><span class="o">=</span><span class="kc">True</span>
+</span><span data-line="7"><span class="gp">... </span><span class="p">)</span>
+</span><span data-line="8"><span class="gp">&gt;&gt;&gt; </span><span class="n">img</span><span class="o">.</span><span class="n">summary</span><span class="p">()</span>
+</span><span data-line="9"><span class="go">--- ImageAsset Summary ---</span>
+</span><span data-line="10"><span class="go">ID:          img_01</span>
+</span><span data-line="11"><span class="go">Filename:    photo.jpg</span>
+</span><span data-line="12"><span class="go">Status:      Missing (Virtual)</span>
+</span><span data-line="13"><span class="go">Path:        /tmp/photo.jpg</span>
+</span><span data-line="14"><span class="go">Masks:       Semantic [Not Loaded], Instance [Not Loaded]</span>
+</span><span data-line="15"><span class="go">Properties (0):</span>
+</span><span data-line="16"><span class="go">  (No properties)</span>
+</span><span data-line="17"><span class="go">--------------------------</span>
 </span></pre></div>
 </div>
 </dd></dl>
@@ -976,7 +1576,9 @@ which the function returned True.</p>
 </dd>
 </dl>
 <p class="rubric">Example</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">subset</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;damage&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="s1">&#39;High&#39;</span><span class="p">)</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="gp">&gt;&gt;&gt; </span><span class="n">subset</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+</span><span data-line="2"><span class="gp">... </span>    <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;damage&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="s1">&#39;High&#39;</span>
+</span><span data-line="3"><span class="gp">... </span><span class="p">)</span>
 </span></pre></div>
 </div>
 </dd></dl>
