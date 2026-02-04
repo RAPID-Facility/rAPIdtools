@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-03-2025
+# 02-04-2025
 
 from __future__ import annotations
 
@@ -202,7 +202,7 @@ class ImageAsset:
             ...     allow_missing_file=True
             ... )
 
-            The filename property extracts only the final component of the
+            The ``filename`` property extracts only the final component of the
             path:
 
             >>> image.filename
@@ -222,9 +222,10 @@ class ImageAsset:
         Check whether the image file exists on disk and is non-empty.
 
         This property verifies that:
-        - The path exists.
-        - The path points to a regular file (not a directory).
-        - The file size is greater than zero bytes.
+
+            - The path exists.
+            - The path points to a regular file (not a directory).
+            - The file size is greater than zero bytes.
 
         Returns:
             bool:
@@ -311,9 +312,9 @@ class ImageAsset:
                 The direct download link. If provided, this takes precedence
                 over properties.
             url_key (str):
-                The key in self.properties to look for if 'url' is None.
-                Defaults to 'thumb_original_url'.
-                Useful for downloading specific sizes (e.g. 'thumb_2048_url').
+                The key in self.properties to look for if ``'url'`` is ``None``.
+                Defaults to ``'thumb_original_url'``.
+                Useful for downloading specific sizes (e.g. ``'thumb_2048_url'``).
             overwrite (bool):
                 If True, forces download even if file exists.
             session (requests.Session, optional):
@@ -467,7 +468,7 @@ class ImageAsset:
 
         Args:
             mask_type:
-                The type of mask ('semantic' or 'instance').
+                The type of mask (``'semantic'`` or ``'instance'``).
             override_path:
                 If provided, this specific path is used instead of the
                 automatic naming convention.
@@ -540,7 +541,7 @@ class ImageAsset:
                 Defaults to ``None``.
 
         Returns:
-            Any | dict[str, Any]:
+            Any or dict[str, Any]:
                 - The value (if input was a single string).
                 - A dictionary of values (if input was an iterable).
 
@@ -590,10 +591,11 @@ class ImageAsset:
         Load the image from disk using Pillow and caches it.
 
         Behavior:
-        - Lazy-caches by default (returns cached image if present).
-        - Always fully decodes and then closes the underlying file handle.
-        Optionally converts to a target mode (e.g., "RGB").
-        - Optional force reload to bypass cache.
+
+            - Lazy-caches by default (returns cached image if present).
+            - Always fully decodes and then closes the underlying file handle.
+              Optionally converts to a target mode (e.g., ``'RGB'``).
+            - Optional force reload to bypass cache.
 
         Args:
             force_reload:
@@ -645,7 +647,7 @@ class ImageAsset:
 
             Loading an image with mode conversion and force reload. Here force
             reload is enabled to ignore the cache, and the image is converted
-            to Grayscale ('L'):
+            to Grayscale (``'L'``):
 
             >>> img_gray = asset.load_image_from_disk(
             ...     force_reload=True,
@@ -655,9 +657,9 @@ class ImageAsset:
             >>> print(img_gray.mode)
             L
 
-            ``load_image_from_disk`` raises a FileNotFoundError if the file
+            ``load_image_from_disk`` raises a ``FileNotFoundError`` if the file
             does not exist locally (or has not yet been downloaded) or raises an
-            OSError if the file exists but cannot be opened (e.g., due to
+            ``OSError`` if the file exists but cannot be opened (e.g., due to
             corruption or insufficient permissions). The following example shows
             a sample error handling situation:
 
@@ -692,13 +694,23 @@ class ImageAsset:
             logging.info(f'Loading image data from: {self.path}')
 
             # Open the image as a context manager to ensure file handle safety:
-            with PillowImage.open(self.path) as img:
+            with PillowImage.open(self.path) as opened_img:
+
+                # Assign to 'img' and explicitly hint it as the generic base class.
+                # This allows 'img' to accept results from .convert() and
+                # .exif_transpose():
+                img: PillowImage.Image = opened_img
 
                 # Handle EXIF rotation (crucial for phone photos):
                 if apply_exif_orientation:
                     # exif_transpose returns a copy with the rotation applied,
                     # or the original image if no EXIF data is present:
-                    img = PillowImageOps.exif_transpose(img)
+                    transposed = PillowImageOps.exif_transpose(img)
+
+                    # Handle edge case where older Pillow versions might return
+                    # None if no EXIF:
+                    if transposed:
+                        img = transposed
 
                 # Handle mode conversion:
                 if convert_mode is not None and img.mode != convert_mode:
@@ -742,7 +754,7 @@ class ImageAsset:
                 Property key to use for URL if direct url is ``None``.
                 Defaults to 'thumb_original_url'.
             convert_mode (str, optional):
-                Mode to convert the loaded image to (e.g., "RGB").
+                Mode to convert the loaded image to (e.g., ``'RGB'``).
             force_reload (bool):
                 If ``True``, re-downloads even if _pil_image is already set.
             apply_exif_orientation (bool):
@@ -784,7 +796,7 @@ class ImageAsset:
             ... )
 
             Loading image from the URL in properties (loads from
-           'thumb_original_url' by default) into memory:
+            ``'thumb_original_url'`` by default) into memory:
 
             >>> img = asset.load_image_from_url()
             INFO: Downloading wiki_cat into memory...
@@ -793,7 +805,7 @@ class ImageAsset:
             >>> print(asset.is_downloaded)
             False
 
-            Load from a specific key, convert to Grayscale ('L'), force a
+            Load from a specific key, convert to Grayscale (``'L'``), force a
             re-download, and suppress the log message:
 
             >>> img_small = asset.load_image_from_url(
@@ -849,11 +861,15 @@ class ImageAsset:
             image_bytes = BytesIO(response.content)
 
             # Load into Pillow:
-            img = PillowImage.open(image_bytes)
+            raw_img = PillowImage.open(image_bytes)
+            img: PillowImage.Image = raw_img
 
             # Perform EXIF rotation:
             if apply_exif_orientation:
-                img = PillowImageOps.exif_transpose(img)
+                # We check for None to satisfy strict optional checking:
+                transposed = PillowImageOps.exif_transpose(img)
+                if transposed is not None:
+                    img = transposed
 
             # Force decode and convert:
             img.load()  # Force decode
@@ -885,12 +901,12 @@ class ImageAsset:
 
         Args:
             mask_type (str):
-                The type of mask to load. Standard values are 'semantic' or
-                'instance'. Defaults to 'semantic'.
+                The type of mask to load. Standard values are ``'semantic'`` or
+                ``'instance'``. Defaults to ``'semantic'``.
             force_reload (bool):
                 If ``True``, ignores the internal cache and re-reads the file
                 from disk. Defaults to ``False``.
-            custom_path (Path | str | None):
+            custom_path (Path, or str, or None):
                 If provided, loads the mask from this specific path instead
                 of deriving the filename from the image asset's path.
 
@@ -1367,8 +1383,8 @@ class ImageAsset:
                 defaults to ``self.path``, which will **overwrite** the
                 original image file.
             format (str, or None):
-                The image format to use (e.g., 'JPEG', 'PNG'). If ``None``,
-                the format is inferred from the file extension of the
+                The image format to use (e.g., ``'JPEG'``, ``'PNG'``). If
+                ``None``, the format is inferred from the file extension of the
                 output path.
             quality (int):
                 The compression quality (1-100) for lossy formats like JPEG.
@@ -1477,7 +1493,7 @@ class ImageAsset:
             >>> print(os.path.exists('temp_asset_semantic.png'))
             True
 
-            **Example 2: Save to a specific custom path**
+            Save to a specific custom path:
 
             >>> asset.save_mask('semantic', output_path='custom_mask.png')
             INFO: Saving semantic mask to custom_mask.png
@@ -1624,11 +1640,11 @@ class ImageAsset:
             output_type (str):
                 The type of visualization to generate. Options:
 
-                - 'image': Show raw image only.
-                - 'semantic': Show semantic mask only (colored).
-                - 'instance': Show instance mask only.
-                - 'overlay_semantic': Image + Semantic Mask.
-                - 'overlay_instance': Image + Instance Mask.
+                - ``'image'``: Show raw image only.
+                - ``'semantic'``: Show semantic mask only (colored).
+                - ``'instance'``: Show instance mask only.
+                - ``'overlay_semantic'``: Image + Semantic Mask.
+                - ``'overlay_instance'``: Image + Instance Mask.
             alpha (float):
                 Transparency of the mask in overlay modes (0.0 to 1.0), where
                 0 is fully transparent, 0.5 is 50% Transparent (see-through),
