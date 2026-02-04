@@ -35,11 +35,12 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 01-28-2026
+# 02-04-2026
+
+from __future__ import annotations
 
 import logging
 import math
-from typing import Self
 
 from shapely.geometry import box as shapely_box
 from shapely.geometry.base import BaseGeometry
@@ -148,7 +149,7 @@ class BoundingBox(Region):
         return ((min_x + max_x) / 2, (min_y + max_y) / 2)
 
     @classmethod
-    def from_geometry(cls, geometry: BaseGeometry) -> Self:
+    def from_geometry(cls, geometry: BaseGeometry) -> BoundingBox:
         """
         Create a BoundingBox that exactly encloses a geometry.
 
@@ -174,7 +175,7 @@ class BoundingBox(Region):
         return cls(minx, miny, maxx, maxy)
 
     @classmethod
-    def from_union(cls, region1: Region, region2: Region) -> Self:
+    def from_union(cls, region1: Region, region2: Region) -> BoundingBox:
         """
         Create a box covering the total extent of two regions.
 
@@ -204,7 +205,7 @@ class BoundingBox(Region):
             min(minx1, minx2), min(miny1, miny2), max(maxx1, maxx2), max(maxy1, maxy2)
         )
 
-    def buffer(self, distance: float) -> Self:
+    def buffer(self, distance: float) -> BoundingBox:
         """
         Return a new BoundingBox expanded (or shrunk) by a constant distance.
 
@@ -233,7 +234,7 @@ class BoundingBox(Region):
             minx - distance, miny - distance, maxx + distance, maxy + distance
         )
 
-    def get_bounding_box(self) -> Self:
+    def get_bounding_box(self) -> BoundingBox:
         """
         Return the bounding box of this region.
 
@@ -245,7 +246,7 @@ class BoundingBox(Region):
         """
         return self
 
-    def split(self) -> list[Self]:
+    def split(self) -> list[BoundingBox]:
         """
         Splits the bounding box into four equal-sized quadrants.
 
@@ -277,7 +278,7 @@ class BoundingBox(Region):
             BoundingBox(mid_x, mid_y, max_x, max_y),  # Top-Right
         ]
 
-    def tile_by_area(self, max_area: float = 0.01) -> list[Self]:
+    def tile_by_area(self, max_area: float = 0.01) -> list[BoundingBox]:
         """
         Split the bounding box into a grid of smaller boxes.
 

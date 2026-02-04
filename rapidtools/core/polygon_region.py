@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 01-28-2026
+# 02-04-2026
 
 from __future__ import annotations
 
@@ -129,7 +129,7 @@ class PolygonRegion(Region):
         instance._geom = geometry
         return instance
 
-    def buffer(self, distance: float) -> Region:
+    def buffer(self, distance: float) -> PolygonRegion:
         """
         Create a new Region expanded (or shrunk) by a constant distance.
 
@@ -138,7 +138,7 @@ class PolygonRegion(Region):
                 The distance to buffer. Positive expands, negative erodes.
 
         Returns:
-            Region: A new PolygonRegion representing the result.
+            PolygonRegion: A new PolygonRegion representing the result.
 
         Example:
             Initialize a ``PolygonRegion`` representing a 10x10 square:
