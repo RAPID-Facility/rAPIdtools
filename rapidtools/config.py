@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-02-2025
+# 02-16-2025
 
 """Configuration utilities for the rapidtools package."""
 
@@ -64,13 +64,10 @@ REQUESTS_HEADERS = {
     'Connection': 'keep-alive',
 }
 
-
-REQUESTS_RETRY_STRATEGY = Retry(
-    total=5,
-    backoff_factor=1,
-    status_forcelist=[429, 500, 502, 503, 504],
-    allowed_methods=['HEAD', 'GET', 'OPTIONS']
-)
+DEFAULT_RETRY_TOTAL = 5
+DEFAULT_BACKOFF = 1
+DEFAULT_STATUS_FORCELIST = [429, 500, 502, 503, 504]
+DEFAULT_ALLOWED_METHODS = ['HEAD', 'GET', 'POST', 'OPTIONS']
 
 REQUESTS_TIMEOUT_VAL = 30
 
@@ -84,9 +81,20 @@ DEFAULT_SEMANTIC_CMAP = 'tab20'
 DEFAULT_INSTANCE_CMAP = 'nipy_spectral'
 
 # Helper functions:
-def get_configured_session() -> requests.Session:
+def get_configured_session(
+    retries: int = DEFAULT_RETRY_TOTAL,
+    backoff_factor: float = DEFAULT_BACKOFF
+) -> requests.Session:
     """
-    Create a requests Session with global retry logic, timeouts, and headers.
+    Create a requests Session with retry logic, timeouts, and headers.
+    
+    Args:
+        retries (int): 
+            Number of total retries to attempt. Defaults to 
+            DEFAULT_RETRY_TOTAL (5).
+        backoff_factor (float): 
+            Time factor for exponential backoff. Defaults to DEFAULT_BACKOFF
+            (1).
 
     Returns:
         requests.Session: A configured session object ready for use.
@@ -96,8 +104,16 @@ def get_configured_session() -> requests.Session:
     # Apply standard headers:
     session.headers.update(REQUESTS_HEADERS)
 
+    # Define retry strategy dynamically based on arguments:
+    retry_strategy = Retry(
+        total=retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=DEFAULT_STATUS_FORCELIST,
+        allowed_methods=DEFAULT_ALLOWED_METHODS
+    )
+
     # Mount the retry adapter to both HTTP and HTTPS:
-    adapter = HTTPAdapter(max_retries=REQUESTS_RETRY_STRATEGY)
+    adapter = HTTPAdapter(max_retries=retry_strategy)
     session.mount('https://', adapter)
     session.mount('http://', adapter)
 
