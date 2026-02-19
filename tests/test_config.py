@@ -35,19 +35,23 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-03-2026
+# 02-18-2026
 
 import requests
 from requests.adapters import HTTPAdapter
 
+# Import everything relevant from your new config
 from rapidtools.config import (
     DATE_FORMAT,
     DEFAULT_INSTANCE_CMAP,
     DEFAULT_SEMANTIC_CMAP,
     LOG_FORMAT,
     REQUESTS_HEADERS,
-    REQUESTS_RETRY_STRATEGY,
     REQUESTS_TIMEOUT_VAL,
+    DEFAULT_RETRY_TOTAL,
+    DEFAULT_BACKOFF,
+    DEFAULT_STATUS_FORCELIST,
+    DEFAULT_ALLOWED_METHODS,
     MaskType,
     get_configured_session,
 )
@@ -69,24 +73,28 @@ def test_log_formats():
 def test_request_headers_structure():
     """Ensure standard headers are present and correct."""
     assert isinstance(REQUESTS_HEADERS, dict)
+    # Check for keys present in your new dictionary
     assert 'User-Agent' in REQUESTS_HEADERS
     assert 'Mozilla/5.0' in REQUESTS_HEADERS['User-Agent']
     assert 'Accept' in REQUESTS_HEADERS
+    assert 'Accept-Language' in REQUESTS_HEADERS
+    assert 'Accept-Encoding' in REQUESTS_HEADERS
     assert 'Connection' in REQUESTS_HEADERS
     assert REQUESTS_HEADERS['Connection'] == 'keep-alive'
 
-def test_request_settings():
-    """Verify timeout and retry strategy settings."""
+def test_request_settings_constants():
+    """Verify default setting constants."""
     # Timeout
     assert isinstance(REQUESTS_TIMEOUT_VAL, int)
     assert REQUESTS_TIMEOUT_VAL == 30
 
-    # Retry Strategy
-    assert REQUESTS_RETRY_STRATEGY.total == 5
-    assert REQUESTS_RETRY_STRATEGY.backoff_factor == 1
-    assert 429 in REQUESTS_RETRY_STRATEGY.status_forcelist
-    assert 500 in REQUESTS_RETRY_STRATEGY.status_forcelist
-    assert 'GET' in REQUESTS_RETRY_STRATEGY.allowed_methods
+    # Retry Defaults
+    assert DEFAULT_RETRY_TOTAL == 5
+    assert DEFAULT_BACKOFF == 1
+    assert 429 in DEFAULT_STATUS_FORCELIST
+    assert 500 in DEFAULT_STATUS_FORCELIST
+    assert 'GET' in DEFAULT_ALLOWED_METHODS
+    assert 'POST' in DEFAULT_ALLOWED_METHODS
 
 def test_default_colormaps():
     """Ensure default colormaps are valid matplotlib strings."""
@@ -105,6 +113,7 @@ def test_mask_type_enum():
 
     # Test type (StrEnum acts as str)
     assert isinstance(MaskType.SEMANTIC, str)
+    # Note: StrEnum functionality
     assert MaskType.SEMANTIC.upper() == 'SEMANTIC'
 
     # Test iteration
@@ -122,10 +131,10 @@ def test_mask_type_comparison():
 # 3. Helper Function Verification
 # ==========================================
 
-def test_get_configured_session():
+def test_get_configured_session_defaults():
     """
     Verify that the session factory returns a session with
-    the correct global configuration applied.
+    the default global configuration applied.
     """
     session = get_configured_session()
 
@@ -136,18 +145,31 @@ def test_get_configured_session():
     assert session.headers['User-Agent'] == REQUESTS_HEADERS['User-Agent']
     assert session.headers['Accept-Encoding'] == REQUESTS_HEADERS['Accept-Encoding']
 
-    # 3. Check Adapter Mounting (Retry Logic)
-    # Requests sessions store adapters in a dict keyed by prefix (http://, https://)
+    # 3. Check Adapter Mounting
     http_adapter = session.adapters['http://']
     https_adapter = session.adapters['https://']
 
     assert isinstance(http_adapter, HTTPAdapter)
     assert isinstance(https_adapter, HTTPAdapter)
 
-    # Verify the strategy attached to the adapter matches our config
-    assert http_adapter.max_retries is REQUESTS_RETRY_STRATEGY
-    assert https_adapter.max_retries is REQUESTS_RETRY_STRATEGY
+    # 4. Check Default Retry Strategy
+    # Since the strategy is now created inside the function, we inspect the adapter object
+    assert http_adapter.max_retries.total == DEFAULT_RETRY_TOTAL
+    assert http_adapter.max_retries.backoff_factor == DEFAULT_BACKOFF
+    assert http_adapter.max_retries.status_forcelist == DEFAULT_STATUS_FORCELIST
 
-    # Verify specific attributes of the mounted strategy
-    assert http_adapter.max_retries.total == 5
-    assert http_adapter.max_retries.backoff_factor == 1
+def test_get_configured_session_custom_args():
+    """
+    Verify that we can override the defaults (retries and backoff)
+    when calling the function.
+    """
+    custom_retries = 10
+    custom_backoff = 2.5
+    
+    session = get_configured_session(retries=custom_retries, backoff_factor=custom_backoff)
+
+    http_adapter = session.adapters['http://']
+    
+    # Verify the custom values stuck
+    assert http_adapter.max_retries.total == custom_retries
+    assert http_adapter.max_retries.backoff_factor == custom_backoff
