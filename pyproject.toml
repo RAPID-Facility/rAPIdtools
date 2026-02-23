@@ -41,6 +41,8 @@ keywords = ["gis", "geospatial", "damage detection", "computer vision"]
 # --- Core Dependencies ---
 # These are the libraries your application ALWAYS needs to run.
 dependencies = [
+    "accelerate",
+    "bitsandbytes",
     "mapbox_vector_tile",
     "matplotlib",
     "numpy",
@@ -50,7 +52,9 @@ dependencies = [
     "requests",
     "scikit-image",
     "shapely>=2.0",
-    "tqdm"
+    "torch",
+    "tqdm",
+    "transformers"
 ]
 
 # --- Optional Dependencies ---
