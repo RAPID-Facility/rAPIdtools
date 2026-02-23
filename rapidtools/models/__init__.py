@@ -35,8 +35,24 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 12-10-2025
+# 2-22-2026
 
-from .claude_client import ClaudeClient
-from .openai_client import OpenAIClient
-from .gemini_client import GeminiClient
+# Export the Universal Types (for type hinting in workflows):
+from .base import BaseInferenceModel, ModelOutput
+
+# Export the Concrete Implementations:
+from .claude import ClaudeInference
+from .gemini import GeminiInference
+from .llama import LlamaVisionInference
+from .openai import OpenAIInference
+from .sam3 import SAM3Inference
+
+__all__ = [
+    'BaseInferenceModel',
+    'ModelOutput',
+    'ClaudeInference',
+    'OpenAIInference',
+    'GeminiInference',
+    'LlamaVisionInference',
+    'SAM3Inference',
+]
