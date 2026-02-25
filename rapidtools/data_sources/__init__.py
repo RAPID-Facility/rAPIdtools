@@ -35,7 +35,18 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 11-13-2025
+# 02-25-2026
+
+"""
+This module provides clients and readers for fetching raw geospatial data 
+and imagery from various external APIs and local files.
+"""
 
 from .mapillary_client import MapillaryClient
-#from .orthomosaic_processor import RAPIDUtils
+from .orthomosaic_reader import OrthomosaicReader
+
+# Explicitly define the public API of this module.
+__all__ =[
+    'MapillaryClient',
+    'OrthomosaicReader',
+]
