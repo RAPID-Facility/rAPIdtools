@@ -62,7 +62,9 @@ class AerialImageryExtractor:
         >>> extractor = AerialImageryExtractor(
         ...     dataset='data/post_disaster_map.tif',
         ...     save_directory='output/aerial_crops',
-        ...     overlay_asset_outline=True
+        ...     overlay_asset_outline=True,
+        ...     image_prefix='post_disaster',
+        ...     keep_multiple_copies=True
         ... )
         >>> processed_assets = extractor(my_asset_collection)
     """
@@ -72,7 +74,9 @@ class AerialImageryExtractor:
         dataset: str | Path,
         save_directory: str | Path,
         max_missing_data_ratio: float = 0.2,
-        overlay_asset_outline: bool = False
+        overlay_asset_outline: bool = False,
+        image_prefix: str = 'aerial',
+        keep_multiple_copies: bool = False
     ):
         """
         Initialize the extractor configuration.
@@ -90,11 +94,20 @@ class AerialImageryExtractor:
                 If ``True``, draws a thick red polygon outline representing the 
                 asset's geometry directly onto the saved image. Defaults to 
                 ``False``.
+            image_prefix (str, optional):
+                The prefix to use for the saved image filenames and asset IDs. 
+                Defaults to 'aerial'.
+            keep_multiple_copies (bool, optional):
+                If ``True``, prevents overwriting existing images with the same 
+                coordinates by appending a numeric counter to the filename and ID.
+                Defaults to ``False``.
         """
         self.dataset = Path(dataset).resolve()
         self.save_directory = Path(save_directory).resolve()
         self.max_missing_data_ratio = max_missing_data_ratio
         self.overlay_asset_outline = overlay_asset_outline
+        self.image_prefix = image_prefix
+        self.keep_multiple_copies = keep_multiple_copies
 
     def __call__(
         self, 
@@ -178,15 +191,27 @@ class AerialImageryExtractor:
                 # 4. Create a clean, coordinate-based filename
                 centroid = poly.centroid
                 coords_str = f'{centroid.y:.8f}_{centroid.x:.8f}'.replace('.', '')
-                image_name = f'aerial_{coords_str}.jpg'
+                
+                base_name = f'{self.image_prefix}_{coords_str}'
+                image_name = f'{base_name}.jpg'
                 image_path = self.save_directory / image_name
+                asset_id_suffix = self.image_prefix
+
+                # Handle potential overlaps if requested
+                if self.keep_multiple_copies:
+                    counter = 1
+                    while image_path.exists():
+                        image_name = f'{base_name}_{counter}.jpg'
+                        image_path = self.save_directory / image_name
+                        asset_id_suffix = f'{self.image_prefix}_{counter}'
+                        counter += 1
 
                 # 5. Save the image to disk
                 pil_image.save(image_path)
                 
                 # 6. Create the ImageAsset domain object and attach it
                 img_asset = ImageAsset(
-                    id=f'{asset.id}_aerial',  
+                    id=f'{asset.id}_{asset_id_suffix}',  
                     path=image_path,
                     allow_missing_file=False
                 )
