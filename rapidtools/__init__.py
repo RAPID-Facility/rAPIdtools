@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 01-15-2025
+# 02-25-2026
 
 """Initializations and metadata for the rapidtools package."""
 
@@ -43,15 +43,6 @@ import logging
 import sys
 
 from rapidtools.config import LOG_FORMAT, DATE_FORMAT
-
-"""
-from rapidtools.image_asset import ImageAsset
-__all__ = [
-    'REQUESTS_TIMEOUT',
-    'REQUESTS_HEADERS',
-    'get_configured_session'
-]
-"""
 
 # Package metadata:
 name = 'rapidtools'
@@ -67,3 +58,23 @@ logging.basicConfig(
     stream=sys.stdout,
     force=True
 )
+
+# Import the core domain models (Optional, but usually a good idea!)
+from .core import PhysicalAsset, PhysicalAssetCollection, ImageAsset
+
+# Import the pipeline and processing tools
+from .processing import (
+    Pipeline,
+    AerialImageryExtractor,
+    GeminiAssetAnalyzer
+)
+
+# Explicitly define the top-level public API
+__all__ =[
+    'PhysicalAsset',
+    'PhysicalAssetCollection',
+    'ImageAsset',
+    'Pipeline',
+    'AerialImageryExtractor',
+    'GeminiAssetAnalyzer',
+]
