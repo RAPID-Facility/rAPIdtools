@@ -51,8 +51,12 @@ from .pipeline import Pipeline
 # Import the image extractors:
 from .image_extractors import AerialImageryExtractor
 
+# Import the image analyzers:
+from .image_analyzers import GeminiAssetAnalyzer
+
 # Explicitly define what is available when a user types: 
 __all__ =[
     'Pipeline',
-    'AerialImageryExtractor'
+    'AerialImageryExtractor',
+    'GeminiAssetAnalyzer'
 ]
