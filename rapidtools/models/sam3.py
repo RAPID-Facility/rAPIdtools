@@ -35,13 +35,13 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-22-2026
+# 02-25-2026
 
 import logging
 from pathlib import Path
 
 import torch
-from transformers import AutoModel, AutoModelForVision2Seq, AutoProcessor
+from transformers import AutoModel, AutoModelForImageTextToText, AutoProcessor
 
 from .base import ModelOutput
 from .local_base import BaseLocalInferenceModel
@@ -62,7 +62,11 @@ class SAM3Inference(BaseLocalInferenceModel):
         temperature: float = 0.4,
         max_tokens: int = 1024
     ):
-        super().__init__(device=device, temperature=temperature, max_tokens=max_tokens)
+        super().__init__(
+            device=device, 
+            temperature=temperature, 
+            max_tokens=max_tokens
+        )
         self.model_id = model_id
 
         logging.info(f'Loading processor and weights for {self.model_id}...')
@@ -71,7 +75,10 @@ class SAM3Inference(BaseLocalInferenceModel):
         self.processor = AutoProcessor.from_pretrained(self.model_id)
 
         # 2. Configure VRAM Management
-        model_kwargs = {'device_map': self.device}
+        model_kwargs = {
+            'device_map': self.device,
+            'torch_dtype': torch.float16  # Fixed: Always apply fp16 baseline
+        }
 
         if load_in_4bit:
             from transformers import BitsAndBytesConfig
@@ -79,16 +86,20 @@ class SAM3Inference(BaseLocalInferenceModel):
                 load_in_4bit=True,
                 bnb_4bit_compute_dtype=torch.float16
             )
-        else:
-            model_kwargs['torch_dtype'] = torch.float16
 
         # 3. Load the Model
-        # We use AutoModelForVision2Seq as the default for multimodal variants,
+        # We use AutoModelForImageTextToText as the default for multimodal variants,
         # but fallback to standard AutoModel if it is a pure vision SAM.
         try:
-            self.model = AutoModelForVision2Seq.from_pretrained(self.model_id, **model_kwargs)
+            self.model = AutoModelForImageTextToText.from_pretrained(
+                self.model_id, 
+                **model_kwargs
+            )
         except ValueError:
-            logging.info(f'{self.model_id} is a pure vision model. Falling back to AutoModel.')
+            logging.info(
+                f'{self.model_id} is a pure vision model. Falling back to '
+                'AutoModel.'
+            )
             self.model = AutoModel.from_pretrained(self.model_id, **model_kwargs)
 
         self.model.eval()
@@ -107,7 +118,7 @@ class SAM3Inference(BaseLocalInferenceModel):
     def run_inference(
         self,
         image_inputs: str | Path | list[str | Path],
-        prompt: str | Path,
+        prompt: str | Path | None = None,  # Fixed: Allow omitting prompt
         json_mode: bool = False,
         temperature: float | None = None,
         max_tokens: int | None = None,
@@ -117,8 +128,8 @@ class SAM3Inference(BaseLocalInferenceModel):
         Executes a forward pass.
         Extracts segmentation masks and optionally text (if supported by the model).
         """
-        prompt_str = self._resolve_prompt(prompt)
-        log_ctx = f"[Prompt snippet: '{prompt_str[:30]}...']"
+        prompt_str = self._resolve_prompt(prompt) if prompt is not None else ""
+        log_ctx = f"[Prompt snippet: '{prompt_str[:30]}...']" if prompt_str else "[No prompt]"
 
         if not isinstance(image_inputs, list):
             image_inputs = [image_inputs]
@@ -136,8 +147,6 @@ class SAM3Inference(BaseLocalInferenceModel):
 
         # 2. Format inputs for the Processor
         try:
-            # Note: SAM 3 / Omni models typically expect images and a text prompt
-            # to ground the segmentation (e.g., "Segment the rusted areas").
             processor_args = {
                 'images': loaded_images,
                 'return_tensors': 'pt'
@@ -161,7 +170,8 @@ class SAM3Inference(BaseLocalInferenceModel):
         # 3. Run Generation (Masks + optional Text)
         try:
             with torch.no_grad():
-                # If generating text, we need to use `generate`. Pure SAM models might just need a forward pass.
+                # If generating text, we need to use `generate`. Pure SAM 
+                # models might just need a forward pass:
                 if hasattr(self.model, 'generate'):
                     outputs = self.model.generate(
                         **inputs,
@@ -175,7 +185,7 @@ class SAM3Inference(BaseLocalInferenceModel):
                     # Pure vision fallback
                     outputs = self.model(**inputs)
 
-            # 4. Safely Extract Text (Only if the model actually generated sequences)
+            # 4. Safely Extract Text
             extracted_text = None
             if hasattr(outputs, 'sequences') and outputs.sequences is not None:
                 generated_ids = outputs.sequences
@@ -185,10 +195,20 @@ class SAM3Inference(BaseLocalInferenceModel):
                     input_length = inputs.input_ids.shape[1]
                     generated_ids = generated_ids[:, input_length:]
 
-                extracted_text = self.processor.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
+                # Fixed: Decode batch into list of strings
+                decoded_texts = self.processor.batch_decode(
+                    generated_ids, 
+                    skip_special_tokens=True
+                )
+                extracted_text = [t.strip() for t in decoded_texts]
+                
+                # Unwrap to string if it's a single image for cleaner outputs
+                if len(extracted_text) == 1:
+                    extracted_text = extracted_text[0]
 
             # 5. Extract Masks
-            # Omni-models usually attach the predicted masks to the generation output
+            # Omni-models usually attach the predicted masks to the generation 
+            # output:
             extracted_masks = None
             if hasattr(outputs, 'pred_masks'):
                 # Shape is usually (batch_size, num_masks, height, width)
@@ -210,7 +230,10 @@ class SAM3Inference(BaseLocalInferenceModel):
             )
 
         except torch.OutOfMemoryError:
-            logging.error(f'{log_ctx} GPU OUT OF MEMORY ERROR. Try smaller images or set load_in_4bit=True.')
+            logging.error(
+                f'{log_ctx} GPU OUT OF MEMORY ERROR. Try smaller images or set'
+                ' load_in_4bit=True.'
+            )
             return None
         except Exception as e:
             logging.error(f'{log_ctx} Unexpected SAM 3 generation error: {e}')
