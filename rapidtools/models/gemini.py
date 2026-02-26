@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-22-2026
+# 02-25-2026
 
 import logging
 import os
@@ -73,7 +73,7 @@ class GeminiInference(BaseAPIInferenceModel):
 
     def __init__(
         self,
-        api_key: str | None = None,
+        api_key: str | Path | None = None,
         model_id: str = GEMINI_DEFAULT_MODEL,
         max_workers: int = 10,
         max_retries: int = 3,
@@ -92,20 +92,46 @@ class GeminiInference(BaseAPIInferenceModel):
         self.session.headers.update({'x-goog-api-key': self.api_key})
         self._validate_model()
 
-    def _resolve_api_key(self, key_input: str | None) -> str:
-        raw_key = (key_input or os.environ.get('GOOGLE_API_KEY', '')).strip()
-        if not raw_key:
-            raise ValueError('API Key is missing.')
-        potential_path = Path(raw_key)
-        resolved_key = raw_key
-        try:
-            if potential_path.is_file():
-                resolved_key = potential_path.read_text(encoding='utf-8').strip()
-        except OSError:
-            pass
+    @staticmethod
+    def _resolve_api_key(key_input: str | Path | None) -> str:
+        """
+        Resolves the API key from a direct string, a Path object, a string 
+        representing a file path, or the environment variables.
+        """
+        resolved_key = ''
+
+        # Case 1: The user explicitly passed a pathlib.Path object
+        if isinstance(key_input, Path):
+            if not key_input.is_file():
+                raise FileNotFoundError(f'API key file not found at: {key_input}')
+            resolved_key = key_input.read_text(encoding='utf-8').strip()
+            
+        # Case 2: The user passed a string or None
+        else:
+            raw_key = (key_input or os.environ.get('GOOGLE_API_KEY', '')).strip()
+            if not raw_key:
+                raise ValueError(
+                    'API Key is missing. Provide it as an argument or set the'
+                    ' GOOGLE_API_KEY environment variable.'
+                )
+            
+            # Check if the string provided is actually a file path
+            try:
+                potential_path = Path(raw_key)
+                if potential_path.is_file():
+                    resolved_key = potential_path.read_text(
+                        encoding='utf-8'
+                    ).strip()
+                else:
+                    resolved_key = raw_key
+            except OSError:
+                resolved_key = raw_key
+
+        # Final cleanup to remove accidental quotes or whitespace
         resolved_key = resolved_key.strip("'\" \n\t")
         if not resolved_key:
             raise ValueError('Resolved API key is empty.')
+            
         return resolved_key
 
     def _validate_model(self) -> None:
@@ -121,24 +147,39 @@ class GeminiInference(BaseAPIInferenceModel):
             logging.debug(f'Transient error during model validation: {e}')
 
     @staticmethod
-    def list_available_models(api_key: str | None = None) -> list[str]:
-        if not api_key:
-            return []
+    def list_available_models(api_key: str | Path | None = None) -> list[str]:
+        """
+        List available Gemini models that support content generation.
+        Accepts a string key, a Path object to a key file, or falls back to 
+        ENV vars.
+        """
+        try:
+            # Use our static helper to safely resolve the key (String, Path, or Env Var)
+            resolved_key = GeminiInference._resolve_api_key(api_key)
+        except (ValueError, FileNotFoundError):
+            return[] # If no valid key is found, return an empty list
+
         url = f'{GEMINI_BASE_URL}/models'
         try:
             session = get_configured_session()
-            response = session.get(url, headers={'x-goog-api-key': api_key}, timeout=10)
+            response = session.get(
+                url, 
+                headers={'x-goog-api-key': resolved_key},
+                timeout=10
+            )
             if response.status_code != 200:
                 return []
+            
             data = response.json()
-            models = [
+            models =[
                 m['name'].replace('models/', '')
-                for m in data.get('models', [])
-                if 'generateContent' in m.get('supportedGenerationMethods', [])
+                for m in data.get('models',[])
+                if 'generateContent' in m.get('supportedGenerationMethods',[])
             ]
             return sorted(models)
+            
         except Exception:
-            return []
+            return
 
     def run_inference(
         self,
