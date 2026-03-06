@@ -53,6 +53,7 @@ dependencies = [
     "scikit-image",
     "shapely>=2.0",
     "torch",
+    "torchvision",
     "tqdm",
     "transformers"
 ]
