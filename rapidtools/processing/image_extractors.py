@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 03-05-2026
+# 03-06-2026
 
 import logging
 from pathlib import Path
@@ -44,7 +44,7 @@ from PIL import ImageDraw
 from tqdm import tqdm
 
 from rapidtools.core import BoundingBox, ImageAsset, PhysicalAssetCollection
-from rapidtools.processing import OrthomosaicReader
+from rapidtools.data_sources import OrthomosaicReader
 
 
 class AerialImageryExtractor:
