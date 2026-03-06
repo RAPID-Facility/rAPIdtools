@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-25-2026
+# 03-05-2026
 
 import logging
 from pathlib import Path
@@ -44,23 +44,23 @@ from PIL import ImageDraw
 from tqdm import tqdm
 
 from rapidtools.core import BoundingBox, ImageAsset, PhysicalAssetCollection
-from rapidtools.data_sources import OrthomosaicReader
+from rapidtools.processing import OrthomosaicReader
 
 
 class AerialImageryExtractor:
     """
     Component that extracts aerial imagery patches for a collection of assets.
     
-    This extractor reads from a high-resolution orthomosaic TIFF file, crops the 
-    imagery around each asset's bounding box, saves the patches to disk, and 
-    automatically attaches the new digital media to the corresponding 
+    This extractor reads from one or more high-resolution orthomosaic TIFF files, 
+    crops the imagery around each asset's bounding box, saves the patches to disk, 
+    and automatically attaches the new digital media to the corresponding 
     `PhysicalAsset` objects in the collection.
     
     Example:
         >>> from rapidtools.processing import AerialImageryExtractor
         >>>
         >>> extractor = AerialImageryExtractor(
-        ...     dataset='data/post_disaster_map.tif',
+        ...     dataset='data/rasters/',  # Can be a file, directory, or list of files
         ...     save_directory='output/aerial_crops',
         ...     overlay_asset_outline=True,
         ...     image_prefix='post_disaster',
@@ -71,7 +71,7 @@ class AerialImageryExtractor:
 
     def __init__(
         self,
-        dataset: str | Path,
+        dataset: str | Path | list[str | Path],
         save_directory: str | Path,
         max_missing_data_ratio: float = 0.2,
         overlay_asset_outline: bool = False,
@@ -82,8 +82,9 @@ class AerialImageryExtractor:
         Initialize the extractor configuration.
 
         Args:
-            dataset (str | Path): 
-                The file path to the local orthomosaic TIFF dataset.
+            dataset (str | Path | list[str | Path]): 
+                The file path to a single local orthomosaic TIFF dataset, a directory 
+                containing TIFFs, or a list of TIFF file paths.
             save_directory (str | Path): 
                 The directory where the extracted JPEG images will be saved. 
                 Will be created if it does not exist.
@@ -102,12 +103,31 @@ class AerialImageryExtractor:
                 coordinates by appending a numeric counter to the filename and ID.
                 Defaults to ``False``.
         """
-        self.dataset = Path(dataset).resolve()
+        self.dataset = dataset
         self.save_directory = Path(save_directory).resolve()
         self.max_missing_data_ratio = max_missing_data_ratio
         self.overlay_asset_outline = overlay_asset_outline
         self.image_prefix = image_prefix
         self.keep_multiple_copies = keep_multiple_copies
+
+    def _get_raster_paths(self) -> list[Path]:
+        """Helper method to resolve all raster files from the dataset input."""
+        paths =[]
+        if isinstance(self.dataset, list):
+            for p in self.dataset:
+                paths.append(Path(p).resolve())
+        else:
+            p = Path(self.dataset).resolve()
+            if p.is_dir():
+                # Grab all .tif and .tiff files in the directory
+                paths.extend(p.rglob('*.tif'))
+                paths.extend(p.rglob('*.tiff'))
+            else:
+                # It's a single file
+                paths.append(p)
+                
+        # Remove duplicates if any
+        return list(set(paths))
 
     def __call__(
         self, 
@@ -129,98 +149,116 @@ class AerialImageryExtractor:
                 to their corresponding `PhysicalAsset` entities.
         """
         self.save_directory.mkdir(parents=True, exist_ok=True)
-        logging.info(f'Images will be saved to: {self.save_directory}')
         
-        extracted_count = 0
+        raster_paths = self._get_raster_paths()
+        if not raster_paths:
+            logging.warning(f"No raster files found for dataset input: {self.dataset}")
+            return asset_collection
+            
+        logging.info(f'Found {len(raster_paths)} raster(s). Images will be saved to: {self.save_directory}')
+        
+        total_extracted_count = 0
 
-        # Open the TIFF file ONCE for the entire batch using the context manager
-        with OrthomosaicReader(self.dataset) as reader:
+        # Process each raster file found
+        for raster_path in raster_paths:
+            logging.info(f"Processing raster: {raster_path.name}")
             
-            # Efficiently filter assets to only those inside the raster's extent
-            min_lon, min_lat, max_lon, max_lat = reader.dataset_extent
-            raster_bbox = BoundingBox(
-                min_x=min_lon, min_y=min_lat, max_x=max_lon, max_y=max_lat
-            )
-            
-            assets_in_bounds = asset_collection.filter_by_geometry(raster_bbox)
-            
-            logging.info(
-                f'Filtered assets by orthomosaic bounds: '
-                f'{len(assets_in_bounds)} of {len(asset_collection)} assets remain.'
-            )
-            
-            # Loop only over the filtered subset
-            for asset in tqdm(assets_in_bounds, desc='Extracting aerial imagery'):
-                
-                # 1. Ensure we have a valid polygon
-                geom = asset.geometry
-                if geom.geom_type == 'MultiPolygon':
-                    poly = geom.geoms[0]
-                elif geom.geom_type == 'Polygon':
-                    poly = geom
-                else:
-                    logging.debug(
-                        f'Skipping asset \'{asset.id}\': Geometry is '
-                        f'{geom.geom_type}, expected Polygon/MultiPolygon.'
-                    )
-                    continue
+            # Open the TIFF file ONCE for the current raster using the context manager
+            try:
+                with OrthomosaicReader(raster_path) as reader:
                     
-                asset_coords = list(poly.exterior.coords)
-                
-                # 2. Extract image patch using the open reader
-                extraction_result = reader.get_image_patch(
-                    asset_geometry=asset_coords, 
-                    max_missing_data_ratio=self.max_missing_data_ratio
-                )
-                
-                if extraction_result is None:
-                    continue
-                    
-                pil_image, pixel_coords = extraction_result
-
-                # 3. Draw outline if requested
-                if self.overlay_asset_outline:
-                    draw = ImageDraw.Draw(pil_image)
-                    # Close the polygon loop by appending the first point to the end
-                    draw.line(
-                        pixel_coords + [pixel_coords[0]],
-                        fill='red',
-                        width=6
+                    # Efficiently filter assets to only those inside the raster's extent
+                    min_lon, min_lat, max_lon, max_lat = reader.dataset_extent
+                    raster_bbox = BoundingBox(
+                        min_x=min_lon, min_y=min_lat, max_x=max_lon, max_y=max_lat
                     )
+                    
+                    assets_in_bounds = asset_collection.filter_by_geometry(raster_bbox)
+                    
+                    if not assets_in_bounds:
+                        logging.info(f"No assets fall within the bounds of {raster_path.name}. Skipping.")
+                        continue
+                        
+                    logging.info(
+                        f'Filtered assets by orthomosaic bounds: '
+                        f'{len(assets_in_bounds)} of {len(asset_collection)} assets remain.'
+                    )
+                    
+                    # Loop only over the filtered subset for this specific raster
+                    for asset in tqdm(assets_in_bounds, desc=f'Extracting from {raster_path.name}'):
+                        
+                        # 1. Ensure we have a valid polygon
+                        geom = asset.geometry
+                        if geom.geom_type == 'MultiPolygon':
+                            poly = geom.geoms[0]
+                        elif geom.geom_type == 'Polygon':
+                            poly = geom
+                        else:
+                            logging.debug(
+                                f'Skipping asset \'{asset.id}\': Geometry is '
+                                f'{geom.geom_type}, expected Polygon/MultiPolygon.'
+                            )
+                            continue
+                            
+                        asset_coords = list(poly.exterior.coords)
+                        
+                        # 2. Extract image patch using the open reader
+                        extraction_result = reader.get_image_patch(
+                            asset_geometry=asset_coords, 
+                            max_missing_data_ratio=self.max_missing_data_ratio
+                        )
+                        
+                        if extraction_result is None:
+                            continue
+                            
+                        pil_image, pixel_coords = extraction_result
 
-                # 4. Create a clean, coordinate-based filename
-                centroid = poly.centroid
-                coords_str = f'{centroid.y:.8f}_{centroid.x:.8f}'.replace('.', '')
-                
-                base_name = f'{self.image_prefix}_{coords_str}'
-                image_name = f'{base_name}.jpg'
-                image_path = self.save_directory / image_name
-                asset_id_suffix = self.image_prefix
+                        # 3. Draw outline if requested
+                        if self.overlay_asset_outline:
+                            draw = ImageDraw.Draw(pil_image)
+                            # Close the polygon loop by appending the first point to the end
+                            draw.line(
+                                pixel_coords + [pixel_coords[0]],
+                                fill='red',
+                                width=6
+                            )
 
-                # Handle potential overlaps if requested
-                if self.keep_multiple_copies:
-                    counter = 1
-                    while image_path.exists():
-                        image_name = f'{base_name}_{counter}.jpg'
+                        # 4. Create a clean, coordinate-based filename
+                        centroid = poly.centroid
+                        coords_str = f'{centroid.y:.8f}_{centroid.x:.8f}'.replace('.', '')
+                        
+                        base_name = f'{self.image_prefix}_{coords_str}'
+                        image_name = f'{base_name}.jpg'
                         image_path = self.save_directory / image_name
-                        asset_id_suffix = f'{self.image_prefix}_{counter}'
-                        counter += 1
+                        asset_id_suffix = self.image_prefix
 
-                # 5. Save the image to disk
-                pil_image.save(image_path)
-                
-                # 6. Create the ImageAsset domain object and attach it
-                img_asset = ImageAsset(
-                    id=f'{asset.id}_{asset_id_suffix}',  
-                    path=image_path,
-                    allow_missing_file=False
-                )
-                
-                asset.add_image_assets(img_asset)
-                extracted_count += 1
+                        # Handle potential overlaps if requested
+                        if self.keep_multiple_copies:
+                            counter = 1
+                            while image_path.exists():
+                                image_name = f'{base_name}_{counter}.jpg'
+                                image_path = self.save_directory / image_name
+                                asset_id_suffix = f'{self.image_prefix}_{counter}'
+                                counter += 1
+
+                        # 5. Save the image to disk
+                        pil_image.save(image_path)
+                        
+                        # 6. Create the ImageAsset domain object and attach it
+                        img_asset = ImageAsset(
+                            id=f'{asset.id}_{asset_id_suffix}',  
+                            path=image_path,
+                            allow_missing_file=False
+                        )
+                        
+                        asset.add_image_assets(img_asset)
+                        total_extracted_count += 1
+                        
+            except Exception as e:
+                logging.error(f"Failed to process raster {raster_path.name}: {e}")
 
         logging.info(
-            f'Extracted aerial imagery for a total of {extracted_count} assets.'
+            f'Finished processing all rasters. Extracted aerial imagery for a total of {total_extracted_count} assets.'
         )
         
         return asset_collection
