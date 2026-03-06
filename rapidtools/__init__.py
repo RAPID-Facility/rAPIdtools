@@ -35,14 +35,14 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-25-2026
+# 03-06-2026
 
 """Initializations and metadata for the rapidtools package."""
 
 import logging
 import sys
 
-from rapidtools.config import LOG_FORMAT, DATE_FORMAT
+from .config import LOG_FORMAT, DATE_FORMAT
 
 # Package metadata:
 name = 'rapidtools'
