@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-25-2026
+# 03-05-2026
 
 import logging
 from collections.abc import Callable
@@ -61,7 +61,7 @@ class GeminiAssetAnalyzer:
         self,
         api_key: str | Path | None = None,
         prompt: str | Path = '',
-        model_id: str = 'gemini-3.0-flash',
+        model_id: str = 'gemini-3.1-flash-image-preview',
         max_workers: int = 10,
         max_retries: int = 3,
         system_instruction: str | None = None,
