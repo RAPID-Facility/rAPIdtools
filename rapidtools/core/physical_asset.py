@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-04-2026
+# 03-06-2026
 
 from __future__ import annotations
 
@@ -54,9 +54,9 @@ import pandas as pd
 from shapely.geometry import box, mapping, shape
 from shapely.geometry.base import BaseGeometry
 
-from .bounding_box import BoundingBox
-from .image_asset import ImageAsset, ImageCollection
-from .polygon_region import PolygonRegion
+from rapidtools.core.bounding_box import BoundingBox
+from rapidtools.core.image_asset import ImageAsset, ImageCollection
+from rapidtools.core.polygon_region import PolygonRegion
 
 
 @dataclass(kw_only=True, repr=False)
