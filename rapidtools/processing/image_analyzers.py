@@ -35,103 +35,165 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 03-05-2026
+# 03-06-2026
+
+from __future__ import annotations
 
 import logging
+import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from tqdm import tqdm
 
-from rapidtools.core import ImageAsset, PhysicalAsset, PhysicalAssetCollection
 from rapidtools.models import GeminiInference
+
+if TYPE_CHECKING:
+    from rapidtools.core import ImageAsset, PhysicalAsset, PhysicalAssetCollection
 
 
 class GeminiAssetAnalyzer:
     """
     Pipeline component that uses Google's Gemini API to analyze assets.
     
-    This analyzer gathers filtered images attached to a single `PhysicalAsset`, 
-    sends them to Gemini together, and stores the combined assessment directly 
-    in the asset's attributes.
+    This analyzer features a thread-safe "Global Cooldown" with an exponential 
+    multiplier. If the API returns a rate-limit error, all threads will pause. 
+    Consecutive errors will result in increasingly longer wait times.
+
+    Example:
+        >>> analyzer = GeminiAssetAnalyzer(
+        ...     api_key="...",
+        ...     cooldown_duration=30,  # Base wait of 30s
+        ...     max_workers=2
+        ... )
+        >>> collection = analyzer(collection)
     """
 
     def __init__(
         self,
         api_key: str | Path | None = None,
         prompt: str | Path = '',
-        model_id: str = 'gemini-3.1-flash-image-preview',
-        max_workers: int = 10,
-        max_retries: int = 3,
+        model_id: str | None = 'gemini-3.1-flash-lite-preview',
+        max_workers: int | None = 5,
+        max_retries: int | None = 3,
+        cooldown_duration: int | None = 30,
         system_instruction: str | None = None,
         temperature: float = 0.4,
         max_tokens: int = 2048,
         image_filter: Callable[[ImageAsset], bool] | None = None
     ):
         """
-        Initialize the Gemini Analyzer.
+        Initialize the Gemini Analyzer with configurable safety limits.
 
         Args:
-            api_key: 
-                Google Gemini API key (string, Path to a file, or None to use ENV vars).
-            prompt: 
-                The prompt to guide the model.
-            model_id: 
-                The specific Gemini model to use.
-            max_workers: 
-                Number of concurrent API threads.
-            max_retries: 
-                Number of times to retry failed requests.
-            system_instruction: 
-                Optional system-level instructions.
-            temperature: 
-                Model temperature (0.0 to 2.0).
-            max_tokens: 
-                Maximum output tokens.
-            image_filter: 
-                A function that takes an `ImageAsset` and returns True 
-                if the image should be sent to Gemini. If None, all downloaded 
-                images are sent.
+            api_key: Google Gemini API key.
+            prompt: Text prompt or path to prompt file.
+            model_id: Gemini model ID. Defaults to 'gemini-1.5-flash'.
+            max_workers: Concurrent threads. Defaults to 5.
+            max_retries: Retries per individual request. Defaults to 3.
+            cooldown_duration: Base seconds to wait on rate limit. Defaults to 30.
+            system_instruction: Optional model persona/constraints.
+            temperature: Randomness (0.0 to 2.0).
+            max_tokens: Maximum output length.
+            image_filter: Optional function to filter ImageAssets.
         """
         self.prompt = prompt
-        self.max_workers = max_workers
         self.image_filter = image_filter
         
-        # Instantiate the underlying inference model
+        # 1. Set configuration
+        self.model_id = model_id
+        self.max_workers = max_workers
+        self.max_retries = max_retries
+        self.cooldown_duration = cooldown_duration
+        
+        # 2. Initialize thread-safe cooldown state
+        self._lock = threading.Lock()
+        self._global_cooldown_until = 0.0
+        self._consecutive_error_count = 0 
+        
+        # 3. Instantiate inference engine
         self.model = GeminiInference(
             api_key=api_key,
-            model_id=model_id,
-            max_workers=max_workers,
-            max_retries=max_retries,
+            model_id=self.model_id,
+            max_workers=self.max_workers,
+            max_retries=self.max_retries,
             system_instruction=system_instruction,
             temperature=temperature,
             max_tokens=max_tokens
         )
 
-    @staticmethod
-    def list_available_models(api_key: str | Path | None = None) -> list[str]:
+    def _process_single_asset(self, asset: PhysicalAsset) -> bool:
         """
-        List available Gemini models that support content generation.
-        Convenience method that delegates to the underlying GeminiInference model.
-        
-        Args:
-            api_key: Google Gemini API key (string, Path, or None for ENV var).
+        Gathers images for an asset, handles global cooldowns, and runs inference.
+        """
+        # --- Check Global Cooldown ---
+        with self._lock:
+            wait_time = self._global_cooldown_until - time.time()
+            if wait_time > 0:
+                logging.info(
+                    f"Asset {asset.id} delayed: Global cooldown active for "
+                    f"{int(wait_time)}s..."
+                )
+                time.sleep(wait_time)
+
+        # --- Gather Images ---
+        target_images = asset.image_assets
+        if self.image_filter is not None:
+            target_images = target_images.filter(self.image_filter)
             
-        Returns:
-            A sorted list of available model IDs.
-        """
-        return GeminiInference.list_available_models(api_key=api_key)
+        image_paths = [img.path for img in target_images if img.is_downloaded]
+        if not image_paths:
+            return False
+
+        # --- Run Inference ---
+        result = self.model.run_inference(
+            image_inputs=image_paths, 
+            prompt=self.prompt
+        )
+        
+        # --- Handle Result and Dynamic Cooldown ---
+        if result is None or not result.text:
+            with self._lock:
+                # Increment error count to increase the next cooldown
+                self._consecutive_error_count += 1
+                
+                # Dynamic wait: Base Duration * Number of consecutive errors
+                # Example: 30s, 60s, 90s...
+                dynamic_wait = self.cooldown_duration * self._consecutive_error_count
+                
+                self._global_cooldown_until = time.time() + dynamic_wait
+                
+                logging.error(
+                    f"Rate limit or API error hit on {asset.id}. "
+                    f"Consecutive errors: {self._consecutive_error_count}. "
+                    f"Global cooldown set for {dynamic_wait}s."
+                )
+            return False
+            
+        # --- Success Case ---
+        with self._lock:
+            # Reset error count on any successful call
+            if self._consecutive_error_count > 0:
+                logging.info('Successful response received. Resetting error multiplier.')
+                self._consecutive_error_count = 0
+
+        asset.attributes['gemini_asset_analysis'] = result.text
+        asset.attributes['ai_model_used'] = self.model.model_id
+        asset.attributes['images_analyzed_count'] = len(image_paths)
+        
+        return True
 
     def __call__(
         self, 
         asset_collection: PhysicalAssetCollection
     ) -> PhysicalAssetCollection:
         """
-        Execute the analysis process on the provided asset collection.
+        Execute analysis on the collection using a thread pool.
         """
-        # Filter down to assets that actually have images
-        assets_with_images =[
+        assets_with_images = [
             asset for asset in asset_collection 
             if len(asset.image_assets) > 0
         ]
@@ -143,12 +205,11 @@ class GeminiAssetAnalyzer:
         workers = min(self.max_workers, max(1, len(assets_with_images)))
         
         logging.info(
-            f'Gemini API: Analyzing {len(assets_with_images)} assets concurrently '
-            f'using {workers} workers...'
+            f'Gemini API: Analyzing {len(assets_with_images)} assets '
+            f'with {workers} workers (Base Cooldown: {self.cooldown_duration}s).'
         )
         
-        failed_assets = []
-        
+        failed_count = 0
         with ThreadPoolExecutor(max_workers=workers) as executor:
             future_to_asset = {
                 executor.submit(self._process_single_asset, asset): asset 
@@ -162,57 +223,16 @@ class GeminiAssetAnalyzer:
                 ):
                 asset = future_to_asset[future]
                 try:
-                    success = future.result()
-                    if not success:
-                        failed_assets.append(asset)
+                    if not future.result():
+                        failed_count += 1
                 except Exception as e:
-                    logging.debug(
-                        f'Unhandled exception processing asset {asset.id}: {e}'
-                    )
-                    failed_assets.append(asset)
+                    logging.error(f'Error on asset {asset.id}: {e}')
+                    failed_count += 1
                     
-        if failed_assets:
-            logging.error(
-                f'Gemini API: {len(failed_assets)} assets failed to process.'
-            )
+        if failed_count > 0:
+            logging.error(f'Gemini API: {failed_count} assets failed to process.')
         else:
             logging.info('Gemini API: All assets processed successfully.')
 
         return asset_collection
 
-    def _process_single_asset(self, asset: PhysicalAsset) -> bool:
-        """
-        Gathers filtered downloaded images for an asset, sends them to Gemini 
-        as a list, and saves the output to the asset's attributes.
-        """
-        target_images = asset.image_assets
-        
-        if self.image_filter is not None:
-            target_images = target_images.filter(self.image_filter)
-            
-        image_paths =[
-            img.path for img in target_images 
-            if img.is_downloaded
-        ]
-        
-        if not image_paths:
-            logging.debug(
-                f'Asset {asset.id} has no valid downloaded images matching the'
-                ' filter. Skipping.'
-            )
-            return False
-
-        result = self.model.run_inference(
-            image_inputs=image_paths, 
-            prompt=self.prompt
-        )
-        
-        if result is None or not result.text:
-            return False
-            
-        # Store the AI description and metadata at the asset level
-        asset.attributes['gemini_asset_analysis'] = result.text
-        asset.attributes['ai_model_used'] = self.model.model_id
-        asset.attributes['images_analyzed_count'] = len(image_paths)
-        
-        return True
