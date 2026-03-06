@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-25-2026
+# 03-06-2026
 
 import logging
 import os
@@ -49,7 +49,7 @@ from .api_base import BaseAPIInferenceModel
 from .base import ModelOutput
 
 GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
-GEMINI_DEFAULT_MODEL = 'gemini-3.0-flash'
+GEMINI_DEFAULT_MODEL = 'gemini-3.1-flash-image-preview'
 
 
 class GeminiInference(BaseAPIInferenceModel):
@@ -157,7 +157,8 @@ class GeminiInference(BaseAPIInferenceModel):
             # Use our static helper to safely resolve the key (String, Path, or Env Var)
             resolved_key = GeminiInference._resolve_api_key(api_key)
         except (ValueError, FileNotFoundError):
-            return[] # If no valid key is found, return an empty list
+            raise FileNotFoundError(f'API key file not found at: {api_key}')
+            return [] # If no valid key is found, return an empty list
 
         url = f'{GEMINI_BASE_URL}/models'
         try:
