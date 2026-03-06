@@ -39,13 +39,15 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from tqdm import tqdm
 
@@ -125,6 +127,36 @@ class GeminiAssetAnalyzer:
             max_tokens=max_tokens
         )
 
+    def _parse_structured_results(self, text: str) -> dict[str, Any]:
+        """
+        Attempts to extract key-value pairs from Gemini's response.
+        Supports both JSON formatting and 'Key: Value' line-based formatting.
+        """
+        results = {}
+        
+        # 1. Try to find and parse JSON blocks (wrapped in ```json ... ```)
+        json_match = re.search(r'```json\s*(.*?)\s*```', text, re.DOTALL)
+        json_text = json_match.group(1) if json_match else text
+        
+        try:
+            results = json.loads(json_text)
+            if isinstance(results, dict):
+                return results
+        except json.JSONDecodeError:
+            pass # Fallback to regex line parsing
+
+        # 2. Fallback: Regex parsing for 'Key: Value' or 'Key - Value' patterns
+        # Matches: "CHS Level: 3" or "Justification: The roof is gone"
+        lines = text.split('\n')
+        for line in lines:
+            match = re.match(r'^([\w\s]+)[:\-]\s*(.*)$', line.strip())
+            if match:
+                key = match.group(1).strip().lower().replace(' ', '_')
+                value = match.group(2).strip()
+                results[key] = value
+                
+        return results
+
     def _process_single_asset(self, asset: PhysicalAsset) -> bool:
         """
         Gathers images for an asset, handles global cooldowns, and runs inference.
@@ -180,7 +212,17 @@ class GeminiAssetAnalyzer:
                 logging.info('Successful response received. Resetting error multiplier.')
                 self._consecutive_error_count = 0
 
-        asset.attributes['gemini_asset_analysis'] = result.text
+        # Parse the text for specific categories
+        structured_data = self._parse_structured_results(result.text)
+        
+        if structured_data:
+            for key, val in structured_data.items():
+                # Store as gemini_chs_level, gemini_justification, etc.
+                asset.attributes[f'gemini_{key}'] = val
+        else:
+            # Fallback if no patterns found: store the whole thing
+            asset.attributes['gemini_analysis_raw'] = result.text
+            
         asset.attributes['ai_model_used'] = self.model.model_id
         asset.attributes['images_analyzed_count'] = len(image_paths)
         
