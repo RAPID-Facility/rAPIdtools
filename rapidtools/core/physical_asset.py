@@ -54,9 +54,9 @@ import pandas as pd
 from shapely.geometry import box, mapping, shape
 from shapely.geometry.base import BaseGeometry
 
-from rapidtools.core.bounding_box import BoundingBox
-from rapidtools.core.image_asset import ImageAsset, ImageCollection
-from rapidtools.core.polygon_region import PolygonRegion
+from .bounding_box import BoundingBox
+from .image_asset import ImageAsset, ImageCollection
+from .polygon_region import PolygonRegion
 
 
 @dataclass(kw_only=True, repr=False)
@@ -358,16 +358,18 @@ class PhysicalAsset:
         valid_assets_to_add = []
 
         for arg in args:
+            arg_type = type(arg).__name__
+            
             # Case 1 - Single ImageAsset:
-            if isinstance(arg, ImageAsset):
+            if isinstance(arg, ImageAsset) or arg_type == 'ImageAsset':
                 valid_assets_to_add.append(arg)
 
             # Case 2 - A List, Tuple, or ImageCollection
             # Check for these types specifically to avoid iterating over
             # strings or other iterables:
-            elif isinstance(arg, list | tuple | ImageCollection):
+            elif isinstance(arg, (list, tuple)) or arg_type == 'ImageCollection':
                 for item in arg:
-                    if isinstance(item, ImageAsset):
+                    if isinstance(item, ImageAsset) or type(item).__name__ == 'ImageAsset':
                         valid_assets_to_add.append(item)
                     else:
                         logging.warning(
@@ -849,13 +851,27 @@ class PhysicalAsset:
 
         print('-' * len(header) + '\n')
 
-    def to_geojson_feature(self) -> dict[str, Any]:
+    def to_geojson_feature(
+            self, 
+            ignore_properties: list[str] | None = None
+        ) -> dict[str, Any]:
         """
         Converts the asset into a GeoJSON feature dictionary.
 
-        The asset's ``'id'`` becomes the feature's ``'id'``. The asset's 'attributes'
-        are used as the base for the feature's 'properties'. The list of
-        ``'image_assets'`` is serialized and added to the ``'properties'`` as well.
+        The asset's ``'id'`` becomes the feature's ``'id'``. The asset's 
+        'attributes' are used as the base for the feature's 'properties'. 
+        The list of ``'image_assets'`` is serialized and added to the 
+        'properties' by default.
+
+        Specific properties can be excluded from the output using the 
+        ``ignore_properties`` argument, which is useful for reducing file 
+        size when large nested objects are not required.
+
+        Args:
+            ignore_properties (list[str] or None, optional):
+                A list of property keys to exclude from the GeoJSON 
+                properties dictionary. Commonly used to exclude 
+                ``'image_assets'``. Defaults to ``None``.
 
         Returns:
             dict[str, Any]: A dictionary representing a valid GeoJSON Feature.
@@ -887,13 +903,19 @@ class PhysicalAsset:
             'allow_missing_file': True, '_pil_image': None, '_semantic_mask':
             None, '_instance_mask': None}]}}
         """
-        # Start with a copy of the attributes for the properties dictionary:
+        ignore_list = ignore_properties or []
+        
+        # Start with a copy of the attributes
         properties = self.attributes.copy()
 
-        # Serialize image_assets into a list of dictionaries and add to
-        # properties:
-        if self.image_assets:
+        # Serialize image_assets into the properties dictionary if not ignored
+        if self.image_assets and 'image_assets' not in ignore_list:
             properties['image_assets'] = [asdict(img) for img in self.image_assets]
+
+        # Remove any properties requested in the ignore_list
+        for key in ignore_list:
+            if key in properties:
+                del properties[key]
 
         return {
             'type': 'Feature',
@@ -1807,6 +1829,36 @@ class PhysicalAssetCollection:
 
         return PhysicalAssetCollection(assets=filtered_assets)
 
+    def filter_empty(self) -> PhysicalAssetCollection:
+            """
+            Return a new collection excluding assets with no descriptive attributes.
+    
+            This method acts as a data-cleaning tool. It identifies assets where 
+            the ``attributes`` dictionary is completely empty and excludes them 
+            from the resulting collection.
+    
+            Returns:
+                PhysicalAssetCollection: 
+                    A new collection containing only assets that possess at least 
+                    one metadata attribute.
+    
+            Example:
+                >>> # If you have 500 assets but only 360 were successfully analyzed:
+                >>> print(len(collection))
+                500
+                >>> clean_collection = collection.filter_empty()
+                >>> print(len(clean_collection))
+                360
+            """
+            # Keep the asset only if its attributes dictionary has content.
+            # In Python, an empty dict '{}' evaluates to False:
+            filtered_assets = [
+                asset for asset in self._data.values() 
+                if asset.attributes
+            ]
+            
+            return self.__class__(assets=filtered_assets)
+
     def merge(
         self,
         other: PhysicalAssetCollection,
@@ -2240,13 +2292,18 @@ class PhysicalAssetCollection:
         self,
         file: str | Path | None = None,
         indent: int | None = 2,
+        ignore_properties: list[str] | None = None
     ) -> dict[str, Any]:
         """
         Serialize the collection into a GeoJSON FeatureCollection.
 
         This method converts all assets in the collection into a standard
         GeoJSON structure. It can either return the dictionary directly or
-        write it to a file if a path is provided.
+        write it to a file if a path is provided. 
+        
+        It supports an optional filter to exclude specific metadata fields 
+        (such as the heavy 'image_assets' list) from the output to reduce 
+        file size.
 
         Args:
             file (str or Path or None, optional):
@@ -2255,10 +2312,15 @@ class PhysicalAssetCollection:
             indent (int | None, optional):
                 The indentation level for JSON pretty-printing. Set to ``None``
                 for a compact representation. Defaults to 2.
+            ignore_properties (list[str] or None, optional):
+                A list of property keys to exclude from each feature in the 
+                output. This is useful for removing large nested objects 
+                like 'image_assets' when only metadata is needed. 
+                Defaults to ``None``.
 
         Returns:
             dict[str, Any]:
-                A dictionary representing the GeoJSON featureCollection.
+                A dictionary representing the GeoJSON FeatureCollection.
 
         Examples:
             Write the collection to a GeoJSON dictionary:
@@ -2274,22 +2336,32 @@ class PhysicalAssetCollection:
             >>> print(data['features'][0]['id'])
             A1
 
-            Write the collection to a GeoJSON file name ``'output.json'``:
+            Write the collection to a GeoJSON file name ``'output.json'`` with
+            custom indentation:
 
             >>> _ = col.to_geojson(file='output.json', indent=4)
+            
+            Export only metadata by ignoring the 'image_assets' property:
+
+            >>> data = col.to_geojson(ignore_properties=['image_assets'])
+            >>> print('image_assets' in data['features'][0]['properties'])
+            False
+            
         """
         feature_collection = {
             'type': 'FeatureCollection',
-            'features': [asset.to_geojson_feature() for asset in self._data.values()],
+            'features': [
+                asset.to_geojson_feature(ignore_properties=ignore_properties) 
+                for asset in self._data.values()
+            ],
         }
 
         if file is not None:
             path = Path(file)
-
-            # Ensure the directory exists to prevent a FileNotFoundError:
             path.parent.mkdir(parents=True, exist_ok=True)
 
             with path.open('w', encoding='utf-8') as f:
-                json.dump(feature_collection, f, indent=indent)
+                json.dump(feature_collection, f, indent=indent, default=str)
 
         return feature_collection
+  
