@@ -48,6 +48,7 @@ dependencies = [
     "numpy",
     "pandas",
     "pillow",
+    "pyshp",
     "rasterio",
     "requests",
     "scikit-image",
