@@ -35,12 +35,13 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 03-06-2026
+# 03-23-2026
 
 from __future__ import annotations
 
 import json
 import logging
+import math
 import operator as op
 import uuid
 from collections import Counter
@@ -51,6 +52,7 @@ from pathlib import Path
 from typing import Any, ClassVar, Literal
 
 import pandas as pd
+import shapefile
 from shapely.geometry import box, mapping, shape
 from shapely.geometry.base import BaseGeometry
 
@@ -359,7 +361,7 @@ class PhysicalAsset:
 
         for arg in args:
             arg_type = type(arg).__name__
-            
+
             # Case 1 - Single ImageAsset:
             if isinstance(arg, ImageAsset) or arg_type == 'ImageAsset':
                 valid_assets_to_add.append(arg)
@@ -369,7 +371,10 @@ class PhysicalAsset:
             # strings or other iterables:
             elif isinstance(arg, (list, tuple)) or arg_type == 'ImageCollection':
                 for item in arg:
-                    if isinstance(item, ImageAsset) or type(item).__name__ == 'ImageAsset':
+                    if (
+                        isinstance(item, ImageAsset)
+                        or type(item).__name__ == 'ImageAsset'
+                    ):
                         valid_assets_to_add.append(item)
                     else:
                         logging.warning(
@@ -639,9 +644,7 @@ class PhysicalAsset:
             if key in lookup:
                 results.append(lookup[key])
             else:
-                logging.warning(
-                    f"Image asset '{key}' not found in asset '{self.id}'."
-                )
+                logging.warning(f"Image asset '{key}' not found in asset '{self.id}'.")
 
         return results
 
@@ -852,25 +855,24 @@ class PhysicalAsset:
         print('-' * len(header) + '\n')
 
     def to_geojson_feature(
-            self, 
-            ignore_properties: list[str] | None = None
-        ) -> dict[str, Any]:
+        self, ignore_properties: list[str] | None = None
+    ) -> dict[str, Any]:
         """
         Converts the asset into a GeoJSON feature dictionary.
 
-        The asset's ``'id'`` becomes the feature's ``'id'``. The asset's 
-        'attributes' are used as the base for the feature's 'properties'. 
-        The list of ``'image_assets'`` is serialized and added to the 
+        The asset's ``'id'`` becomes the feature's ``'id'``. The asset's
+        'attributes' are used as the base for the feature's 'properties'.
+        The list of ``'image_assets'`` is serialized and added to the
         'properties' by default.
 
-        Specific properties can be excluded from the output using the 
-        ``ignore_properties`` argument, which is useful for reducing file 
+        Specific properties can be excluded from the output using the
+        ``ignore_properties`` argument, which is useful for reducing file
         size when large nested objects are not required.
 
         Args:
             ignore_properties (list[str] or None, optional):
-                A list of property keys to exclude from the GeoJSON 
-                properties dictionary. Commonly used to exclude 
+                A list of property keys to exclude from the GeoJSON
+                properties dictionary. Commonly used to exclude
                 ``'image_assets'``. Defaults to ``None``.
 
         Returns:
@@ -904,7 +906,7 @@ class PhysicalAsset:
             None, '_instance_mask': None}]}}
         """
         ignore_list = ignore_properties or []
-        
+
         # Start with a copy of the attributes
         properties = self.attributes.copy()
 
@@ -1187,8 +1189,8 @@ class PhysicalAssetCollection:
             4
         """
         # Normalize input so the code always iterates over a list/iterable:
-        items_to_process: Iterable[PhysicalAsset]    
-            
+        items_to_process: Iterable[PhysicalAsset]
+
         if isinstance(assets, PhysicalAsset):
             items_to_process = [assets]
         elif isinstance(assets, Iterable):
@@ -1205,8 +1207,10 @@ class PhysicalAssetCollection:
         for asset in items_to_process:
             # Check for invalid type (includes name check for safety against
             # import mismatches):
-            if not isinstance(asset, PhysicalAsset) and \
-                type(asset).__name__ != 'PhysicalAsset':
+            if (
+                not isinstance(asset, PhysicalAsset)
+                and type(asset).__name__ != 'PhysicalAsset'
+            ):
                 logging.warning(
                     f"Skipping invalid item: Expected PhysicalAsset, got "
                     f"'{type(asset).__name__}'."
@@ -1453,6 +1457,155 @@ class PhysicalAssetCollection:
                 continue
 
         logging.info(f'Loaded {len(new_collection._data)} assets from GeoJSON.')
+        return new_collection
+
+    @classmethod
+    def from_shapefile(cls, file: str | Path) -> PhysicalAssetCollection:
+        """
+        Creates a new ``PhysicalAssetCollection`` from an ESRI Shapefile.
+
+        This factory method reads a shapefile, extracts the geometries and
+        attribute tables, and populates a new collection. It attempts to
+        reconstruct the original `id` if it was saved in the shapefile's
+        attribute table.
+
+        Args:
+            file (str or Path):
+                The path to the shapefile (``.shp``). The accompanying core
+                files (``.shx`` and ``.dbf``) must be located in the same
+                directory. It is also highly recommended that the projection
+                file (``.prj``) and character encoding file (``.cpg``) are
+                present to ensure spatial and text data are interpreted
+                correctly.
+
+        Returns:
+            PhysicalAssetCollection:
+                A new instance populated with the assets from the shapefile.
+
+        Raises:
+            shapefile.ShapefileException: If the file cannot be read.
+
+        Examples:
+            Import ``PhysicalAssetCollection`` class:
+
+            >>> from rapidtools.core import PhysicalAssetCollection
+
+            Load a shapefile from path (ensure the accompanying .shx and .dbf
+            files are located in the same directory):
+
+            >>> path = 'data/assets.shp'
+            >>> collection = PhysicalAssetCollection.from_shapefile(path)
+            INFO: Loaded 5 assets from Shapefile.
+            >>> print(len(collection))
+            5
+
+            Inspect an imported asset to view its reconstructed geometry and
+            attributes:
+
+            >>> asset = collection.get('0')
+            >>> asset.summary()
+            --- PhysicalAsset Summary ---
+            ID:          0
+            Asset Type:  building
+            Geometry:    POLYGON ((-118.54801743326061 34.050774380694754,
+                                   -118.54799871557931 34.0507...
+            Attributes (1):
+            {
+                "type": "building"
+            }
+            Image Assets (0):
+              (No image assets)
+            -----------------------------
+        """
+        new_collection = cls()
+        file_path = str(file)
+
+        # Open the shapefile reader:
+        with shapefile.Reader(file_path) as sf:
+            # sf.fields format: [('DeletionFlag', 'C', 1, 0),
+            # ['id', 'C', 254, 0], ...]
+            # Skip the first element which is always the DeletionFlag:
+            field_names = [field[0] for field in sf.fields[1:]]
+
+            for shape_rec in sf.shapeRecords():
+                # shapeType 0 is a NULL shape. This needs to be skipped before
+                # calling __geo_interface__ to avoid the GeoJSON_Error:
+                if shape_rec.shape.shapeType == 0:
+                    continue
+
+                try:
+                    # Reconstruct Shapely geometry using the GeoJSON-like interface:
+                    geom_dict = shape_rec.shape.__geo_interface__
+                    shapely_geom = shape(geom_dict)
+
+                    # Skip empty/null geometries:
+                    if (
+                        shapely_geom is None
+                        or shapely_geom.is_empty
+                        or not shapely_geom.is_valid
+                        or any(math.isnan(c) for c in shapely_geom.bounds)
+                    ):
+                        # Log a message if you want to see why it was skipped:
+                        logging.warning('Skipping asset: Geometry is empty or invalid.')
+                        continue
+
+                except (AttributeError, ValueError, TypeError, Exception):
+                    continue
+
+                shapely_geom = shape(geom_dict)
+
+                # Reconstruct attributes dictionary:
+                attributes = dict(zip(field_names, shape_rec.record, strict=True))
+
+                # Identify ID (accounting for shapefile 10-char truncation/
+                # capitalization). normalize as pyshp might return string or
+                # bytes:
+                assigned_id = None
+                for id_key in ['id', 'ID']:
+                    if id_key in attributes:
+                        val = attributes.pop(id_key)
+                        if val is not None and str(val).strip():
+                            assigned_id = str(val).strip()
+                        break
+
+                if not assigned_id:
+                    assigned_id = f'gen_{uuid.uuid4().hex}'
+
+                # Handle images column if it was generated by `to_shapefile`:
+                images_str = attributes.pop('images', None)
+
+                # Attempt to parse back JSON properties strings from DBF:
+                for k, v in attributes.items():
+                    if isinstance(v, str) and (v.startswith('{') or v.startswith('[')):
+                        try:
+                            attributes[k] = json.loads(v)
+                        except json.JSONDecodeError:
+                            pass  # Leave as standard string if it fails to parse
+
+                new_asset = PhysicalAsset(
+                    id=assigned_id, geometry=shapely_geom, attributes=attributes
+                )
+
+                # Rehydrate images if the column existed and had data:
+                if images_str:
+                    try:
+                        parsed_images = json.loads(images_str)
+                        new_asset.attributes['images'] = parsed_images
+                    except json.JSONDecodeError:
+                        # Fallback if string was truncated or malformed:
+                        new_asset.attributes['images_raw_str'] = images_str
+
+                # Skip duplicates if any:
+                if assigned_id in new_collection._data:
+                    logging.warning(
+                        f"Skipping duplicate asset with ID '{assigned_id}' "
+                        "found in Shapefile input."
+                    )
+                    continue
+
+                new_collection.add(new_asset)
+
+        logging.info(f'Loaded {len(new_collection._data)} assets from Shapefile.')
         return new_collection
 
     def get(
@@ -1806,8 +1959,8 @@ class PhysicalAssetCollection:
             search_shape = box(*geometry.bounds)
         else:
             raise TypeError(
-                'Input must be a rapidtools BoundingBox/PolygonRegion) '
-                'or Shapely Geometry. Got type: '
+                "Input must be a rapidtools BoundingBox/PolygonRegion) "
+                "or Shapely Geometry. Got type: "
                 f"'{type(geometry).__name__}'"
             )
 
@@ -1815,7 +1968,7 @@ class PhysicalAssetCollection:
         if predicate not in VALID_PREDICATES:
             raise ValueError(
                 f"Invalid spatial predicate '{predicate}'. "
-                f'Supported options: {VALID_PREDICATES}'
+                f"Supported options: {VALID_PREDICATES}"
             )
 
         # Filter assets:
@@ -1830,34 +1983,31 @@ class PhysicalAssetCollection:
         return PhysicalAssetCollection(assets=filtered_assets)
 
     def filter_empty(self) -> PhysicalAssetCollection:
-            """
-            Return a new collection excluding assets with no descriptive attributes.
-    
-            This method acts as a data-cleaning tool. It identifies assets where 
-            the ``attributes`` dictionary is completely empty and excludes them 
-            from the resulting collection.
-    
-            Returns:
-                PhysicalAssetCollection: 
-                    A new collection containing only assets that possess at least 
-                    one metadata attribute.
-    
-            Example:
-                >>> # If you have 500 assets but only 360 were successfully analyzed:
-                >>> print(len(collection))
-                500
-                >>> clean_collection = collection.filter_empty()
-                >>> print(len(clean_collection))
-                360
-            """
-            # Keep the asset only if its attributes dictionary has content.
-            # In Python, an empty dict '{}' evaluates to False:
-            filtered_assets = [
-                asset for asset in self._data.values() 
-                if asset.attributes
-            ]
-            
-            return self.__class__(assets=filtered_assets)
+        """
+        Return a new collection excluding assets with no descriptive attributes.
+
+        This method acts as a data-cleaning tool. It identifies assets where
+        the ``attributes`` dictionary is completely empty and excludes them
+        from the resulting collection.
+
+        Returns:
+            PhysicalAssetCollection:
+                A new collection containing only assets that possess at least
+                one metadata attribute.
+
+        Example:
+            >>> # If you have 500 assets but only 360 were successfully analyzed:
+            >>> print(len(collection))
+            500
+            >>> clean_collection = collection.filter_empty()
+            >>> print(len(clean_collection))
+            360
+        """
+        # Keep the asset only if its attributes dictionary has content.
+        # In Python, an empty dict '{}' evaluates to False:
+        filtered_assets = [asset for asset in self._data.values() if asset.attributes]
+
+        return self.__class__(assets=filtered_assets)
 
     def merge(
         self,
@@ -2023,8 +2173,8 @@ class PhysicalAssetCollection:
             0
         """
         # Normalize input to always be an iterable:
-        ids_to_remove: Iterable[str]    
-            
+        ids_to_remove: Iterable[str]
+
         if isinstance(asset_ids, str):
             ids_to_remove = [asset_ids]
         elif isinstance(asset_ids, Iterable):
@@ -2292,17 +2442,17 @@ class PhysicalAssetCollection:
         self,
         file: str | Path | None = None,
         indent: int | None = 2,
-        ignore_properties: list[str] | None = None
+        ignore_properties: list[str] | None = None,
     ) -> dict[str, Any]:
         """
         Serialize the collection into a GeoJSON FeatureCollection.
 
         This method converts all assets in the collection into a standard
         GeoJSON structure. It can either return the dictionary directly or
-        write it to a file if a path is provided. 
-        
-        It supports an optional filter to exclude specific metadata fields 
-        (such as the heavy 'image_assets' list) from the output to reduce 
+        write it to a file if a path is provided.
+
+        It supports an optional filter to exclude specific metadata fields
+        (such as the heavy 'image_assets' list) from the output to reduce
         file size.
 
         Args:
@@ -2313,9 +2463,9 @@ class PhysicalAssetCollection:
                 The indentation level for JSON pretty-printing. Set to ``None``
                 for a compact representation. Defaults to 2.
             ignore_properties (list[str] or None, optional):
-                A list of property keys to exclude from each feature in the 
-                output. This is useful for removing large nested objects 
-                like 'image_assets' when only metadata is needed. 
+                A list of property keys to exclude from each feature in the
+                output. This is useful for removing large nested objects
+                like 'image_assets' when only metadata is needed.
                 Defaults to ``None``.
 
         Returns:
@@ -2340,18 +2490,18 @@ class PhysicalAssetCollection:
             custom indentation:
 
             >>> _ = col.to_geojson(file='output.json', indent=4)
-            
+
             Export only metadata by ignoring the 'image_assets' property:
 
             >>> data = col.to_geojson(ignore_properties=['image_assets'])
             >>> print('image_assets' in data['features'][0]['properties'])
             False
-            
+
         """
         feature_collection = {
             'type': 'FeatureCollection',
             'features': [
-                asset.to_geojson_feature(ignore_properties=ignore_properties) 
+                asset.to_geojson_feature(ignore_properties=ignore_properties)
                 for asset in self._data.values()
             ],
         }
@@ -2364,4 +2514,244 @@ class PhysicalAssetCollection:
                 json.dump(feature_collection, f, indent=indent, default=str)
 
         return feature_collection
-  
+
+    def to_shapefile(
+        self,
+        file: str | Path,
+        crs: str = 'EPSG:4326',
+        ignore_properties: list[str] | None = None,
+    ) -> None:
+        """
+        Exports all assets in the collection to an ESRI Shapefile.
+
+        Because a shapefile requires a fixed tabular schema, this method
+        performs a first pass over all assets to unify the attributes. If an
+        attribute exists in some assets but not others, the missing values
+        will be written as empty/null.
+
+        It supports an optional filter to exclude specific metadata fields
+        (such as the heavy 'image_assets' list) from the output to reduce
+        file size and prevent cluttering the DBF attribute table.
+
+        Note on Shapefile limitations:
+            * Column names (attribute keys) are strictly truncated to 10 chars.
+            * String values are strictly truncated to 254 characters.
+            * Nested data structures (lists, dicts) are serialized to JSON strings.
+
+        Args:
+            file (str or Path):
+                The destination path for the shapefile. The string should end
+                in '.shp'. The method will generate the accompanying .shx, .dbf,
+                and .prj files alongside it.
+            crs (str, optional):
+                The Coordinate Reference System (CRS). Currently, this method
+                auto-generates a .prj file for 'EPSG:4326' (WGS84). Defaults
+                to 'EPSG:4326'.
+            ignore_properties (list[str] or None, optional):
+                A list of property keys to exclude from the attribute table.
+                Defaults to ``None``.
+
+        Raises:
+            ImportError: If the 'pyshp' library is not installed.
+            ValueError: If the collection is empty.
+
+        Examples:
+            Create a collection:
+
+            >>> from shapely.geometry import Point
+            >>> from rapidtools.core import PhysicalAsset, PhysicalAssetCollection
+            >>>
+            >>> col = PhysicalAssetCollection()
+            >>> col.add(PhysicalAsset(
+            ...     id='A1',
+            ...     geometry=Point(0,0),
+            ...     attributes={'status': 'active'}
+            ... ))
+            >>> col.to_shapefile('data/assets.shp')
+
+            Write the collection to a Shapefile, exporting only basic metadata
+            (ignoring the 'image_assets' and 'notes' properties):
+
+            >>> col.to_shapefile(
+            ...     'data/assets_light.shp',
+            ...     ignore_properties=['image_assets', 'notes']
+            ... )
+        """
+        if not self._data:
+            raise ValueError('Cannot export an empty collection to a shapefile.')
+
+        ignore_props = set(ignore_properties or [])
+
+        path = Path(file)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Discover unified schema
+        # Shapefiles require a rigid, tabular schema upfront before writing any
+        # data. It is necessary to iterate through all assets to determine all
+        # possible attributes and their necessary data types:
+        schema = {}
+
+        # Pre-calculate to avoid checking the ignore list on every single asset
+        check_images = 'image_assets' not in ignore_props
+        has_images = False
+
+        for asset in self._data.values():
+            # Stop looking for images once we find the first one:
+            if check_images and not has_images and getattr(asset, 'image_assets', None):
+                has_images = True
+
+            for k, v in asset.attributes.items():
+                if k in ignore_props:
+                    continue
+
+                # Determine the pyshp field type for the CURRENT attribute
+                # value: 'L' = Logical (bool), 'N' = Numeric (int),
+                # 'F' = Float, 'C' = Character (string):
+                # Length 1, 0 decimals:
+                if isinstance(v, bool):
+                    val_type = ('L', 1, 0)
+                # DBF allows up to 18 chars for numbers:
+                elif isinstance(v, int):
+                    val_type = ('N', 18, 0)
+                # 18 chars total, 5 decimal places:
+                elif isinstance(v, float):
+                    val_type = ('F', 18, 5)
+                # DBF max string length is 254 characters:
+                else:
+                    val_type = ('C', 254, 0)
+
+                if k not in schema:
+                    # First time seeing this attribute, register its type:
+                    schema[k] = val_type
+                else:
+                    # Encountered this attribute before. Check for type
+                    # conflicts across assets.
+                    curr_type_char = schema[k][0]
+                    new_type_char = val_type[0]
+
+                    # If types match, or if the field has already been degraded
+                    # to a str, do nothing:
+                    if curr_type_char == new_type_char or curr_type_char == 'C':
+                        continue
+
+                    # Handle manageable conflicts (e.g., mixing Ints and Floats
+                    # in the same field)
+                    if curr_type_char == 'N' and new_type_char == 'F':
+                        schema[k] = ('F', 18, 5)  # Upgrade the whole column to Float
+                    elif curr_type_char == 'F' and new_type_char == 'N':
+                        pass  # Keep Float, as it safely holds Integers
+                    else:
+                        # Unresolvable conflict (e.g., mixing bool and str).
+                        # Degrade the column to a String to ensure all data
+                        # fits safely:
+                        schema[k] = ('C', 254, 0)
+
+        # Setup field truncation and disambiguation
+        # The attribute table of a shapefile has a strict, legacy limitation,
+        # column names cannot exceed 10 characters:
+        fields = []
+        field_mapping = {}
+        seen_fields = set()
+
+        def get_safe_name(name: str) -> str:
+            """
+            Helper to safely truncate field names to 10 chars.
+            If a truncation causes a duplicate column name (e.g., 'description1'
+            and 'description2' both truncate to 'descriptio'), it appends a
+            numeric suffix to disambiguate while keeping the total length <= 10.
+            """
+            base = name[:10]
+            col = base
+            counter = 1
+            while col in seen_fields:
+                suffix = str(counter)
+                # Trim the base just enough to make room for the suffix:
+                col = f'{base[:10 - len(suffix)]}{suffix}'
+                counter += 1
+            seen_fields.add(col)
+            return col
+
+        # Always include the primary asset ID as the first column.
+        # 'C' means Character (String), max length 254, 0 decimal places:
+        safe_id = get_safe_name('id')
+        fields.append((safe_id, 'C', 254, 0))
+
+        # Map original attribute keys to their new, safe, 10-character DBF
+        # column names:
+        for original_k, (f_type, f_len, f_dec) in schema.items():
+            safe_k = get_safe_name(original_k)
+            field_mapping[original_k] = safe_k
+            fields.append((safe_k, f_type, f_len, f_dec))
+
+        # Add a dedicated column for image metadata if any assets contain
+        # images:
+        if has_images:
+            safe_images = get_safe_name('images')
+            fields.append((safe_images, 'C', 254, 0))
+
+        # Write the Shapefile components (.shp, .shx, .dbf)
+        with shapefile.Writer(str(path)) as w:
+            for f in fields:
+                w.field(*f)
+
+            for asset in self._data.values():
+                # Initialize the row dictionary with the required ID,
+                # truncating just in case:
+                record_values = {safe_id: str(asset.id)[:254]}
+
+                # Populate the remaining attributes for this asset:
+                for original_k, safe_k in field_mapping.items():
+                    val = asset.attributes.get(original_k)
+                    f_type = schema[original_k][0]
+
+                    if val is None:
+                        record_values[safe_k] = None
+                    elif f_type == 'C':
+                        if isinstance(val, (dict, list, tuple)):
+                            val_str = json.dumps(val, default=str)
+                        else:
+                            val_str = str(val)
+
+                        # Strictly enforce the 254 character limit to prevent
+                        # pyshp crashes:
+                        record_values[safe_k] = val_str[:254]
+                    else:
+                        record_values[safe_k] = val
+
+                # Populate images
+                if has_images:
+                    if getattr(asset, 'image_assets', None):
+                        img_data = [
+                            (
+                                asdict(img)
+                                if hasattr(img, '__dataclass_fields__')
+                                else str(img)
+                            )
+                            for img in asset.image_assets
+                        ]
+                        record_values[safe_images] = json.dumps(img_data, default=str)[
+                            :254
+                        ]
+                    else:
+                        record_values[safe_images] = ''
+
+                w.record(**record_values)
+                w.shape(asset.geometry)
+
+        # Manually write the .prj file for projection:
+        prj_filepath = path.with_suffix('.prj')
+        if crs.upper() == 'EPSG:4326':
+            # This is the Well-Known Text (WKT) string defining the standard
+            # WGS84 coordinate system:
+            wgs84_wkt = (
+                'GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137,'
+                '298.257223563]],PRIMEM["Greenwich",0],UNIT["Degree",0.017453292519943295]]'
+            )
+            prj_filepath.write_text(wgs84_wkt)
+        else:
+            # If a user provides a custom CRS, we skip creation rather than
+            # guessing or writing a bad PRJ:
+            logging.info(
+                f"Skipping .prj generation for custom CRS '{crs}'. "
+                "You may need to provide this manually."
+            )
