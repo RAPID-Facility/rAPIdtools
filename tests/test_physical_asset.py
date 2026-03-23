@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-01-2025
+# 03-23-2026
 
 import logging
 import uuid
@@ -85,15 +85,18 @@ def test_init_empty_id(sample_point):
     with pytest.raises(ValueError, match="PhysicalAsset 'id' cannot be empty"):
         PhysicalAsset(id='', geometry=sample_point)
 
+
 def test_init_invalid_id_type():
     """Test that initializing with a non-string ID raises TypeError."""
     with pytest.raises(TypeError, match="PhysicalAsset 'id' must be a string"):
         PhysicalAsset(id=123, geometry=Point(0, 0))
 
+
 def test_init_invalid_geometry():
     """Test initialization fails with non-geometry object."""
     with pytest.raises(TypeError):
         PhysicalAsset(id='A1', geometry='Not a Point')
+
 
 def test_post_init_validation(caplog):
     """Test warning on invalid geometry (e.g., self-intersecting polygon)."""
@@ -135,11 +138,13 @@ def test_add_attributes(sample_asset):
     # Ensure old attributes remain:
     assert sample_asset.attributes['material'] == 'wood'
 
+
 def test_add_attributes_invalid_type():
     """Test passing a list instead of a dict to add_attributes."""
     asset = PhysicalAsset(id='a1', geometry=Point(0, 0))
     with pytest.raises(TypeError, match='must be a dictionary'):
         asset.add_attributes(['not', 'a', 'dict'])
+
 
 def test_add_attributes_no_overwrite(sample_asset, caplog):
     """Test adding attributes without overwrite (default)."""
@@ -154,6 +159,7 @@ def test_add_attributes_with_overwrite(sample_asset):
     """Test adding attributes with overwrite=True."""
     sample_asset.add_attributes({'material': 'metal'}, overwrite=True)
     assert sample_asset.attributes['material'] == 'metal'
+
 
 def test_get_attributes(sample_asset, caplog):
     """Test safe retrieval of attributes."""
@@ -173,6 +179,7 @@ def test_remove_attributes(sample_asset):
     assert 'material' not in sample_asset.attributes
     assert 'year' in sample_asset.attributes  # Should stay
 
+
 def test_remove_attributes_missing(caplog):
     """Test removing a non-existent attribute logs a warning."""
     asset = PhysicalAsset(id='a1', geometry=Point(0, 0))
@@ -180,6 +187,7 @@ def test_remove_attributes_missing(caplog):
         asset.remove_attributes('ghost_key')
 
     assert 'Attempted to remove non-existent attribute' in caplog.text
+
 
 def test_repr(sample_asset):
     """Test the string representation of the asset."""
@@ -199,6 +207,7 @@ def test_repr(sample_asset):
 
 # --- Image Asset Tests ---
 
+
 def test_add_image_assets_invalid_inputs(caplog):
     """Test adding unsupported types to add_image_assets."""
     asset = PhysicalAsset(id='a1', geometry=Point(0, 0))
@@ -211,6 +220,7 @@ def test_add_image_assets_invalid_inputs(caplog):
     # Check that warnings were logged for both branches
     assert "Ignored argument of type 'int'" in caplog.text
     assert "Ignored item of type 'str'" in caplog.text
+
 
 def test_add_image_assets_variadic(sample_asset, sample_image):
     """Test adding images via single object and list."""
@@ -237,6 +247,7 @@ def test_get_image_assets(sample_asset, sample_image):
     assert len(found_file) == 1
     assert found_file[0].id == 'img_1'
 
+
 def test_get_image_assets_missing(caplog):
     """Test getting a non-existent image logs a warning."""
     asset = PhysicalAsset(id='a1', geometry=Point(0, 0))
@@ -245,6 +256,7 @@ def test_get_image_assets_missing(caplog):
 
     assert res == []
     assert "Image asset 'ghost.jpg' not found" in caplog.text
+
 
 def test_remove_image_assets(sample_asset, sample_image):
     """Test removing images."""
@@ -255,6 +267,7 @@ def test_remove_image_assets(sample_asset, sample_image):
     assert len(removed) == 1
     assert len(sample_asset.image_assets) == 0
 
+
 def test_remove_image_assets_missing(caplog):
     """Test removing a non-existent image logs a warning."""
     asset = PhysicalAsset(id='a1', geometry=Point(0, 0))
@@ -263,6 +276,7 @@ def test_remove_image_assets_missing(caplog):
 
     assert res == []
     assert 'but no matching asset was found' in caplog.text
+
 
 # --- GeoJSON Tests ---
 
@@ -283,6 +297,32 @@ def test_to_geojson_feature(sample_asset, sample_image):
     assert feature['properties']['image_assets'][0]['id'] == 'img_1'
 
 
+def test_to_geojson_feature_ignore_properties(sample_asset, sample_image):
+    """Test export to GeoJSON with the ignore_properties argument."""
+    # Add an image and an extra attribute to the sample asset
+    sample_asset.add_image_assets(sample_image)
+    sample_asset.add_attributes({'status': 'active'})
+
+    # Call to_geojson_feature and ignore 'material' (an existing attribute),
+    # 'image_assets' (the dynamically added image list), and 'ghost_key'
+    # (a non-existent attribute to test the `if key in properties` check).
+    feature = sample_asset.to_geojson_feature(
+        ignore_properties=['material', 'image_assets', 'ghost_key']
+    )
+
+    properties = feature['properties']
+
+    # Assert ignored properties were successfully removed or excluded
+    assert 'material' not in properties
+    assert 'image_assets' not in properties
+
+    # Assert other properties remain intact
+    assert 'year' in properties
+    assert properties['year'] == 1990
+    assert 'status' in properties
+    assert properties['status'] == 'active'
+
+
 def test_from_geojson_feature():
     """Test import from GeoJSON including image rehydration."""
     geojson_input = {
@@ -291,9 +331,7 @@ def test_from_geojson_feature():
         'geometry': {'type': 'Point', 'coordinates': [10, 20]},
         'properties': {
             'condition': 'good',
-            'image_assets': [
-                {'id': 'img_x', 'path': '/tmp/x.jpg'}
-            ],
+            'image_assets': [{'id': 'img_x', 'path': '/tmp/x.jpg'}],
         },
     }
 
@@ -311,35 +349,37 @@ def test_from_geojson_feature():
     # FileNotFound):
     assert asset.image_assets[0].id == 'img_x'
 
+
 def test_from_geojson_feature_errors():
     """Test validation errors in from_geojson_feature."""
     # Invalid type:
     with pytest.raises(ValueError, match='must be a valid GeoJSON Feature'):
-        PhysicalAsset.from_geojson_feature({'type': 'Point', 'coordinates': [0,0]})
+        PhysicalAsset.from_geojson_feature({'type': 'Point', 'coordinates': [0, 0]})
 
     # Missing geometry:
     with pytest.raises(ValueError, match='missing geometry'):
-        PhysicalAsset.from_geojson_feature({
-            'type': 'Feature',
-            'id': 'a1',
-            'properties': {}
-            # "geometry" key is missing
-        })
-
+        PhysicalAsset.from_geojson_feature(
+            {
+                'type': 'Feature',
+                'id': 'a1',
+                'properties': {},
+                # "geometry" key is missing
+            }
+        )
 
 
 def test_from_geojson_image_rehydration_fail(caplog):
     """Test handling of malformed image data during GeoJSON import."""
     data = {
         'type': 'Feature',
-        'geometry': {'type': 'Point', 'coordinates': [0,0]},
+        'geometry': {'type': 'Point', 'coordinates': [0, 0]},
         'properties': {
             'image_assets': [
                 # Passing an unknown argument 'bad_arg' should cause ImageAsset
                 # init to fail:
                 {'id': 'img1', 'path': 'p.jpg', 'bad_arg': 'fail'}
             ]
-        }
+        },
     }
 
     with caplog.at_level(logging.WARNING):
@@ -349,6 +389,7 @@ def test_from_geojson_image_rehydration_fail(caplog):
     assert len(asset.image_assets) == 0
     # ...but logged a warning about the failed image
     assert 'Failed to rehydrate an image asset' in caplog.text
+
 
 def test_from_geojson_missing_id(caplog):
     """Test GeoJSON import when ID is missing generates a placeholder."""
@@ -361,6 +402,7 @@ def test_from_geojson_missing_id(caplog):
     asset = PhysicalAsset.from_geojson_feature(geojson_input)
     assert asset.id.startswith('no_id_')
 
+
 def test_from_geojson_multipolygon_simplification():
     """Test that single-component MultiPolygons are simplified to Polygons."""
     geojson_input = {
@@ -371,14 +413,15 @@ def test_from_geojson_multipolygon_simplification():
             'coordinates': [
                 # A single polygon defined within a MultiPolygon structure
                 [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]]
-            ]
-        }
+            ],
+        },
     }
 
     asset = PhysicalAsset.from_geojson_feature(geojson_input)
 
     # The class should have converted this to 'Polygon':
     assert asset.geometry.geom_type == 'Polygon'
+
 
 def test_summary_edge_cases(capsys):
     """Test summary method with long geometry and empty fields."""
@@ -399,6 +442,7 @@ def test_summary_edge_cases(capsys):
     # Check Empty Attributes handling
     assert '(No attributes)' in captured
 
+
 def test_summary_json_serialization_complex_types(capsys):
     """
     Test that summary() correctly serializes non-standard JSON types
@@ -409,15 +453,13 @@ def test_summary_json_serialization_complex_types(capsys):
     creation_date = datetime(2025, 1, 1, 12, 0, 0)
 
     attributes = {
-        'uuid_obj': complex_id,       # Not JSON serializable by default
-        'timestamp': creation_date,   # Not JSON serializable by default
-        'normal': 'value'
+        'uuid_obj': complex_id,  # Not JSON serializable by default
+        'timestamp': creation_date,  # Not JSON serializable by default
+        'normal': 'value',
     }
 
     asset = PhysicalAsset(
-        id='asset_complex',
-        geometry=Point(0,0),
-        attributes=attributes
+        id='asset_complex', geometry=Point(0, 0), attributes=attributes
     )
 
     # Call summary() which triggers the print statement:
@@ -435,21 +477,18 @@ def test_summary_json_serialization_complex_types(capsys):
     # Check Empty Images handling:
     assert '(No image assets)' in captured
 
+
 def test_summary_prints_image_repr(capsys):
     """
     Test that summary() iterates over image assets and prints their
     string representation using the repr() format.
     """
     # Setup asset
-    asset = PhysicalAsset(id='asset_with_imgs', geometry=Point(0,0))
+    asset = PhysicalAsset(id='asset_with_imgs', geometry=Point(0, 0))
 
     # Add an image using allow_missing_file=True so a real file is not needed
     # on disk:
-    img = ImageAsset(
-        id='img_repr_test',
-        path='/tmp/fake.jpg',
-        allow_missing_file=True
-    )
+    img = ImageAsset(id='img_repr_test', path='/tmp/fake.jpg', allow_missing_file=True)
     asset.image_assets.add(img)
 
     # Call summary:
