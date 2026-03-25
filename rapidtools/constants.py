@@ -35,14 +35,47 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 12-11-2025
+# 03-24-2026
 
 """
-Definitions for global constants used throughout the rAPIdtools package.
+Definitions for global constants used throughout the rapidtools package.
 
-This module centralizes configuration values and shared constants to ensure
-consistent behavior across all rAPIdtools components.
+This module centralizes static reference data, mathematical constants,
+and shared mapping dictionaries for consistency across all modules.
 """
 
-EARTH_RADIUS_KM = 6371
-LATITUDE_SPACING_KM = 111
+EARTH_RADIUS_KM = 6371  # Mean radius of the Earth in km
+LATITUDE_SPACING_KM = 111.320  # Approx distance of 1 degree latitude in km
+
+# Dictionary that maps variations, abbreviations, and plurals to a standard key:
+UNIT_ALIASES = {
+    'px': 'pixels',
+    'pixel': 'pixels',
+    'pixels': 'pixels',
+    'm': 'meters',
+    'meter': 'meters',
+    'meters': 'meters',
+    'metre': 'meters',
+    'km': 'kilometers',
+    'kilometer': 'kilometers',
+    'kilometers': 'kilometers',
+    'ft': 'feet',
+    'foot': 'feet',
+    'feet': 'feet',
+    'mi': 'miles',
+    'mile': 'miles',
+    'miles': 'miles',
+    'yd': 'yards',
+    'yard': 'yards',
+    'yards': 'yards',
+    'yds': 'yards',
+}
+
+# Conversion factors from meters to the canonical distance units:
+METERS_CONVERSION_FACTORS = {
+    'meters': 1.0,
+    'kilometers': 0.001,
+    'feet': 1.0 / 0.3048,
+    'yards': 1.0 / 0.9144,
+    'miles': 1.0 / 1609.344,
+}

@@ -35,9 +35,16 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-03-2026
+# 03-24-2026
 
-from rapidtools.constants import EARTH_RADIUS_KM, LATITUDE_SPACING_KM
+import math
+
+from rapidtools.constants import (
+    EARTH_RADIUS_KM,
+    LATITUDE_SPACING_KM,
+    METERS_CONVERSION_FACTORS,
+    UNIT_ALIASES,
+)
 
 
 def test_earth_radius_constant():
@@ -54,16 +61,63 @@ def test_earth_radius_constant():
     # Type check
     assert isinstance(EARTH_RADIUS_KM, int)
 
+
 def test_latitude_spacing_constant():
     """
     Verify LATITUDE_SPACING_KM constant.
 
     Checks:
-    1. Value matches the standard approximation (111 km per degree).
-    2. Data type is integer.
+    1. Value matches the standard approximation (111.320 km per degree).
+    2. Data type is float.
     """
     # Value check
-    assert LATITUDE_SPACING_KM == 111
+    assert LATITUDE_SPACING_KM == 111.320
 
-    # Type check
-    assert isinstance(LATITUDE_SPACING_KM, int)
+    # Type check (Updated to float)
+    assert isinstance(LATITUDE_SPACING_KM, float)
+
+
+def test_unit_aliases_mapping():
+    """
+    Verify UNIT_ALIASES dictionary correctly standardizes input strings.
+    """
+    assert isinstance(UNIT_ALIASES, dict)
+
+    # Spot-check specific conversions
+    assert UNIT_ALIASES['px'] == 'pixels'
+    assert UNIT_ALIASES['metre'] == 'meters'
+    assert UNIT_ALIASES['ft'] == 'feet'
+    assert UNIT_ALIASES['mi'] == 'miles'
+
+    # Ensure every single value maps to an expected canonical unit
+    expected_canonical_units = {
+        'pixels',
+        'meters',
+        'kilometers',
+        'feet',
+        'miles',
+        'yards',
+    }
+    for mapped_value in UNIT_ALIASES.values():
+        assert mapped_value in expected_canonical_units
+
+
+def test_meters_conversion_factors():
+    """
+    Verify METERS_CONVERSION_FACTORS provides mathematically accurate
+    multipliers for distance conversions.
+    """
+    assert isinstance(METERS_CONVERSION_FACTORS, dict)
+
+    # Ensure all distance-based canonical units have a factor
+    # (Excluding 'pixels' as it is not a physical real-world distance)
+    expected_keys = {'meters', 'kilometers', 'feet', 'miles', 'yards'}
+    for key in expected_keys:
+        assert key in METERS_CONVERSION_FACTORS
+
+    # Use math.isclose to prevent floating-point precision assertion errors
+    assert math.isclose(METERS_CONVERSION_FACTORS['meters'], 1.0)
+    assert math.isclose(METERS_CONVERSION_FACTORS['kilometers'], 0.001)
+    assert math.isclose(METERS_CONVERSION_FACTORS['feet'], 1.0 / 0.3048)
+    assert math.isclose(METERS_CONVERSION_FACTORS['yards'], 1.0 / 0.9144)
+    assert math.isclose(METERS_CONVERSION_FACTORS['miles'], 1.0 / 1609.344)
