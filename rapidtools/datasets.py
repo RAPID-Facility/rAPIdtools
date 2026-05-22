@@ -55,74 +55,108 @@ class RemoteFile:
     url: str
     filename: str
 
-
 # Dataset registry mapping descriptive dataset names to their respective URLs 
 # and target filenames. A dataset can consist of a single file or a list of
 # multiple files:
 DATASET_REGISTRY: dict[str, list[RemoteFile]] = {
+    'aerial_chs_prompts': [
+        RemoteFile(
+            url='https://www.dropbox.com/scl/fi/wd8zd24xvgmhd0hrsw5eo/aerial_CHS_prompts.txt?rlkey=diybx8npfrlvam4wgltpw9qbe&st=wvmw5vz4&dl=0',
+            filename='aerial_CHS_prompts.txt',
+        )
+    ],
+    'altadena_sample_buildings': [
+        RemoteFile(
+            url='https://www.dropbox.com/scl/fi/4mr3r5as4ccebqxuvooaw/altadena_sample_buildings.geojson?rlkey=cpkyamwg7hdos984a552aj8d5&st=7np0z16s&dl=0',
+            filename='altadena_sample_buildings.geojson',
+        )
+    ],
     'eaton_patch1': [
         RemoteFile(
             url='https://www.dropbox.com/scl/fi/qzehjo91mz1lrd27etcve/eaton_patch_20250214.tiff?rlkey=rcmkpdyaixgq9i18q997bnp2z&st=6mgdvhay&dl=0',
             filename='eaton_patch_20250214.tiff',
         )
     ],
+    'eaton_patch2': [
+        RemoteFile(
+            url='https://www.dropbox.com/scl/fi/02sx7l5r594jl5qg3qfhq/Eaton_Trinity38_RGBortho_20250214.tiff?rlkey=5frnvs7drsxj7s8ofj2upqdvt&st=4814ge5y&dl=0',
+            filename='Eaton_Trinity38_RGBortho_20250214.tiff',
+        )
+    ],
 }
 
 
 def download_dataset(
-    dataset_name: str, output_dir: Union[str, Path] = '.'
+    dataset_names: Union[str, list[str]], output_dir: Union[str, Path] = '.'
 ) -> list[Path]:
     """
-    Downloads all files associated with a specific dataset from the registry.
+    Downloads all files associated with one or more datasets from the registry.
 
     Uses atomic writing (downloading to a temporary file first) to ensure 
     that interrupted downloads do not result in corrupted files.
 
     Args:
-        dataset_name (str): 
-            The descriptive name of the dataset (e.g., 'eaton_patch1').
+        dataset_names (str | list[str]): 
+            A single descriptive name of the dataset, or a list of names 
+            (e.g., 'eaton_patch1' OR ['eaton_patch1', 'eaton_patch2']).
             Input is case-insensitive and ignores leading/trailing whitespace.
         output_dir (str | Path, optional): Directory where files should be saved.
             Defaults to the current working directory ('.').
 
     Returns:
-        list[Path]: A list of absolute paths to the successfully downloaded files.
+        list[Path]: A flat list of absolute paths to all successfully downloaded files.
         
     Raises:
-        ValueError: If the requested dataset name does not exist in the registry.
+        ValueError: If any of the requested dataset names do not exist in the registry.
     """
-    # SAFEGUARD 1: Normalize the input string (lowercase and strip whitespace)
-    clean_name = dataset_name.strip().lower()
+    # Normalize input into a list so we can process it uniformly
+    if isinstance(dataset_names, str):
+        dataset_names = [dataset_names]
 
-    # SAFEGUARD 2: Catch invalid names, suggest corrections, and halt execution
-    if clean_name not in DATASET_REGISTRY:
-        available_datasets = list(DATASET_REGISTRY.keys())
-        error_message = f"Dataset '{dataset_name}' not found in the registry."
+    available_datasets = list(DATASET_REGISTRY.keys())
+    clean_names = []
+
+    # SAFEGUARD 1 & 2: Normalize and validate ALL requested datasets before downloading
+    for name in dataset_names:
+        clean_name = name.strip().lower()
         
-        # Use difflib to find the closest matching dataset name
-        suggestions = difflib.get_close_matches(
-            clean_name, available_datasets, n=1, cutoff=0.5
-        )
-        
-        if suggestions:
-            error_message += f" Did you mean '{suggestions[0]}'?"
-        else:
-            error_message += f" Available datasets: {available_datasets}"
+        if clean_name not in DATASET_REGISTRY:
+            error_message = f"Dataset '{name}' not found in the registry."
             
-        logger.error(error_message)
-        raise ValueError(error_message)
+            # Use difflib to find the closest matching dataset name
+            suggestions = difflib.get_close_matches(
+                clean_name, available_datasets, n=1, cutoff=0.5
+            )
+            
+            if suggestions:
+                error_message += f" Did you mean '{suggestions[0]}'?"
+            else:
+                error_message += f" Available datasets: {available_datasets}"
+                
+            logger.error(error_message)
+            raise ValueError(error_message)
+            
+        clean_names.append(clean_name)
+
+    # Deduplicate the list in case the user passed the same dataset twice
+    # using a dictionary preserves the original order:
+    clean_names = list(dict.fromkeys(clean_names))
 
     # Resolve output directory and create it if it does not exist:
     out_dir = Path(output_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     
-    downloaded_paths: list[Path] = []
-    files_to_download = DATASET_REGISTRY[clean_name]
+    # Aggregate all individual files from the requested datasets
+    files_to_download: list[RemoteFile] = []
+    for clean_name in clean_names:
+        files_to_download.extend(DATASET_REGISTRY[clean_name])
 
     logger.info(
         f"Preparing to download {len(files_to_download)} file(s) "
-        f"for dataset '{clean_name}'..."
+        f"across {len(clean_names)} dataset(s)..."
     )
+
+    downloaded_paths: list[Path] = []
 
     for remote_file in files_to_download:
         final_path = out_dir / remote_file.filename
@@ -159,8 +193,7 @@ def download_dataset(
                         file.write(chunk)
                         bar.update(len(chunk))
 
-            # Rename the temp file to the final filename upon successful
-            # completion:
+            # Rename the temp file to the final filename upon successful completion:
             temp_path.rename(final_path)
             downloaded_paths.append(final_path)
 
@@ -175,8 +208,7 @@ def download_dataset(
             )
             
         finally:
-            # Cleanup: Remove corrupted temporary file if download 
-            # failed/cancelled:
+            # Cleanup: Remove corrupted temporary file if download failed/cancelled:
             if temp_path.exists():
                 temp_path.unlink()
                 logger.debug(f'Cleaned up incomplete temporary file: {temp_path}')
