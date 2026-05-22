@@ -35,14 +35,14 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-21-2026
+# 05-22-2026
 
 """Initializations and metadata for the rapidtools package."""
 
 import logging
 import sys
 
-from .config import LOG_FORMAT, DATE_FORMAT
+from .config import DATE_FORMAT, LOG_FORMAT
 
 # Package metadata:
 name = 'rapidtools'
@@ -56,25 +56,33 @@ logging.basicConfig(
     format=LOG_FORMAT,
     datefmt=DATE_FORMAT,
     stream=sys.stdout,
-    force=True
+    force=True,
 )
 
-# Import the core domain models (Optional, but usually a good idea!)
-from .core import PhysicalAsset, PhysicalAssetCollection, ImageAsset
+# Import the core domain models:
+from .core import ImageAsset, PhysicalAsset, PhysicalAssetCollection
 
-# Import the pipeline and processing tools
+# Import the dataset download utilities:
+from .datasets import download_dataset
+
+# Import the pipeline and processing tools:
 from .processing import (
-    Pipeline,
     AerialImageryExtractor,
-    GeminiAssetAnalyzer
+    GeminiAssetAnalyzer,
+    Pipeline,
+    RoadwayRegularizer,
+    SAM3OrthoFeatureExtractor,
 )
 
-# Explicitly define the top-level public API
-__all__ =[
-    'PhysicalAsset',
-    'PhysicalAssetCollection',
-    'ImageAsset',
-    'Pipeline',
+# Explicitly define the top-level public API:
+__all__ = [
     'AerialImageryExtractor',
     'GeminiAssetAnalyzer',
+    'ImageAsset',
+    'PhysicalAsset',
+    'PhysicalAssetCollection',
+    'Pipeline',
+    'RoadwayRegularizer',
+    'SAM3OrthoFeatureExtractor',
+    'download_dataset',
 ]
