@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 03-06-2026
+# 05-21-2026
 
 """Initializations and metadata for the rapidtools package."""
 
