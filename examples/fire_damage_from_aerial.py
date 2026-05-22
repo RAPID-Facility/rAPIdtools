@@ -35,73 +35,80 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 03-06-2026
+# 05-22-2026
 
 """
 This script provides an example of the rapidtools data processing pipeline by:
-1. Loading a spatial inventory of building footprints.
-2. Extracting localized high-resolution aerial imagery for each asset.
-3. Using the Gemini API to analyze the imagery and assign CHS categories.
-4. Exporting the enriched dataset to a new GeoJSON file.
+1. Downloading the required example datasets.
+2. Loading a spatial inventory of building footprints.
+3. Extracting localized high-resolution aerial imagery for each asset.
+4. Using the Gemini API to analyze the imagery and assign CHS categories.
+5. Exporting the enriched dataset to a new GeoJSON file.
 """
 
 from pathlib import Path
 
-from rapidtools import GeminiAssetAnalyzer, Pipeline, PhysicalAssetCollection
-from rapidtools import AerialImageryExtractor
+from rapidtools import (
+    AerialImageryExtractor,
+    GeminiAssetAnalyzer,
+    PhysicalAssetCollection,
+    Pipeline,
+    download_dataset,
+)
+
+# Download all required example datasets from the registry in a single call.
+# Because each requested dataset contains exactly one file, we can unpack 
+# the returned list directly into our variables:
+raster_path, footprint_path, prompt_path = download_dataset([
+    'eaton_patch2',
+    'altadena_sample_buildings',
+    'aerial_chs_prompts'
+])
+
+# Define where the cropped images will be saved:
+image_save_dir = Path('eaton_fire_aerial_feb25/overlaid_imagery')
+
+# LLM inference credentials (this must be provided locally by the user):
+api_key_path = Path('api_key.txt')
 
 
-def main():
+# Load building footprint data:
+building_data = PhysicalAssetCollection.from_geojson(footprint_path)
 
-    # Raster and vector spatial inputs:
-    raster_path = Path('Eaton_Trinity38_RGBortho_20250214.tiff')
-    footprint_path = Path('altadena_sample_buildings.geojson')
-    image_save_dir = Path('eaton_fire_aerial_feb25/overlaid_imagery')
+# Initialize computational pipeline:
+pipeline = Pipeline()
 
-    # LLM inference credentials and instructions:
-    api_key_path = Path('api_key.txt')
-    prompt_path = Path('aerial_CHS_prompts.txt')
+# Imagery Extractor
+# Crops the orthomosaic around each asset, draws a reference outline, 
+# and handles overlapping raster files by keeping multiple copies safely:
+extractor = AerialImageryExtractor(
+    dataset=raster_path,
+    save_directory=image_save_dir,
+    overlay_asset_outline=True,
+    image_prefix='eaton_trinity_25',
+    keep_multiple_copies=True,
+)
 
-    # Load building footprint data:
-    building_data = PhysicalAssetCollection.from_geojson(footprint_path)
+# Ingests the newly cropped images and applies the configured prompt 
+# to evaluate and attach CHS categories to the asset's attributes:
+analyzer = GeminiAssetAnalyzer(
+    api_key=api_key_path,
+    prompt=prompt_path,
+)
 
-    # Initialize computational pipeline
-    pipeline = Pipeline()
+# Register the configured instances to the pipeline:
+pipeline.add_step(extractor)
+pipeline.add_step(analyzer)
 
-    # Imagery Extractor
-    # Crops the orthomosaic around each asset, draws a reference outline, 
-    # and handles overlapping raster files by keeping multiple copies safely.
-    extractor = AerialImageryExtractor(
-        dataset=raster_path,
-        save_directory=image_save_dir,
-        overlay_asset_outline=True,
-        image_prefix='eaton_trinity_25',
-        keep_multiple_copies=True
-    )
+# Process the collection sequentially through the registered components:
+print('Initiating processing pipeline...')
+processed_collection = pipeline.run(building_data)
 
-    # Gemini Analyzer
-    # Ingests the newly cropped images and applies the configured prompt 
-    # to evaluate and attach CHS categories to the asset's attributes.
-    analyzer = GeminiAssetAnalyzer(
-        api_key=api_key_path,
-        prompt=prompt_path 
-    )
+# Clean up any assets that failed to process or had no data:
+final_collection = processed_collection.filter_empty()
+print(f'\nFinal inventory size: {len(final_collection)} assets processed.')
 
-    # Register the configured instances to the pipeline:
-    pipeline.add_step(extractor)
-    pipeline.add_step(analyzer)
-    
-    # Process the collection sequentially through the registered components
-    print('Initiating processing pipeline...')
-    processed_collection = pipeline.run(building_data)
-    final_collection = processed_collection.filter_empty()
-    print(f'\nFinal inventory size: {len(final_collection)} assets processed.')
-    
-    # Serialize the mutated collection, preserving the new AI-generated attributes
-    output_file = Path('eaton_footprints_with_CHS.geojson')
-    final_collection.to_geojson(output_file, ignore_properties=['image_assets'])
-    print(f'Exported enriched inventory to: {output_file}')
-
-
-if __name__ == '__main__':
-    main()
+# Serialize the mutated collection, preserving the new AI-generated attributes:
+output_file = Path('eaton_footprints_with_CHS.geojson')
+final_collection.to_geojson(output_file, ignore_properties=['image_assets'])
+print(f'Exported enriched inventory to: {output_file}')
