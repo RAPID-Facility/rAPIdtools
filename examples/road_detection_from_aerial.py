@@ -37,6 +37,15 @@
 # Last updated:
 # 05-22-2026
 
+"""
+This script provides an example of the rapidtools road detection pipeline by:
+1. Downloading the required example orthomosaic dataset.
+2. Extracting raw road masks from the imagery using the SAM3 vision model.
+3. Exporting the raw road polygon extractions to a GeoJSON file for debugging.
+4. Regularizing the raw polygons to generate clean, connected road centerlines.
+5. Exporting the final road centerlines to a GeoJSON file.
+"""
+
 from rapidtools import download_dataset, SAM3OrthoFeatureExtractor, RoadwayRegularizer
 
 # Download the orthomosaic patch that will be utilized for this example:
