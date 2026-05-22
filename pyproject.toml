@@ -46,6 +46,7 @@ dependencies = [
     "mapbox_vector_tile",
     "matplotlib",
     "networkx",
+    "pandas",
     "pillow",
     "pyshp",
     "rasterio",
