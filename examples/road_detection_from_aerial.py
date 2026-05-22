@@ -35,13 +35,14 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-21-2026
+# 05-22-2026
 
-from rapidtools.processing import SAM3OrthoFeatureExtractor, RoadwayRegularizer
+from rapidtools import download_dataset, SAM3OrthoFeatureExtractor, RoadwayRegularizer
 
-# ------------------------------------------------------------------------------
-# 1. Extract raw road masks from the RAPID ortho image
-# ------------------------------------------------------------------------------
+# Download the orthomosaic patch that will be utilized for this example:
+download_dataset(dataset_name='eaton_patch1')
+
+# Extract raw road masks from the RAPID ortho image:
 extractor = SAM3OrthoFeatureExtractor(
     prompt='paved road, street',  # Text prompt guiding the extraction model
     patch_size=100,               # Size of the geographic tiles to process
@@ -55,20 +56,16 @@ extractor = SAM3OrthoFeatureExtractor(
 raw_road_assets = extractor('eaton_patch_20250214.tiff')
 print(f'Successfully extracted {len(raw_road_assets)} raw polygons.')
 
-# Optional: Save raw extraction for debugging/records
+# Optional: Save raw extraction for debugging/records:
 raw_road_assets.to_geojson('roads_raw.geojson')
 
-# ------------------------------------------------------------------------------
-# 2. Regularize the road polygons
-# ------------------------------------------------------------------------------
+# Regularize the road polygons:
 regularizer = RoadwayRegularizer()
 
 # The regularizer returns a tuple of (centerlines, polygons). 
 # We only need centerlines for this example.
 centerlines, _ = regularizer(raw_road_assets)
 
-# ------------------------------------------------------------------------------
-# 3. Save the regularized centerlines
-# ------------------------------------------------------------------------------
+# Save the regularized centerlines:
 centerlines.to_geojson('roads_centerlines.geojson')
 print('Pipeline execution complete. Centerlines saved.')
