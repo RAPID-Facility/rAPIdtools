@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-22-2026
+# 05-23-2026
 
 """
 This script provides an example of the rapidtools road detection pipeline by:
@@ -49,7 +49,7 @@ This script provides an example of the rapidtools road detection pipeline by:
 from rapidtools import download_dataset, SAM3OrthoFeatureExtractor, RoadwayRegularizer
 
 # Download the orthomosaic patch that will be utilized for this example:
-download_dataset(dataset_name='eaton_patch1')
+[patch_path] = download_dataset('eaton_patch1')
 
 # Extract raw road masks from the RAPID ortho image:
 extractor = SAM3OrthoFeatureExtractor(
@@ -62,7 +62,7 @@ extractor = SAM3OrthoFeatureExtractor(
     mask_threshold=0.25,          # Binarization threshold for generating the final polygon
 )
 
-raw_road_assets = extractor('eaton_patch_20250214.tiff')
+raw_road_assets = extractor(patch_path)
 print(f'Successfully extracted {len(raw_road_assets)} raw polygons.')
 
 # Optional: Save raw extraction for debugging/records:
