@@ -35,13 +35,12 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-22-2026
+# 05-23-2026
 
 import difflib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Union
 
 import requests
 from tqdm import tqdm
@@ -87,7 +86,7 @@ DATASET_REGISTRY: dict[str, list[RemoteFile]] = {
 
 
 def download_dataset(
-    dataset_names: Union[str, list[str]], output_dir: Union[str, Path] = '.'
+    dataset_names: str | list[str], output_dir: str | Path = '.'
 ) -> list[Path]:
     """
     Downloads all files associated with one or more datasets from the registry.
@@ -104,10 +103,12 @@ def download_dataset(
             Defaults to the current working directory ('.').
 
     Returns:
-        list[Path]: A flat list of absolute paths to all successfully downloaded files.
+        list[Path]: 
+            A flat list of absolute paths to all successfully downloaded files.
         
     Raises:
-        ValueError: If any of the requested dataset names do not exist in the registry.
+        ValueError: 
+            If any of the requested dataset names do not exist in the registry.
     """
     # Normalize input into a list so we can process it uniformly
     if isinstance(dataset_names, str):
