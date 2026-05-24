@@ -35,13 +35,16 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-04-2026
+# 05-23-2026
 
 from __future__ import annotations
 
 import logging
 import math
+from pathlib import Path
 
+import rasterio
+from rasterio.warp import transform_bounds
 from shapely.geometry import box as shapely_box
 from shapely.geometry.base import BaseGeometry
 
@@ -173,6 +176,61 @@ class BoundingBox(Region):
         """
         minx, miny, maxx, maxy = geometry.bounds
         return cls(minx, miny, maxx, maxy)
+    
+    @classmethod
+    def from_raster(cls, filepath: str | Path) -> 'BoundingBox':
+        """
+        Create a BoundingBox representing the spatial extent of a raster file.
+        
+        Automatically reprojects the bounds to standard WGS84 (EPSG:4326) 
+        if the source raster is in a different coordinate reference system 
+        (e.g., a localized UTM zone).
+ 
+        Args:
+            filepath (str | Path): Path to the georeferenced raster file.
+ 
+        Returns:
+            BoundingBox: A WGS84 bounding box covering the extent of the raster.
+            
+        Example:
+            >>> from rapidtools.core import BoundingBox
+            >>> from rapidtools import download_dataset
+            >>>
+            >>> # Download a sample drone flight:
+            >>> [raster_path] = download_dataset('eaton_patch1')
+            >>> 
+            >>> # Extract its spatial bounds instantly:
+            >>> bbox = BoundingBox.from_raster(raster_path)
+            >>> print(bbox.bounds)
+            (-118.0934, 34.1842, -118.0911, 34.1858)
+        """        
+        with rasterio.open(filepath) as src:
+            bounds = src.bounds
+            crs = src.crs
+            
+            # Reproject to WGS84 (EPSG:4326) if the raster uses a different CRS
+            if crs and crs.to_string() != 'EPSG:4326':
+                min_x, min_y, max_x, max_y = transform_bounds(
+                    crs, 
+                    'EPSG:4326', 
+                    bounds.left, 
+                    bounds.bottom, 
+                    bounds.right, 
+                    bounds.top
+                )
+            else:
+                # Already in EPSG:4326 (or missing CRS entirely)
+                min_x = bounds.left
+                min_y = bounds.bottom
+                max_x = bounds.right
+                max_y = bounds.top
+            
+            return cls(
+                min_x=min_x,
+                min_y=min_y,
+                max_x=max_x,
+                max_y=max_y
+            )
 
     @classmethod
     def from_union(cls, region1: Region, region2: Region) -> BoundingBox:
