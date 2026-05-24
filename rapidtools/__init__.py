@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-22-2026
+# 05-23-2026
 
 """Initializations and metadata for the rapidtools package."""
 
@@ -60,7 +60,13 @@ logging.basicConfig(
 )
 
 # Import the core domain models:
-from .core import ImageAsset, PhysicalAsset, PhysicalAssetCollection
+from .core import (
+    BoundingBox,
+    ImageAsset,
+    PhysicalAsset,
+    PhysicalAssetCollection,
+    PolygonRegion,
+)
 
 # Import the dataset download utilities:
 from .datasets import download_dataset
@@ -68,6 +74,7 @@ from .datasets import download_dataset
 # Import the pipeline and processing tools:
 from .processing import (
     AerialImageryExtractor,
+    BingOrthomosaicExtractor,
     GeminiAssetAnalyzer,
     Pipeline,
     RoadwayRegularizer,
@@ -77,11 +84,14 @@ from .processing import (
 # Explicitly define the top-level public API:
 __all__ = [
     'AerialImageryExtractor',
+    'BingOrthomosaicExtractor',
+    'BoundingBox',
     'GeminiAssetAnalyzer',
     'ImageAsset',
     'PhysicalAsset',
     'PhysicalAssetCollection',
     'Pipeline',
+    'PolygonRegion',
     'RoadwayRegularizer',
     'SAM3OrthoFeatureExtractor',
     'download_dataset',

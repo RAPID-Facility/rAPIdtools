@@ -35,15 +35,23 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 03-25-2026
+# 05-23-2026
 
+import concurrent.futures
 import logging
+import math
+from io import BytesIO
 from pathlib import Path
 
-from PIL import ImageDraw
+import numpy as np
+import rasterio
+import requests
+from PIL import Image, ImageDraw
+from rasterio.transform import from_bounds
 from tqdm import tqdm
 
-from rapidtools.core import BoundingBox, ImageAsset, PhysicalAssetCollection
+from rapidtools.config import REQUESTS_TIMEOUT_VAL, get_configured_session
+from rapidtools.core import BoundingBox, PolygonRegion, ImageAsset, PhysicalAssetCollection
 from rapidtools.data_sources import OrthomosaicReader
 
 
@@ -331,3 +339,195 @@ class AerialImageryExtractor:
         )
         
         return asset_collection
+    
+class BingOrthomosaicExtractor:
+    """
+    Component that extracts and synthesizes aerial imagery from Bing Maps Tiles.
+    
+    Downloads Bing Maps aerial tiles for a given geographical region and stitches 
+    them into a single, continuous GeoTIFF. The resulting synthetic orthomosaic 
+    retains its coordinate metadata and can be directly fed into region-wide 
+    feature extractors (like SAM3OrthoFeatureExtractor) just like a standard 
+    drone flight or satellite capture.
+
+    Args:
+        zoom_level (int, optional): 
+            The detail level of the Bing Maps tiles to download, typically 
+            ranging from 1 (entire world) to 19 (0.3m/pixel). 
+            Defaults to 19.
+        max_workers (int, optional): 
+            The number of concurrent threads to use for downloading tiles in 
+            parallel. Defaults to 10.
+
+    Example:
+        >>> from rapidtools.core import BoundingBox
+        >>> from rapidtools.processing import BingOrthomosaicExtractor
+        >>>
+        >>> # Define the area of interest:
+        >>> region = BoundingBox(
+        ...     min_x=-118.251, min_y=34.050, max_x=-118.245, max_y=34.055
+        ... )
+        >>> 
+        >>> # Initialize the extractor and stitch the region into a TIFF:
+        >>> extractor = BingOrthomosaicExtractor(zoom_level=19)
+        >>> tiff_path = extractor(region, output_path='downtown_la.tiff')
+    """
+
+    def __init__(self, zoom_level: int = 19, max_workers: int = 10) -> None:
+        """Initialize the extractor configuration."""
+        self.zoom_level = zoom_level
+        self.max_workers = max_workers
+
+    # --- MATH & COORDINATE UTILITIES ---
+    @staticmethod
+    def lat_lon_to_pixel(lat: float, lon: float, zoom: int) -> tuple[int, int]:
+        """Convert latitude and longitude to Bing Maps pixel coordinates."""
+        sin_lat = math.sin(lat * math.pi / 180.0)
+        sin_lat = max(min(sin_lat, 0.9999), -0.9999)
+        map_size = 256 << zoom
+        
+        pixel_x = ((lon + 180) / 360) * map_size
+        pixel_y = (0.5 - math.log((1 + sin_lat) / (1 - sin_lat)) / (4 * math.pi)) * map_size
+        return int(pixel_x), int(pixel_y)
+
+    @staticmethod
+    def tile_to_quadkey(tile_x: int, tile_y: int, zoom: int) -> str:
+        """Convert tile XY coordinates into a Bing Maps Quadkey string."""
+        quadkey = ''
+        for i in range(zoom, 0, -1):
+            digit = 0
+            mask = 1 << (i - 1)
+            if (tile_x & mask) != 0:
+                digit += 1
+            if (tile_y & mask) != 0:
+                digit += 2
+            quadkey += str(digit)
+        return quadkey
+
+    def __call__(
+            self, 
+            region: BoundingBox | PolygonRegion,
+            output_path: str | Path
+        ) -> Path:
+        """
+        Execute the tile downloading and stitching process for the given region.
+        
+        Args:
+            region (Region): 
+                The geographic area to extract imagery for. Accepts 
+                ``BoundingBox`` or ``PolygonRegion``.
+            output_path (str | Path): 
+                The file path where the synthesized GeoTIFF should be saved. 
+                Missing parent directories will be created automatically.
+
+        Returns:
+            Path: 
+                The resolved, absolute path to the successfully saved 
+                GeoTIFF file.
+        """
+        output_path = Path(output_path).resolve()
+        
+        # 1. Get geographic bounds (Works for both BoundingBox and PolygonRegion)
+        min_lon, min_lat, max_lon, max_lat = region.bounds
+        
+        # 2. Convert to Bing pixel coordinates to define the exact canvas size
+        px_min_x, px_max_y = self.lat_lon_to_pixel(min_lat, min_lon, self.zoom_level)
+        px_max_x, px_min_y = self.lat_lon_to_pixel(max_lat, max_lon, self.zoom_level)
+        
+        canvas_width = px_max_x - px_min_x
+        canvas_height = px_max_y - px_min_y
+        
+        logging.info(
+            f'Stitching {canvas_width}x{canvas_height} px synthetic orthomosaic '
+            f'at zoom {self.zoom_level}...'
+        )
+        
+        # Initialize an empty canvas for pasting
+        canvas = Image.new('RGB', (canvas_width, canvas_height))
+        
+        # 3. Determine which tiles intersect our bounding box
+        tile_min_x = px_min_x // 256
+        tile_max_x = px_max_x // 256
+        tile_min_y = px_min_y // 256
+        tile_max_y = px_max_y // 256
+        
+        tiles_to_download = []
+        for tx in range(tile_min_x, tile_max_x + 1):
+            for ty in range(tile_min_y, tile_max_y + 1):
+                quadkey = self.tile_to_quadkey(tx, ty, self.zoom_level)
+                tiles_to_download.append((tx, ty, quadkey))
+                
+        # 4. Download and paste tiles in parallel
+        # Use the standardized session with built-in retries and exponential backoff
+        with get_configured_session() as session:
+            # Safely scale the connection pools for high-concurrency threading
+            for prefix in ('http://', 'https://'):
+                adapter = session.adapters[prefix]
+                adapter.pool_connections = self.max_workers
+                adapter.pool_maxsize = self.max_workers * 2
+            
+            def fetch_tile(tile_info: tuple[int, int, str]) -> tuple[int, int, Image.Image | None]:
+                tx, ty, qk = tile_info
+                url = f'http://ecn.t3.tiles.virtualearth.net/tiles/a{qk}.jpeg?g=1'
+                
+                try:
+                    # Use the standardized timeout from config.py
+                    resp = session.get(url, timeout=REQUESTS_TIMEOUT_VAL)
+                    
+                    # raise_for_status ensures we don't try to open a 404/Error page as an image
+                    resp.raise_for_status() 
+                    
+                    return tx, ty, Image.open(BytesIO(resp.content))
+                    
+                except requests.RequestException as req_err:
+                    logging.warning(
+                        f'Network error fetching tile {qk} after retries: {req_err}'
+                    )
+                except Exception as parse_err:
+                    logging.warning(
+                        f'Failed to parse image data for tile {qk}: {parse_err}'
+                    )
+                    
+                # Return None only if all retries failed or image is corrupted
+                return tx, ty, None
+
+            # Execute threaded downloads
+            with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                # ... (rest of the threaded execution loop remains the same)
+                futures = [executor.submit(fetch_tile, t) for t in tiles_to_download]
+                for future in concurrent.futures.as_completed(futures):
+                    tx, ty, img = future.result()
+                    if img:
+                        # Calculate exact pixel offset. This perfectly crops 
+                        # any extra tile overlap hanging outside the bounding box!
+                        paste_x = (tx * 256) - px_min_x
+                        paste_y = (ty * 256) - px_min_y
+                        canvas.paste(img, (paste_x, paste_y))
+
+        # 5. Save as a georeferenced GeoTIFF
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        if output_path.suffix.lower() not in ['.tif', '.tiff']:
+            output_path = output_path.with_suffix('.tiff')
+
+        # Convert PIL image to numpy array formatted for rasterio (bands, height, width)
+        img_data = np.array(canvas)
+        img_data = np.moveaxis(img_data, 2, 0)
+        
+        # Calculate geospatial transform mapping pixels to WGS84
+        transform = from_bounds(min_lon, min_lat, max_lon, max_lat, canvas_width, canvas_height)
+
+        logging.info(f'Saving GeoTIFF to: {output_path}')
+        with rasterio.open(
+            output_path,
+            'w',
+            driver='GTiff',
+            height=canvas_height,
+            width=canvas_width,
+            count=3,
+            dtype=img_data.dtype,
+            crs='EPSG:4326',
+            transform=transform
+        ) as dst:
+            dst.write(img_data)
+
+        return output_path
