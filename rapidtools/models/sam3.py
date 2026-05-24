@@ -67,6 +67,12 @@ class SAM3Inference(BaseLocalInferenceModel):
             temperature=temperature, 
             max_tokens=max_tokens
         )
+        
+        # Silence noisy loggers:
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("urllib3").setLevel(logging.WARNING)
+        logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
+        
         self.model_id = model_id
 
         logging.info(f'Loading processor and weights for {self.model_id} (this may take a minute)...')
