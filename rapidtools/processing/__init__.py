@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-25-2026
+# 05-23-2026
 
 """
 This module orchestrates the analysis of regional infrastructure assets. 
@@ -49,14 +49,23 @@ and run AI workflows.
 from .pipeline import Pipeline
 
 # Import the image extractors:
-from .image_extractors import AerialImageryExtractor
+from .image_extractors import AerialImageryExtractor, BingOrthomosaicExtractor
 
 # Import the image analyzers:
 from .image_analyzers import GeminiAssetAnalyzer
 
+# Import feature extractors:
+from .feature_extractors import SAM3OrthoFeatureExtractor
+
+# Import postprocessing tools:
+from .postprocessing.roads import RoadwayRegularizer
+
 # Explicitly define what is available when a user types: 
-__all__ =[
-    'Pipeline',
+__all__ = [
     'AerialImageryExtractor',
-    'GeminiAssetAnalyzer'
+    'BingOrthomosaicExtractor',
+    'GeminiAssetAnalyzer',
+    'Pipeline',
+    'RoadwayRegularizer',
+    'SAM3OrthoFeatureExtractor',
 ]
