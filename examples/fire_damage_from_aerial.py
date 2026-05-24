@@ -45,7 +45,7 @@ This script provides an example of the rapidtools data processing pipeline by:
 4. Using the Gemini API to analyze the imagery and assign CHS categories.
 5. Exporting the enriched dataset to a new GeoJSON file.
 """
-
+import sys
 from pathlib import Path
 
 from rapidtools import (
@@ -55,6 +55,19 @@ from rapidtools import (
     Pipeline,
     download_dataset,
 )
+
+# Please provide a Gemini API key in a file named api_key.txt in the current 
+# directory to run this example:
+api_key_path = Path('api_key.txt')
+
+if not api_key_path.exists():
+    print(
+        f"ERROR: Missing API key file at '{api_key_path.resolve()}'.\n"
+        f"Please create this file and paste your Gemini API key inside it "
+        f"before running this example."
+    )
+    sys.exit(1)
+
 
 # Download all required example datasets from the registry in a single call.
 # Because each requested dataset contains exactly one file, we can unpack 
@@ -67,10 +80,6 @@ raster_path, footprint_path, prompt_path = download_dataset([
 
 # Define where the cropped images will be saved:
 image_save_dir = Path('eaton_fire_aerial_feb25/overlaid_imagery')
-
-# LLM inference credentials (this must be provided locally by the user):
-api_key_path = Path('api_key.txt')
-
 
 # Load building footprint data:
 building_data = PhysicalAssetCollection.from_geojson(footprint_path)
