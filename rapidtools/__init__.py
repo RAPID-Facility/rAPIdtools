@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-23-2026
+# 05-24-2026
 
 """Initializations and metadata for the rapidtools package."""
 
@@ -75,6 +75,7 @@ from .datasets import download_dataset
 from .processing import (
     AerialImageryExtractor,
     BingOrthomosaicExtractor,
+    BuildingRegularizer,
     GeminiAssetAnalyzer,
     Pipeline,
     RoadwayRegularizer,
@@ -86,6 +87,7 @@ __all__ = [
     'AerialImageryExtractor',
     'BingOrthomosaicExtractor',
     'BoundingBox',
+    'BuildingRegularizer',
     'GeminiAssetAnalyzer',
     'ImageAsset',
     'PhysicalAsset',
