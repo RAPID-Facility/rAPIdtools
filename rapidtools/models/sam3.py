@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 03-05-2026
+# 05-24-2026
 
 import logging
 from pathlib import Path
@@ -195,12 +195,6 @@ class SAM3Inference(BaseLocalInferenceModel):
                     extracted_boxes.append(res['boxes'].cpu().numpy().tolist())
                 if 'scores' in res:
                     extracted_scores.append(res['scores'].cpu().numpy().tolist())
-
-            # If only a single image was given, unwrap the outer list for a cleaner return format
-            if len(loaded_images) == 1:
-                extracted_masks = extracted_masks[0]
-                extracted_boxes = extracted_boxes[0] if extracted_boxes else None
-                extracted_scores = extracted_scores[0] if extracted_scores else None
 
             # 5. Return the Unified Data Structure
             return ModelOutput(
