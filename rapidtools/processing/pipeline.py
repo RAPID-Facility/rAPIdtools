@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-25-2026
+# 05-25-2026
 
 import logging
 from typing import Callable, List, Optional
@@ -136,5 +136,5 @@ class Pipeline:
             # Pass the collection through the current step
             asset_collection = step(asset_collection)
 
-        logging.info('Pipeline execution successfully completed .')
+        logging.info('Pipeline execution successfully completed.')
         return asset_collection
