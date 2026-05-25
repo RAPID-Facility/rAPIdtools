@@ -41,21 +41,20 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from tqdm import tqdm
 import torch
 
 from rapidtools.models import GeminiInference, Gemma4Inference
-
-if TYPE_CHECKING:
-    from rapidtools.core import ImageAsset, PhysicalAsset, PhysicalAssetCollection
+from rapidtools.core import ImageAsset, PhysicalAsset, PhysicalAssetCollection
 
 
 class GeminiAssetAnalyzer:
@@ -278,21 +277,6 @@ class GeminiAssetAnalyzer:
             logging.info('Gemini API: All assets processed successfully.')
 
         return asset_collection
-
-import json
-import logging
-import math
-import re
-from collections.abc import Callable
-from pathlib import Path
-from typing import Any
-
-import torch
-from tqdm import tqdm
-
-from rapidtools.core import ImageAsset, PhysicalAsset, PhysicalAssetCollection
-from rapidtools.models.gemma4 import Gemma4Inference
-
 
 class Gemma4AssetAnalyzer:
     """
