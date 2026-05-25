@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-24-2026
+# 05-25-2026
 
 """Initializations and metadata for the rapidtools package."""
 
@@ -77,6 +77,7 @@ from .processing import (
     BingOrthomosaicExtractor,
     BuildingRegularizer,
     GeminiAssetAnalyzer,
+    Gemma4AssetAnalyzer,
     Pipeline,
     RoadwayRegularizer,
     SAM3OrthoFeatureExtractor,
@@ -89,6 +90,7 @@ __all__ = [
     'BoundingBox',
     'BuildingRegularizer',
     'GeminiAssetAnalyzer',
+    'Gemma4AssetAnalyzer',
     'ImageAsset',
     'PhysicalAsset',
     'PhysicalAssetCollection',

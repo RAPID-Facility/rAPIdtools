@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 2-22-2026
+# 05-25-2026
 
 # Export the Universal Types (for type hinting in workflows):
 from .base import BaseInferenceModel, ModelOutput
@@ -43,6 +43,7 @@ from .base import BaseInferenceModel, ModelOutput
 # Export the Concrete Implementations:
 from .claude import ClaudeInference
 from .gemini import GeminiInference
+from .gemma4 import Gemma4Inference
 from .llama import LlamaVisionInference
 from .openai import OpenAIInference
 from .sam3 import SAM3Inference
@@ -53,6 +54,7 @@ __all__ = [
     'ClaudeInference',
     'OpenAIInference',
     'GeminiInference',
+    'Gemma4Inference',
     'LlamaVisionInference',
     'SAM3Inference',
 ]
