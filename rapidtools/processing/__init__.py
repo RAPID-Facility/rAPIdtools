@@ -52,7 +52,7 @@ from .pipeline import Pipeline
 from .image_extractors import AerialImageryExtractor, BingOrthomosaicExtractor
 
 # Import the image analyzers:
-from .image_analyzers import GeminiAssetAnalyzer
+from .image_analyzers import GeminiAssetAnalyzer, Gemma4AssetAnalyzer
 
 # Import feature extractors:
 from .feature_extractors import SAM3OrthoFeatureExtractor
@@ -67,6 +67,7 @@ __all__ = [
     'BingOrthomosaicExtractor',
     'BuildingRegularizer',
     'GeminiAssetAnalyzer',
+    'Gemma4AssetAnalyzer',
     'Pipeline',
     'RoadwayRegularizer',
     'SAM3OrthoFeatureExtractor',
