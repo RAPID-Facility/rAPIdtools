@@ -35,43 +35,45 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-22-2026
+# 05-25-2026
+
+# Copyright (c) 2025 The University of Washington
+#
+# This file is part of rapidtools.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# ... [Standard BSD License] ...
+#
+# Contributors:
+# Barbaros Cetiner
+#
+# Last updated:
+# 05-25-2026
 
 """
 This script provides an example of the rapidtools data processing pipeline by:
 1. Downloading the required example datasets.
 2. Loading a spatial inventory of building footprints.
 3. Extracting localized high-resolution aerial imagery for each asset.
-4. Using the Gemini API to analyze the imagery and assign CHS categories.
+4. Using a local Gemma-4 vision-language model to analyze the imagery and assign
+   CHS categories.
 5. Exporting the enriched dataset to a new GeoJSON file.
 """
-import sys
+
 from pathlib import Path
 
 from rapidtools import (
     AerialImageryExtractor,
-    GeminiAssetAnalyzer,
+    Gemma4AssetAnalyzer,
     PhysicalAssetCollection,
     Pipeline,
     download_dataset,
 )
 
-# Please provide a Gemini API key in a file named api_key.txt in the current 
-# directory to run this example:
-api_key_path = Path('api_key.txt')
-
-if not api_key_path.exists():
-    print(
-        f"ERROR: Missing API key file at '{api_key_path.resolve()}'.\n"
-        f"Please create this file and paste your Gemini API key inside it "
-        f"before running this example."
-    )
-    sys.exit(1)
-
-
 # Download all required example datasets from the registry in a single call.
 # Because each requested dataset contains exactly one file, we can unpack 
-# the returned list directly into our variables:
+# the returned list directly into individual variables:
 raster_path, footprint_path, prompt_path = download_dataset([
     'eaton_patch2',
     'altadena_sample_buildings',
@@ -87,9 +89,9 @@ building_data = PhysicalAssetCollection.from_geojson(footprint_path)
 # Initialize computational pipeline:
 pipeline = Pipeline()
 
-# Imagery Extractor
-# Crops the orthomosaic around each asset, draws a reference outline, 
-# and handles overlapping raster files by keeping multiple copies safely:
+# Specify the imagery extractor. This crops the orthomosaic around each asset,
+# draws a reference outline, and handles overlapping raster files by keeping
+# multiple copies safely:
 extractor = AerialImageryExtractor(
     dataset=raster_path,
     save_directory=image_save_dir,
@@ -98,11 +100,14 @@ extractor = AerialImageryExtractor(
     keep_multiple_copies=True,
 )
 
-# Ingests the newly cropped images and applies the configured prompt 
-# to evaluate and attach CHS categories to the asset's attributes:
-analyzer = GeminiAssetAnalyzer(
-    api_key=api_key_path,
+# Ingests the newly cropped images and apply the configured prompt 
+# to evaluate and attach CHS categories to the asset's attributes locally.
+# This defaults to the 2B-parameter 'google/gemma-4-E2B-it' model to work
+# comfortably with an 8GB VRAM GPU:
+analyzer = Gemma4AssetAnalyzer(
+    model_id='google/gemma-4-E2B-it',
     prompt=prompt_path,
+    batch_size=8
 )
 
 # Register the configured instances to the pipeline:
@@ -118,6 +123,7 @@ final_collection = processed_collection.filter_empty()
 print(f'\nFinal inventory size: {len(final_collection)} assets processed.')
 
 # Serialize the mutated collection, preserving the new AI-generated attributes:
-output_file = Path('eaton_footprints_with_CHS.geojson')
-final_collection.to_geojson(output_file, ignore_properties=['image_assets'])
-print(f'Exported enriched inventory to: {output_file}')
+final_collection.to_geojson(
+    'eaton_footprints_CHS_with_gemma4.geojson', 
+    ignore_properties=['image_assets']
+)
