@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 03-23-2026
+# 05-25-2026
 
 from __future__ import annotations
 
@@ -198,6 +198,39 @@ class PhysicalAsset:
 
         # If the loop finishes without finding any of the keys, return None:
         return None
+
+    
+    @asset_type.setter
+    def asset_type(self, value: str) -> None:
+        """
+        Sets the asset type using the primary standard key ('asset_type').
+        
+        This allows you to assign the type directly (e.g., asset.asset_type = 
+        'building'), which automatically updates the underlying attributes
+        dictionary.
+        
+        Example:
+            Create a basic asset with no attributes:
+        
+            >>> from shapely.geometry import Point
+            >>> from rapidtools.core import PhysicalAsset
+            >>> asset = PhysicalAsset(id='bldg_02', geometry=Point(0, 0))
+            
+            Set the asset type directly using the property:
+        
+            >>> asset.asset_type = 'building'
+            >>> print(asset.asset_type)
+            building
+            
+            Verify that it automatically updated the underlying dictionary
+            using the primary key:
+        
+            >>> print(asset.attributes['asset_type'])
+            building
+        """
+        # Always use the first key in the class list for asset type:
+        primary_key = self._ASSET_TYPE_KEYS[0]
+        self.attributes[primary_key] = value    
 
     def add_attributes(
         self, new_attributes: dict[str, Any], overwrite: bool = False
@@ -1305,7 +1338,10 @@ class PhysicalAssetCollection:
 
     @classmethod
     def from_geojson(
-        cls, source: str | Path | dict[str, Any]
+        cls, 
+        source: str | Path | dict[str, Any],
+        asset_type: str | None = None,
+        overwrite_asset_type: bool = False
     ) -> PhysicalAssetCollection:
         """
         Creates a new ``PhysicalAssetCollection`` from a GeoJSON source.
@@ -1314,6 +1350,12 @@ class PhysicalAssetCollection:
         pointing to a GeoJSON file, or a dictionary object representing valid
         GeoJSON data. It parses the 'features' list and initializes a new
         collection containing the assets found.
+        
+        Mixed-Type Datasets:
+            This method automatically extracts all properties from the GeoJSON. 
+            If the file contains a mix of asset types under standard keys (like 
+            'asset_type', 'type', or 'category'), they are natively preserved 
+            and instantly accessible via the `asset.asset_type` property.
 
         Args:
             source (str or Path or dict[str, Any]):
@@ -1323,6 +1365,17 @@ class PhysicalAssetCollection:
                     * A `pathlib.Path` object pointing to a file.
                     * A Python dictionary structure representing a GeoJSON
                       FeatureCollection.
+            asset_type (str or None, optional):
+                A default asset type to apply to the imported assets (e.g.,
+                'building'). If the dataset already contains mixed types, leave
+                this as None to preserve them, or use it alongside
+                `overwrite_asset_type=False` to automatically fill in any
+                unlabeled/blank assets. Defaults to None.
+            overwrite_asset_type (bool, optional):
+                If ``True``, overrides any existing type labels in the GeoJSON. If
+                ``False``, only applies the `asset_type` to assets that do not
+                already have one (perfect for data with missing labels). 
+                Defaults to ``False``.
 
         Returns:
             PhysicalAssetCollection:
@@ -1344,10 +1397,10 @@ class PhysicalAssetCollection:
 
             >>> from rapidtools.core import PhysicalAssetCollection
 
-            Loading from a file path:
+            Loading from a file path and assigning a default asset type:
 
             >>> path = 'data/assets.geojson'
-            >>> collection = PhysicalAssetCollection.from_geojson(path)
+            >>> collection = PhysicalAssetCollection.from_geojson(path, asset_type='building')
             >>> print(len(collection))
             5
 
@@ -1363,17 +1416,18 @@ class PhysicalAssetCollection:
             ...         }
             ...     ]
             ... }
-            >>> collection = PhysicalAssetCollection.from_geojson(data)
+            >>> collection = PhysicalAssetCollection.from_geojson(data, asset_type='pump')
             >>> asset = collection.get("A1")
             >>> asset.summary()
             --- PhysicalAsset Summary ---
             ID:          A1
-            Asset Type:  N/A
+            Asset Type:  pump
             Geometry:    POINT (0 0)
-            Attributes (2):
+            Attributes (3):
             {
                 "id": "A1",
-                "name": "Pump"
+                "name": "Pump",
+                "asset_type": "pump"
             }
             Image Assets (0):
               (No image assets)
@@ -1432,8 +1486,7 @@ class PhysicalAssetCollection:
             else:
                 assigned_id = str(existing_id)
 
-            # Check if ID exists in the NEW collection being built. Skip if it
-            # does:
+            # Check if ID exists in the NEW collection being built.
             if assigned_id in new_collection._data:
                 logging.warning(
                     f"Skipping duplicate asset with ID '{assigned_id}' found "
@@ -1456,11 +1509,20 @@ class PhysicalAssetCollection:
                 logging.error(f"Failed to create asset for ID '{assigned_id}': {e}")
                 continue
 
+        # Apply the default asset type if requested:
+        if asset_type is not None:
+            new_collection.set_asset_type(asset_type, overwrite=overwrite_asset_type)
+
         logging.info(f'Loaded {len(new_collection._data)} assets from GeoJSON.')
         return new_collection
 
     @classmethod
-    def from_shapefile(cls, file: str | Path) -> PhysicalAssetCollection:
+    def from_shapefile(
+        cls, 
+        file: str | Path,
+        asset_type: str | None = None,
+        overwrite_asset_type: bool = False
+    ) -> PhysicalAssetCollection:
         """
         Creates a new ``PhysicalAssetCollection`` from an ESRI Shapefile.
 
@@ -1468,6 +1530,12 @@ class PhysicalAssetCollection:
         attribute tables, and populates a new collection. It attempts to
         reconstruct the original `id` if it was saved in the shapefile's
         attribute table.
+        
+        Mixed-Type Datasets:
+            This method automatically maps the Shapefile's DBF attribute table 
+            to the asset properties. If the Shapefile contains mixed asset types 
+            under standard columns (like 'asset_type', 'type', or 'category'), 
+            they are natively preserved.
 
         Args:
             file (str or Path):
@@ -1477,6 +1545,16 @@ class PhysicalAssetCollection:
                 file (``.prj``) and character encoding file (``.cpg``) are
                 present to ensure spatial and text data are interpreted
                 correctly.
+            asset_type (str or None, optional):
+                A default asset type to apply to the imported assets
+                (e.g., 'road'). If the shapefile already contains mixed types,
+                leave this as None to preserve them, or use it alongside 
+                ``overwrite_asset_type=False`` to automatically fill in any
+                unlabeled/blank rows. Defaults to ``None``.
+            overwrite_asset_type (bool, optional):
+                If ``True``, overrides any existing type labels in the shapefile's 
+                attribute table. If False, only applies the `asset_type` to assets 
+                that don't already have one. Defaults to ``False``.
 
         Returns:
             PhysicalAssetCollection:
@@ -1490,11 +1568,11 @@ class PhysicalAssetCollection:
 
             >>> from rapidtools.core import PhysicalAssetCollection
 
-            Load a shapefile from path (ensure the accompanying .shx and .dbf
-            files are located in the same directory):
+            Load a shapefile from path, safely filling in missing asset types
+            (ensuring accompanying .shx and .dbf files are in the same directory):
 
             >>> path = 'data/assets.shp'
-            >>> collection = PhysicalAssetCollection.from_shapefile(path)
+            >>> collection = PhysicalAssetCollection.from_shapefile(path, asset_type='building')
             INFO: Loaded 5 assets from Shapefile.
             >>> print(len(collection))
             5
@@ -1511,7 +1589,7 @@ class PhysicalAssetCollection:
                                    -118.54799871557931 34.0507...
             Attributes (1):
             {
-                "type": "building"
+                "asset_type": "building"
             }
             Image Assets (0):
               (No image assets)
@@ -1522,14 +1600,9 @@ class PhysicalAssetCollection:
 
         # Open the shapefile reader:
         with shapefile.Reader(file_path) as sf:
-            # sf.fields format: [('DeletionFlag', 'C', 1, 0),
-            # ['id', 'C', 254, 0], ...]
-            # Skip the first element which is always the DeletionFlag:
             field_names = [field[0] for field in sf.fields[1:]]
 
             for shape_rec in sf.shapeRecords():
-                # shapeType 0 is a NULL shape. This needs to be skipped before
-                # calling __geo_interface__ to avoid the GeoJSON_Error:
                 if shape_rec.shape.shapeType == 0:
                     continue
 
@@ -1545,7 +1618,6 @@ class PhysicalAssetCollection:
                         or not shapely_geom.is_valid
                         or any(math.isnan(c) for c in shapely_geom.bounds)
                     ):
-                        # Log a message if you want to see why it was skipped:
                         logging.warning('Skipping asset: Geometry is empty or invalid.')
                         continue
 
@@ -1557,9 +1629,7 @@ class PhysicalAssetCollection:
                 # Reconstruct attributes dictionary:
                 attributes = dict(zip(field_names, shape_rec.record, strict=True))
 
-                # Identify ID (accounting for shapefile 10-char truncation/
-                # capitalization). normalize as pyshp might return string or
-                # bytes:
+                # Identify ID:
                 assigned_id = None
                 for id_key in ['id', 'ID']:
                     if id_key in attributes:
@@ -1580,22 +1650,19 @@ class PhysicalAssetCollection:
                         try:
                             attributes[k] = json.loads(v)
                         except json.JSONDecodeError:
-                            pass  # Leave as standard string if it fails to parse
+                            pass
 
                 new_asset = PhysicalAsset(
                     id=assigned_id, geometry=shapely_geom, attributes=attributes
                 )
 
-                # Rehydrate images if the column existed and had data:
                 if images_str:
                     try:
                         parsed_images = json.loads(images_str)
                         new_asset.attributes['images'] = parsed_images
                     except json.JSONDecodeError:
-                        # Fallback if string was truncated or malformed:
                         new_asset.attributes['images_raw_str'] = images_str
 
-                # Skip duplicates if any:
                 if assigned_id in new_collection._data:
                     logging.warning(
                         f"Skipping duplicate asset with ID '{assigned_id}' "
@@ -1604,6 +1671,10 @@ class PhysicalAssetCollection:
                     continue
 
                 new_collection.add(new_asset)
+
+        # Apply the default asset type if requested:
+        if asset_type is not None:
+            new_collection.set_asset_type(asset_type, overwrite=overwrite_asset_type)
 
         logging.info(f'Loaded {len(new_collection._data)} assets from Shapefile.')
         return new_collection
@@ -2296,6 +2367,47 @@ class PhysicalAssetCollection:
         # Use module-level logger (best practice) instead of root logging
         suffix = 's' if count != 1 else ''
         logging.info(f"Updated attribute '{key}' for {count} asset{suffix}.")
+
+    def set_asset_type(self, asset_type: str, overwrite: bool = True) -> None:
+        """
+        Batch assign a specific asset type to all assets in the collection.
+
+        This is a convenience wrapper around `set_attribute` that ensures the 
+        type is saved using the standardized primary key ('asset_type').
+
+        Args:
+            asset_type (str): 
+                The type label to assign (e.g., 'building', 'utility_pole').
+            overwrite (bool): 
+                If True, overwrites any existing asset types. If False, only 
+                assigns the type to assets that do not currently have one. 
+                Defaults to True.
+
+        Examples:
+            Create a collection of assets:
+
+            >>> from shapely.geometry import Point
+            >>> from rapidtools.core import PhysicalAsset, PhysicalAssetCollection
+            >>>
+            >>> collection = PhysicalAssetCollection([
+            ...     PhysicalAsset(id='1', geometry=Point(0,0)),
+            ...     PhysicalAsset(id='2', geometry=Point(1,1))
+            ... ])
+
+            Assign the 'building' type to all assets in the collection:
+
+            >>> collection.set_asset_type('building')
+            >>> print(collection['1'].asset_type)
+            building
+            >>> print(collection['2'].asset_type)
+            building
+        """
+        # Dynamically grab the "gold standard" key defined in the 
+        # PhysicalAsset class to ensure it always matches the standard schema:
+        primary_key = PhysicalAsset._ASSET_TYPE_KEYS[0]
+        
+        # Use the existing batch-update logic:
+        self.set_attribute(key=primary_key, value=asset_type, overwrite=overwrite)
 
     def summary(self) -> dict[str, Any]:
         """
