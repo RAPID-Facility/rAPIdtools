@@ -397,16 +397,17 @@ class MapillaryImageExtractor:
         start_date: str = '',
         end_date: str = '',
         filter_rapid_only: bool = True,
-        cast_corner_rays: bool = True,
+        cast_corner_rays: bool = False,
         smart_crop: bool = True,
         strict_content_filter: bool = False,
         label_mapper: Any = None,
         asset_type_mapping: dict[str, list[str]] | None = None,
         image_prefix: str = 'street',
+        max_images_per_asset: int = 8,
         max_workers: int = 10,
     ) -> None:
         """
-        Initialize the Mapillary Panorama Extractor.
+        Initialize the Mapillary image extractor.
 
         Args:
             access_token (str): 
@@ -443,6 +444,10 @@ class MapillaryImageExtractor:
                 Defaults to None.
             image_prefix (str, optional): 
                 Prefix applied to the saved image filenames. Defaults to 'street'.
+            max_images_per_asset (int, optional):
+                The maximum number of panorama crops to extract per asset. Panoramas 
+                aligned with the major axes are prioritized over minor axes and corners.
+                Defaults to 8.                
             max_workers (int, optional): 
                 The number of concurrent threads used to download and crop images. 
                 Defaults to 10.
@@ -459,6 +464,7 @@ class MapillaryImageExtractor:
         self.asset_type_mapping = asset_type_mapping or {}
 
         self.image_prefix = image_prefix
+        self.max_images_per_asset = max_images_per_asset
         self.max_workers = max_workers
 
         self.client = MapillaryClient(
@@ -486,13 +492,11 @@ class MapillaryImageExtractor:
 
         # 1. Resolve Target Labels for Strict Content Filtering
         if self.strict_content_filter:
-            # Find all unique asset types in the collection
             unique_types = {a.asset_type for a in asset_collection if a.asset_type}
             unmapped_types = [
                 t for t in unique_types if t not in self.asset_type_mapping
             ]
 
-            # If we have a label mapper (LLM), dynamically map any unknown types
             if unmapped_types and self.label_mapper:
                 logging.info(
                     f'Using LLM to dynamically map asset types: {unmapped_types}'
@@ -525,11 +529,9 @@ class MapillaryImageExtractor:
 
         # Threaded processing function for a single asset
         def process_asset(asset) -> int:
-            """Finds valid panoramas, verifies semantics, downloads, and crops."""
             if not asset.geometry:
                 return 0
 
-            # Determine valid labels for this specific asset
             valid_labels = []
             if self.strict_content_filter and asset.asset_type:
                 valid_labels = self.asset_type_mapping.get(asset.asset_type, [])
@@ -547,9 +549,23 @@ class MapillaryImageExtractor:
                 interval_deg=90.0 if not self.cast_corner_rays else 45.0,
             )
 
-            for axis_name, pano_compact in best_panos_map.items():
-                if pano_compact is None:
-                    continue
+            # Sort valid panoramas to prioritize Major axes > Minor axes > Corners
+            def priority_sort(item):
+                name = item[0]
+                if 'major' in name:
+                    return 0
+                if 'minor' in name:
+                    return 1
+                return 2
+
+            valid_panos = [
+                (k, v) for k, v in best_panos_map.items() if v is not None
+            ]
+            valid_panos.sort(key=priority_sort)
+
+            for axis_name, pano_compact in valid_panos:
+                if extracted_count >= self.max_images_per_asset:
+                    break
 
                 try:
                     needs_semantics = self.smart_crop or self.strict_content_filter
@@ -574,7 +590,6 @@ class MapillaryImageExtractor:
                         if not any(label in present_labels for label in valid_labels):
                             continue
 
-                    # Target asset is confirmed visible, download heavy JPEG
                     pano.load_image_from_url()
 
                     pano.properties['longitude'] = pano_compact.properties.get(
@@ -621,7 +636,6 @@ class MapillaryImageExtractor:
         total_extracted = 0
         logging.info(f'Extracting panos using {self.max_workers} threads...')
 
-        # Scale the connection pool to match the number of workers
         for prefix in ('http://', 'https://'):
             adapter = self.client.session.adapters.get(prefix)
             if adapter:
