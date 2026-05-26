@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-25-2026
+# 05-26-2026
 
 """Initializations and metadata for the rapidtools package."""
 
@@ -77,6 +77,13 @@ from .data_sources import (
     TileUtils,
 )
 
+# Import AI models:
+from .models import (
+    GeminiInference,
+    Gemma4Inference,
+    SAM3Inference
+)
+
 # Import the dataset download utilities:
 from .datasets import download_dataset
 
@@ -103,7 +110,9 @@ __all__ = [
     'BoundingBox',
     'BuildingRegularizer',
     'GeminiAssetAnalyzer',
+    'GeminiInference',
     'Gemma4AssetAnalyzer',
+    'Gemma4Inference',
     'ImageAsset',
     'MapillaryClient',
     'MapillaryLabelMapper',
@@ -116,6 +125,7 @@ __all__ = [
     'PolygonRegion',
     'RoadwayRegularizer',
     'SAM3ImageSegmenter',
+    'SAM3Inference',
     'SAM3OrthoFeatureExtractor',
     'TileUtils',
     'download_dataset',
