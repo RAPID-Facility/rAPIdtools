@@ -35,21 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-25-2026
-
-# Copyright (c) 2025 The University of Washington
-#
-# This file is part of rapidtools.
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-# ... [Standard BSD License] ...
-#
-# Contributors:
-# Barbaros Cetiner
-#
-# Last updated:
-# 05-25-2026
+# 05-26-2026
 
 """
 This script provides an example of the rapidtools data processing pipeline by:
