@@ -35,18 +35,24 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-25-2026
+# 05-25-2026
 
 """
 This module provides clients and readers for fetching raw geospatial data 
 and imagery from various external APIs and local files.
 """
 
+from .bing_aerial_image_extractor import BingAerialImageExtractor
 from .mapillary_client import MapillaryClient
+from .mapillary_labels import MapillaryLabels
 from .orthomosaic_reader import OrthomosaicReader
+from .tile_utils import TileUtils
 
 # Explicitly define the public API of this module.
-__all__ =[
+__all__ = [
+    'BingAerialImageExtractor',
     'MapillaryClient',
+    'MapillaryLabels',
     'OrthomosaicReader',
+    'TileUtils',
 ]

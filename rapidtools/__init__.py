@@ -68,6 +68,15 @@ from .core import (
     PolygonRegion,
 )
 
+# Import the data sources and clients:
+from .data_sources import (
+    BingAerialImageExtractor,
+    MapillaryClient,
+    MapillaryLabels,
+    OrthomosaicReader,
+    TileUtils,
+)
+
 # Import the dataset download utilities:
 from .datasets import download_dataset
 
@@ -78,25 +87,36 @@ from .processing import (
     BuildingRegularizer,
     GeminiAssetAnalyzer,
     Gemma4AssetAnalyzer,
+    MapillaryLabelMapper,
+    MapillaryPanoramaExtractor,
     Pipeline,
     RoadwayRegularizer,
+    SAM3ImageSegmenter,
     SAM3OrthoFeatureExtractor,
 )
 
 # Explicitly define the top-level public API:
 __all__ = [
     'AerialImageryExtractor',
+    'BingAerialImageExtractor',
     'BingOrthomosaicExtractor',
     'BoundingBox',
     'BuildingRegularizer',
     'GeminiAssetAnalyzer',
     'Gemma4AssetAnalyzer',
     'ImageAsset',
+    'MapillaryClient',
+    'MapillaryLabelMapper',
+    'MapillaryLabels',
+    'MapillaryPanoramaExtractor',
+    'OrthomosaicReader',
     'PhysicalAsset',
     'PhysicalAssetCollection',
     'Pipeline',
     'PolygonRegion',
     'RoadwayRegularizer',
+    'SAM3ImageSegmenter',
     'SAM3OrthoFeatureExtractor',
+    'TileUtils',
     'download_dataset',
 ]
