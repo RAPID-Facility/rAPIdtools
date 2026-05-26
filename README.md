@@ -5,60 +5,118 @@
 [![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 <!-- [![Typing](https://img.shields.io/pypi/types/rapidtools)](https://pypi.org/project/rapidtools/) -->
 
-A toolkit for damage detection in regional assets using AI and geospatial data.
+A high-performance toolkit for unleashing mass-scale AI inference and localization on post-disaster geospatial datasets.
 
 ## Overview
 
-`rapidtools` is a Python package designed to streamline the process of analyzing infrastructure assets (such as buildings, bridges, and roads) from various imagery sources. It provides a robust, object-oriented framework for representing geospatial data and leverages powerful AI vision models to perform tasks like damage detection and description.
+The Natural Hazards Reconnaissance Facility (UW RAPID) collects terabytes of highly perishable, hyper-resolution data in the immediate aftermath of earthquakes, hurricanes, and wildfires. Today, the primary bottleneck in forensic engineering is no longer data collection—it is processing. 
 
-The library is built with a clean, decoupled architecture, making it easy to extend with new data sources, AI models, and analysis workflows.
+`rapidtools` is a cutting-edge Python package designed to shatter that bottleneck. It provides a robust, object-oriented framework that bridges the gap between raw spatial data, computer vision, and state-of-the-art Large Vision-Language Models (VLMs). Whether you are analyzing ten damaged homes or a regional dataset of one hundred thousand infrastructure assets, `rapidtools` empowers researchers to automate feature extraction, localize structural damage, and generate engineering-grade insights at an unprecedented scale.
 
-## Key Features
+## High-Level Impact & Key Features
 
-*   **Domain-Driven Design:** A core set of intuitive, type-hinted classes (`InfrastructureAsset`, `ImageAsset`, `Region`, `BoundingBox`) to represent your data in a structured way.
-*   **Geospatial Power:** Built on top of `shapely` for robust geometry handling, including automatic tiling of large bounding boxes for efficient processing.
-*   **Multi-AI Provider Support:** Includes swappable clients for interacting with leading vision models, including:
-    *   OpenAI (GPT-4o, etc.)
-    *   Google (Gemini, Llama on Vertex AI)
-    *   Anthropic (Claude 3.5 Sonnet, etc.)
-    *   And more...
-*   **Concurrent Batch Processing:** High-performance, multi-threaded utilities for processing entire directories of images with progress bars and automatic retries.
-*   **Professional Tooling:** Comes with a complete setup for testing (`pytest`), linting (`ruff`), formatting (`black`), and type-checking (`mypy`).
+**Massive-Scale Geospatial Ingestion**
+Seamlessly fuse massive local orthomosaics, regional shapefiles, and street-view vector tiles. The `PhysicalAssetCollection` engine provides O(1) lookups, Shapely-powered spatial filtering, and native conversions between GeoJSON, ESRI Shapefiles, and Pandas DataFrames.
+
+**Scalable AI Inference (Local & Cloud)**
+Run deployments tailored to your resources. Deploy powerful local vision-language models (like Google's Gemma-4 and Meta's Llama-Vision) directly on consumer hardware using dynamic batching, automated tensor precision scaling, and strict VRAM garbage collection to prevent Out-Of-Memory (OOM) crashes. Alternatively, scale instantly using built-in integrations for enterprise APIs (OpenAI, Google Gemini, Anthropic Claude), which feature thread-safe global cooldowns and exponential backoff to handle rate limits automatically.
+
+**Intelligent Feature Regularization**
+Move beyond raw AI pixel masks. The toolkit includes sophisticated geometric regularizers that instantly translate semantic segmentations into usable, georeferenced polygons. Resolve overlapping duplicates, bridge shadowed fragments, and slice neighboring property intrusions into clean, GIS-ready footprints and centerlines.
+
+**Advanced Line-of-Sight Localization**
+Automate the extraction of the perfect viewing angle. Using KD-Trees, STRtrees, and ray-casting math, `rapidtools` can dynamically calculate building principal axes and cull occluded perspectives (e.g., ignoring images where a target building is blocked by a neighboring structure) to guarantee your AI only analyzes pristine, unobstructed data.
 
 ## Installation
 
-Currently, `rapidtools` is under development. To install it directly from the repository for use in your own projects:
+You can install the latest stable release directly via pip:
 
 ```bash
-pip install git+https://github.com/RAPID-Facility/rAPIdtools
+pip install rapidtools
+```
+
+## Quick Start: Aerial Damage Detection Pipeline
+
+Run state-of-the-art damage assessments completely offline. This example demonstrates how to download rapidtools sample datasets, extract building-specific crops from a local drone orthomosaic, and analyze them using a local Gemma-4 vision model—requiring zero API keys or cloud tokens.
+
+```python
+from pathlib import Path
+from rapidtools import (
+    AerialImageryExtractor,
+    Gemma4AssetAnalyzer,
+    PhysicalAssetCollection,
+    Pipeline,
+    download_dataset,
+)
+
+# 1. Download required example datasets from the rapidtools registry
+raster_path, footprint_path, prompt_path = download_dataset([
+    'eaton_patch2',
+    'altadena_sample_buildings',
+    'aerial_chs_prompts'
+])
+
+image_save_dir = Path('eaton_fire_aerial_feb25/overlaid_imagery')
+
+# 2. Load the regional building footprints
+building_data = PhysicalAssetCollection.from_geojson(footprint_path)
+
+# 3. Configure the Extractor
+# Crops the orthomosaic around each asset and draws a reference outline
+extractor = AerialImageryExtractor(
+    dataset=raster_path,
+    save_directory=image_save_dir,
+    overlay_asset_outline=True,
+    image_prefix='eaton_trinity_25',
+    keep_multiple_copies=True,
+)
+
+# 4. Configure the AI Analyzer
+# Ingests the newly cropped images and applies the configured prompt to evaluate damage
+analyzer = Gemma4AssetAnalyzer(
+    model_id='google/gemma-4-E2B-it',
+    prompt=prompt_path,
+    batch_size=8
+)
+
+# 5. Build and execute the pipeline
+pipeline = Pipeline()
+pipeline.add_step(extractor)
+pipeline.add_step(analyzer)
+
+print('Initiating processing pipeline...')
+processed_collection = pipeline.run(building_data)
+
+# Clean up empty assets and export the AI-enriched dataset for GIS mapping
+final_collection = processed_collection.filter_empty()
+print(f'Final inventory size: {len(final_collection)} assets processed.')
+
+final_collection.to_geojson(
+    'eaton_footprints_CHS_with_gemma4.geojson', 
+    ignore_properties=['image_assets']
+)
 ```
 
 ## Project Structure
 
-The project follows a clean, modern Python architecture to separate concerns:
+The project follows a clean, modern Python architecture to separate concerns and maximize extensibility:
 
-*   `rapidtools/core/`: Contains the **core domain models** (`Region`, `InfrastructureAsset`, `ImageAsset`). These are the **"nouns"** of the application.
-*   `rapidtools/data_sources/`: Contains **clients** for fetching data from external APIs (e.g., `MapillaryClient`).
-*   `rapidtools/inference/`: Contains **wrappers** for running ML models (e.g., `DamagePredictor`).
-*   `rapidtools/workflows/`: Contains the **workflows** that combines all components.
+* `rapidtools.core`: Domain models representing your data (`PhysicalAsset`, `PhysicalAssetCollection`, `ImageAsset`, `BoundingBox`).
+* `rapidtools.data_sources`: Clients for fetching raw data from external APIs and massive local files (e.g., `MapillaryClient`, `OrthomosaicReader`, `BingAerialImageExtractor`).
+* `rapidtools.models`: Base wrappers and handlers for executing ML models natively or via cloud APIs (`Gemma4Inference`, `SAM3Inference`, `GeminiInference`).
+* `rapidtools.processing`: High-level workflow components (Extractors, Segmenters, Analyzers, and Regularizers) designed to snap together effortlessly into the `Pipeline` engine.
 
 ## Documentation
 
-The official documentation is generated using [Sphinx](https://www.sphinx-doc.org/) and can be built locally.
+The official documentation is generated using Sphinx and can be built locally.
 
-1.  **Navigate to the docs directory:**
-    ```bash
-    cd docs
-    ```
-
-2.  **Build the HTML:**
-    ```bash
-    make html
-    ```
-
-3.  **Open the documentation:**
-    Open the file `docs/build/html/index.html` in your web browser to view the site.
+Navigate to the docs directory:
+```bash
+cd docs
+make html
+```
+Open the file `docs/build/html/index.html` in your web browser to view the full API reference and advanced tutorials.
 
 ## License
 
-This project is licensed under the [BSD-3-Clause License](https://opensource.org/licenses/BSD-3-Clause). See the [LICENSE](LICENSE) file for details.
+This project is licensed under the BSD-3-Clause License. See the `LICENSE` file for details.
