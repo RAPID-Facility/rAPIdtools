@@ -812,9 +812,10 @@ def _plot_dynamic_results(
 def crop_panorama_to_asset(
         target_asset, 
         pano_image, 
-        horizontal_padding_deg=5.0, 
+        horizontal_padding_deg=20.0,    
         vertical_padding_percent=1.0, 
-        vertical_crop_mode='full'
+        vertical_crop_mode='smart',
+        base_sky_crop_ratio=0.25        
     ):
     """
     Crop the panorama based on the extent of the asset.
@@ -827,7 +828,9 @@ def crop_panorama_to_asset(
     # Extract the segmentation mask:
     if vertical_crop_mode == 'smart':
         mask_data = pano_image.load_mask('semantic')
-    
+    else:
+        mask_data = None
+        
     if not isinstance(pil_image, Image.Image): 
         raise ImportError('Invalid PIL Image')
 
@@ -878,13 +881,9 @@ def crop_panorama_to_asset(
     else:
         # If the largest gap is somewhere in the middle of the array, this 
         # means the asset CROSSES the seam (the "back" of the image).
-        # In this care all the points, excluding the largest gap, are retained.
+        # In this case all the points, excluding the largest gap, are retained.
         # Logic: Start from the index after the gap, wrap around to the index 
         # before the gap:
-        
-        # Identify the boundary angles roughly
-        # The "left" edge is the value after the gap
-        # The "right" edge is the value before the gap
         min_angle = rel_bearings[start_index] - horizontal_padding_deg
         max_angle = rel_bearings[start_index - 1] + horizontal_padding_deg 
         crosses_seam = True
@@ -897,84 +896,63 @@ def crop_panorama_to_asset(
     # Calculate Crop Coordinates:
     if not crosses_seam:
         # The asset is fully visible within the continuous image frame, i.e.
-        # it does NOT split across the left/right edges (the -180/180 degree
-        # seam):
+        # it does NOT split across the left/right edges (the -180/180 degree seam):
         
         # Convert angles to pixel:
-        start_x = int(center_x + (min_angle * pixels_per_deg))
-        end_x = int(center_x + (max_angle * pixels_per_deg))
-        
-        # In case the cropping area is pushed off-canvas, clamp it to image
-        # bounds:
-        start_x = max(0, start_x)
-        end_x = min(img_w, end_x)
+        start_x = max(0, int(center_x + (min_angle * pixels_per_deg)))
+        end_x = min(img_w, int(center_x + (max_angle * pixels_per_deg)))
         
         # Crop image in horizontal direction:
         image_strip = pil_image.crop((start_x, 0, end_x, img_h))
         
         # Crop segmentation mask in horizontal direction: 
-        if mask_data is not None:
+        if mask_data is not None: 
             mask_strip = mask_data[:, start_x:end_x]
-    
     else:
         # Because the crop area crosses the seam, min_angle is positive 
         # (e.g., 170) and max_angle is negative (e.g., -170) and they need to 
         # be normalized. Here the image is shifted so the seam is in the middle
         # to make cropping easy.
         
-        # Calculate width of the asset Normalize angles to 0-360 for width
-        # calculation:
+        # Calculate width of the asset. Normalize angles to 0-360 for width calculation:
         norm_min = (min_angle + 360) % 360
         norm_max = (max_angle + 360) % 360
         
-        # Calculate width in degrees (handling wrap):
+        # Calculate width in degrees (handling wrap) and pixels:
         width_deg = (norm_max - norm_min + 360) % 360
         width_px = int(width_deg * pixels_per_deg)
-
-        # Calculate where the "left" edge (min_angle) starts in pixel 
-        # coordinates:
-        start_px_rel = int(center_x + (min_angle * pixels_per_deg))
         
-        # If start_px_rel is > img_w, modulo it:
-        start_px_rel = start_px_rel % img_w
-
-        # Offset the image so 'start_px_rel' becomes x=0
-        # If start is at 3000px, we shift by -3000
+        # Calculate where the "left" edge (min_angle) starts in pixel coordinates:
+        start_px_rel = int(center_x + (min_angle * pixels_per_deg)) % img_w
+        
+        # Offset the image so 'start_px_rel' becomes x=0. 
+        # If start is at 3000px, we shift by -3000:
         image_strip = offset(pil_image, -start_px_rel, 0).crop((0, 0, width_px, img_h))
-
-        # Crop segmentation mask in horizontal direction using the same 
-        # approach: 
+        
+        # Crop segmentation mask in horizontal direction using the same approach: 
         if mask_data is not None:
             rolled_mask = np.roll(mask_data, -start_px_rel, axis=1)
             mask_strip = rolled_mask[:, :width_px]
             
-            
-    # Perform a vertical crop:
-    final_top = 0
-    final_bottom = img_h
+    # Apply the base sky crop immediately (cuts off the top 25% zenith sky)
+    final_top, final_bottom = int(img_h * base_sky_crop_ratio), img_h
 
+    # Perform a vertical "smart" crop:
     if vertical_crop_mode == 'smart' and mask_strip is not None:
         try:
             # Resolve semantic IDs:
             sky_id, vehicle_id = None, None
-    
             if pano_image.semantic_map:
-                # Create a lowercase map for case-insensitive lookup:
-                name_to_id = {
-                    k.lower(): v for v, k in pano_image.semantic_map.items()
-                }
+                name_to_id = {k.lower(): v for v, k in pano_image.semantic_map.items()}
                 sky_id = name_to_id.get(SegmentationLabels.SKY)
                 vehicle_id = name_to_id.get(SegmentationLabels.SURVEY_VEHICLE)
                 
             # Save mask IDs to ignore:
             ids_to_ignore = [0]
-            if sky_id is not None:
-                ids_to_ignore.append(sky_id)
-            if vehicle_id is not None:
-                ids_to_ignore.append(vehicle_id)
+            if sky_id is not None: ids_to_ignore.append(sky_id)
+            if vehicle_id is not None: ids_to_ignore.append(vehicle_id)
         
-            # Create the content mask (i.e., everything but the sky and
-            # collection vehicle):
+            # Create the content mask (i.e., everything but the sky and collection vehicle):
             valid_content_mask = ~np.isin(mask_strip, ids_to_ignore)
             
             # Check which rows contain at least one content pixel:
@@ -988,52 +966,28 @@ def crop_panorama_to_asset(
             
             if content_indices.size > 0:
                 # Find the very first row with content below the sky line:
-                min_row = content_indices[0]
+                smart_top = max(0, content_indices[0] - padding_px)
                 
-                # Calculate the top crop:
-                final_top = max(0, min_row - padding_px)
-            
+                # Take whichever cut removes MORE sky (the base crop or the smart crop)
+                final_top = max(final_top, smart_top)
+                
                 if vehicle_id is not None:
                     # Check rows where the vehicle appears:
-                    vehicle_rows = np.any(mask_strip == vehicle_id, axis=1)
-                    vehicle_indices = np.flatnonzero(vehicle_rows)
+                    vehicle_indices = np.flatnonzero(np.any(mask_strip == vehicle_id, axis=1))
                     
                     if vehicle_indices.size > 0:
-                        # The non-padded crop line is the highest point 
-                        # (min row) of the vehicle:
-                        vehicle_top_row = vehicle_indices[0]
-                        
-                        # Calculate the bottom crop:
-                        final_bottom = max(0, vehicle_top_row - padding_px)
-
+                        # The non-padded crop line is the highest point (min row) of the vehicle:
+                        final_bottom = max(0, vehicle_indices[0] - padding_px)
             else:
-                logging.info(
-                    'Smart crop could not be performed: Mask strip '
-                    'contains only background/sky/data collection vehicle.'
-                )
+                logging.info('Smart crop could not be performed: Mask strip contains only background/sky/vehicle.')
                 
         except Exception as e:
-            logging.warning(
-                f'Smart crop failed, returning full height strip: {e}'
-            )
+            logging.warning(f'Smart crop failed: {e}')
 
-    elif vertical_crop_mode == 'full':
-        pass
-
-    else:
-        logging.warning(
-            f"Unsupported vertical crop mode '{vertical_crop_mode}'. "
-            "Returning a full height image."
-        )
-        
     # Safety Check: Make sure the crop is valid (i.e., top is above bottom):
     if final_top >= final_bottom:
-        logging.warning(
-            f'Invalid vertical crop calculated {final_top} to {final_bottom}. ' 
-            'Resetting to full.'
-        )
-        final_top = 0
-        final_bottom = img_h
+        logging.warning(f'Invalid vertical crop calculated {final_top} to {final_bottom}. Resetting.')
+        final_top, final_bottom = int(img_h * base_sky_crop_ratio), img_h
 
     # Final Vertical Crop on the already horizontally-cropped strip
     # Note: strip width is already correct, we just adjust Y:
