@@ -173,7 +173,7 @@ class TileUtils:
             the bounding box fits into a single tile. Returns 14 if no higher
             zoom level satisfies this condition.
         """
-        min_lon, min_lat, max_lon, max_lat = bbox.shapely.bounds
+        min_lon, min_lat, max_lon, max_lat = bbox.bounds
 
         # Iterate from high zoom (22) down to 14 (inclusive)
         for z in range(22, 13, -1):
@@ -201,7 +201,7 @@ class TileUtils:
         Compute XYZ tiles that cover a bounding box.
 
         The bounding box is given in WGS84 coordinates via the
-        ``bbox.shapely.bounds`` attribute. Tiles are computed using the
+        ``bbox.bounds`` attribute. Tiles are computed using the
         standard Web Mercator XYZ scheme.
 
         If ``zoom`` is not provided, the highest zoom at which the entire
@@ -223,7 +223,7 @@ class TileUtils:
         """
         # Extract the WGS84 bounds from the Shapely geometry:
         # min/max longitude (x), min/max latitude (y)
-        min_lon, min_lat, max_lon, max_lat = bbox.shapely.bounds
+        min_lon, min_lat, max_lon, max_lat = bbox.bounds
 
         # If no zoom is provided, pick the highest zoom at which the entire
         # bbox fits into a single tile. This usually yields 1 tile:
