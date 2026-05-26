@@ -64,6 +64,9 @@ from .feature_extractors import SAM3OrthoFeatureExtractor
 # Import segmenters:
 from .image_segmenters import SAM3ImageSegmenter
 
+# Import label mappers:
+from .label_mappers import MapillaryLabelMapper
+
 # Import postprocessing tools:
 from .postprocessing.buildings import BuildingRegularizer
 from .postprocessing.roads import RoadwayRegularizer
