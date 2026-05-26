@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 01-31-2025
+# 05-25-2025
 
 import base64
 import gzip
@@ -392,7 +392,7 @@ class MapillaryClient:
             A new ImageCollection populated with assets from ALL tiles.
         """
         # Get a list of tiles that cover the bounding box area:
-        tiles_list = TileUtils.bbox_to_mapbox_tiles(bbox)
+        tiles_list = TileUtils.bbox_to_mapbox_tiles(bbox, zoom=14)
         
         total_tiles = len(tiles_list)
         if total_tiles == 0:
