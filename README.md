@@ -5,13 +5,13 @@
 [![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 <!-- [![Typing](https://img.shields.io/pypi/types/rapidtools)](https://pypi.org/project/rapidtools/) -->
 
-A high-performance toolkit for unleashing mass-scale AI inference and localization on post-disaster geospatial datasets.
+A high-performance toolkit for performing large-scale AI inference and localization on post-disaster geospatial datasets.
 
 ## Overview
 
-The Natural Hazards Reconnaissance Facility (UW RAPID) collects terabytes of highly perishable, hyper-resolution data in the immediate aftermath of earthquakes, hurricanes, and wildfires. Today, the primary bottleneck in forensic engineering is no longer data collection—it is processing. 
+The UW RAPID Facility collects terabytes of perishable, hyper-resolution data in the aftermath of natural disasters. As remote sensing technology has evolved, the core challenge in natural hazards engineering has shifted: the primary bottleneck is no longer data collection, but turning that raw data into actionable intelligence.
 
-`rapidtools` is a cutting-edge Python package designed to shatter that bottleneck. It provides a robust, object-oriented framework that bridges the gap between raw spatial data, computer vision, and state-of-the-art Large Vision-Language Models (VLMs). Whether you are analyzing ten damaged homes or a regional dataset of one hundred thousand infrastructure assets, `rapidtools` empowers researchers to automate feature extraction, localize structural damage, and generate engineering-grade insights at an unprecedented scale.
+`rapidtools` is a high-performance Python package designed to eliminate this bottleneck. It delivers a seamless, object-oriented pipeline that connects raw spatial datasets with state-of-the-art Large Vision-Language Models (VLMs). Whether analyzing ten damaged homes or one hundred thousand regional assets, `rapidtools` equips researchers with the tools to automate complex feature extraction, pinpoint structural damage, and unlock engineering-grade insights at unprecedented speed.
 
 ## High-Level Impact & Key Features
 
@@ -37,7 +37,7 @@ pip install rapidtools
 
 ## Quick Start: Aerial Damage Detection Pipeline
 
-Run state-of-the-art damage assessments completely offline. This example demonstrates how to download rapidtools sample datasets, extract building-specific crops from a local drone orthomosaic, and analyze them using a local Gemma-4 vision model—requiring zero API keys or cloud tokens.
+Run state-of-the-art damage assessments completely offline. This example demonstrates how to download `rapidtools` sample datasets, extract building-specific image patches from a local drone orthomosaic, and analyze them using a local Gemma-4 vision model that does not require paid API usage or cloud tokens.
 
 ```python
 from pathlib import Path
@@ -99,7 +99,7 @@ final_collection.to_geojson(
 
 ## Project Structure
 
-Designed for flexibility and scale, the project utilizes a cleanly decoupled architecture that makes extending workflows and managing complex data pipelines effortless:
+Designed for flexibility and scale, `rapidtools` utilizes a cleanly decoupled architecture that makes extending workflows and managing complex data pipelines effortless:
 
 * `rapidtools.core`: Domain models representing your data (`PhysicalAsset`, `PhysicalAssetCollection`, `ImageAsset`, `BoundingBox`).
 * `rapidtools.data_sources`: Clients for fetching raw data from external APIs and massive local files (e.g., `MapillaryClient`, `OrthomosaicReader`, `BingAerialImageExtractor`).
