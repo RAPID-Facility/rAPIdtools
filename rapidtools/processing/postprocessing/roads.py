@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-21-2026
+# 05-25-2026
 
 import logging
 import math
@@ -55,10 +55,9 @@ from rapidtools.core import PhysicalAsset, PhysicalAssetCollection
 
 logger = logging.getLogger(__name__)
 
+ASSET_TYPE = 'road'
 
-# ==============================================================================
-# PIPELINE CONFIGURATION CONSTANTS
-# ==============================================================================
+# Pipeline configuration constants:
 # These constants define the heuristic thresholds and multipliers used by the
 # geometry processing algorithms. They can be modified to tune the regularization
 # behavior for different scales of assets (e.g., highways vs. alleyways).
@@ -209,6 +208,10 @@ class RoadwayRegularizer:
         polygons_collection = self._build_polygons_collection(
             analyzed_segments, project_to_wgs84
         )
+        
+        # 9. Default undefined asset types to 'road'
+        centerlines_collection.set_asset_type(ASSET_TYPE, overwrite=False)
+        polygons_collection.set_asset_type(ASSET_TYPE, overwrite=False)
 
         logger.info('Roadway regularization complete.')
         return centerlines_collection, polygons_collection

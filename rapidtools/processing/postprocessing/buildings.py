@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-24-2026
+# 05-25-2026
 
 import math
 from shapely.geometry import LineString
@@ -60,6 +60,7 @@ from rapidtools.processing.image_segmenters import SAM3ImageSegmenter
 logger = logging.getLogger(__name__)
 
 # Pipeline configuration:
+ASSET_TYPE = 'building'
 DEFAULT_PROMPT = 'building'
 DEFAULT_CONFIDENCE_THRESHOLD = 0.5
 DEFAULT_MASK_THRESHOLD = 0.5
@@ -241,10 +242,17 @@ class BuildingRegularizer:
         logger.info('Step 4/4: Dissolving overlapping and adjoining polygons...')
         merged_collection = self._dissolve_overlapping_assets(refined_collection)
         
-        # Clip minor overlaps
+        # Clip minor overlaps:
         logger.info('Step 5: Truncating intrusions between neighboring polygons...')
         final_collection = self._truncate_intrusions(merged_collection)
 
+        # Remove degenerate shapes:
+        logger.info('Step 6: Filtering out degenerate geometries...')
+        final_collection = self._filter_degenerate_assets(final_collection)
+        
+        # Default undefined asset types to 'building':
+        final_collection.set_asset_type(ASSET_TYPE, overwrite=False)
+            
         logger.info('Building regularization complete.')
         return final_collection
 
@@ -626,3 +634,58 @@ class BuildingRegularizer:
                 final_collection.add(new_asset)
 
         return final_collection
+
+    def _filter_degenerate_assets(
+            self, asset_collection: PhysicalAssetCollection
+        ) -> PhysicalAssetCollection:
+            """
+            Final safety pass to remove any geometries that collapsed into 
+            degenerate shapes (lines, points, invalid topology, or zero-area 
+            slivers) during the regularization math.
+            """
+            clean_collection = PhysicalAssetCollection()
+            discard_count = 0
+            
+            for asset in asset_collection:
+                geom = asset.geometry
+                
+                # 1. Missing or Empty
+                if geom is None or geom.is_empty:
+                    discard_count += 1
+                    continue
+                    
+                # 2. Invalid Topology (e.g., self-intersecting "bowties")
+                if not geom.is_valid:
+                    # Try a quick zero-buffer heal
+                    geom = geom.buffer(0)
+                    if not geom.is_valid or geom.is_empty:
+                        discard_count += 1
+                        continue
+                    asset.geometry = geom # Save the healed geometry
+                    
+                # 3. Wrong base type
+                if geom.geom_type not in ['Polygon', 'MultiPolygon']:
+                    discard_count += 1
+                    continue
+                    
+                # 4. Effectively zero area (tiny slivers)
+                if geom.area < 1e-9:
+                    discard_count += 1
+                    continue
+                    
+                # 5. Collapsed Minimum Bounding Rectangle (The LineString bug!)
+                mbr = geom.minimum_rotated_rectangle
+                if mbr.geom_type != 'Polygon':
+                    discard_count += 1
+                    continue
+                    
+                # If it survives all checks, it is a healthy, valid polygon!
+                clean_collection.add(asset)
+                
+            if discard_count > 0:
+                logger.info(
+                    f'Discarded {discard_count} degenerate geometries during '
+                    'final cleanup.'
+                )
+                
+            return clean_collection
