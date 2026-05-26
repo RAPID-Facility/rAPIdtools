@@ -15,17 +15,17 @@ The Natural Hazards Reconnaissance Facility (UW RAPID) collects terabytes of hig
 
 ## High-Level Impact & Key Features
 
-**Massive-Scale Geospatial Ingestion**
-Seamlessly fuse massive local orthomosaics, regional shapefiles, and street-view vector tiles. The `PhysicalAssetCollection` engine provides O(1) lookups, Shapely-powered spatial filtering, and native conversions between GeoJSON, ESRI Shapefiles, and Pandas DataFrames.
+**Large-scale geospatial ingestion**
+Seamlessly fuse massive local orthomosaics, regional shapefiles, and street-view vector tiles. The `PhysicalAssetCollection` engine provides fast lookups, patial filtering, and native conversions between GeoJSON, ESRI Shapefiles, and Pandas DataFrames.
 
 **Scalable AI Inference (Local & Cloud)**
-Run deployments tailored to your resources. Deploy powerful local vision-language models (like Google's Gemma-4 and Meta's Llama-Vision) directly on consumer hardware using dynamic batching, automated tensor precision scaling, and strict VRAM garbage collection to prevent Out-Of-Memory (OOM) crashes. Alternatively, scale instantly using built-in integrations for enterprise APIs (OpenAI, Google Gemini, Anthropic Claude), which feature thread-safe global cooldowns and exponential backoff to handle rate limits automatically.
+Run deployments tailored to your resources. Deploy powerful local vision-language models (such as Google's Gemma-4 and Meta's Llama-Vision) directly on consumer hardware using dynamic batching, automated tensor precision scaling, and strict VRAM garbage collection to prevent Out-Of-Memory (OOM) crashes. Alternatively, scale instantly using built-in integrations for enterprise APIs (OpenAI, Google Gemini, Anthropic Claude), which feature thread-safe global cooldowns and exponential backoff to handle rate limits automatically.
 
 **Intelligent Feature Regularization**
-Move beyond raw AI pixel masks. The toolkit includes sophisticated geometric regularizers that instantly translate semantic segmentations into usable, georeferenced polygons. Resolve overlapping duplicates, bridge shadowed fragments, and slice neighboring property intrusions into clean, GIS-ready footprints and centerlines.
+Move beyond raw AI pixel masks. The toolkit includes sophisticated geometric regularizers that instantly translate semantic segmentations into usable, GIS-ready asset geometries.
 
 **Advanced Line-of-Sight Localization**
-Automate the extraction of the perfect viewing angle. Using KD-Trees, STRtrees, and ray-casting math, `rapidtools` can dynamically calculate building principal axes and cull occluded perspectives (e.g., ignoring images where a target building is blocked by a neighboring structure) to guarantee your AI only analyzes pristine, unobstructed data.
+Automate the extraction of the perfect viewing angle. Using KD-Trees, STRtrees, and ray-casting math, `rapidtools` can dynamically calculate asset principal axes and cull occluded perspectives (e.g., ignoring images where a target building is blocked by a neighboring structure) to guarantee your AI only analyzes the right data.
 
 ## Installation
 
@@ -99,7 +99,7 @@ final_collection.to_geojson(
 
 ## Project Structure
 
-The project follows a clean, modern Python architecture to separate concerns and maximize extensibility:
+Designed for flexibility and scale, the project utilizes a cleanly decoupled architecture that makes extending workflows and managing complex data pipelines effortless:
 
 * `rapidtools.core`: Domain models representing your data (`PhysicalAsset`, `PhysicalAssetCollection`, `ImageAsset`, `BoundingBox`).
 * `rapidtools.data_sources`: Clients for fetching raw data from external APIs and massive local files (e.g., `MapillaryClient`, `OrthomosaicReader`, `BingAerialImageExtractor`).
