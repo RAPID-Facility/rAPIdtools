@@ -374,18 +374,21 @@ class Gemma4AssetAnalyzer:
         """
         results = {}
 
-        # 1. Attempt to parse markdown-formatted JSON blocks
+        # 1. Attempt to parse markdown-formatted JSON blocks:
         json_match = re.search(r'```json\s*(.*?)\s*```', text, re.DOTALL)
         json_text = json_match.group(1) if json_match else text
 
         try:
-            results = json.loads(json_text)
-            if isinstance(results, dict):
-                return results
+            # Use a temp variable 'parsed' so 'results' are not accidentally 
+            # overwritten if the LLM returns a string or list instead of a 
+            # dictionary:
+            parsed = json.loads(json_text)
+            if isinstance(parsed, dict):
+                return parsed
         except json.JSONDecodeError:
             pass # Fall back to regex parsing
 
-        # 2. Fall back to regex parsing for line-based key-value formats
+        # 2. Fall back to regex parsing for line-based key-value formats:
         lines = text.split('\n')
         for line in lines:
             match = re.match(r'^([\w\s]+)[:\-]\s*(.*)$', line.strip())
