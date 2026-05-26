@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-25-2026
+# 05-26-2026
 
 import difflib
 import logging
@@ -64,6 +64,18 @@ DATASET_REGISTRY: dict[str, list[RemoteFile]] = {
             filename='aerial_CHS_prompts.txt',
         )
     ],
+    'street_chs_prompts': [
+        RemoteFile(
+            url='https://www.dropbox.com/scl/fi/7x4gczzxh5xd6932si77e/street_CHS_prompts.txt?rlkey=2n01r9pxarp4wwjls3pbab2kd&st=erleg6ml&dl=0',
+            filename='street_CHS_prompts.txt',
+        )
+    ],
+    'street_recovery_prompts': [
+        RemoteFile(
+            url='https://www.dropbox.com/scl/fi/nest9dvd0hq8erltjwt3m/street_level_recovery_prompts.txt?rlkey=f1umaoyxkj5osmbzf4f3d76dl&st=8qhfk2ke&dl=0',
+            filename='street_level_recovery_prompts.txt',
+        )
+    ],    
     'altadena_sample_buildings': [
         RemoteFile(
             url='https://www.dropbox.com/scl/fi/4mr3r5as4ccebqxuvooaw/altadena_sample_buildings.geojson?rlkey=cpkyamwg7hdos984a552aj8d5&st=7np0z16s&dl=0',
@@ -82,6 +94,12 @@ DATASET_REGISTRY: dict[str, list[RemoteFile]] = {
             filename='Eaton_Trinity38_RGBortho_20250214.tiff',
         )
     ],
+    'eaton_patch1_bing_buildings': [
+        RemoteFile(
+            url='https://www.dropbox.com/scl/fi/71f88zaczho2legblqkt3/eaton_patch1_bing_buildings.geojson?rlkey=qb2c8o695s531en28sdlhesvv&st=9vu74mk4&dl=0',
+            filename='eaton_patch1_bing_buildings.geojson',
+        )
+    ],    
     'mapillary_token': [
         RemoteFile(
             url='https://www.dropbox.com/scl/fi/wkfxeyjv65rlj4zgsawh2/mapillary_token.txt?rlkey=ns1v51demkr8lm3grmonmw9py&st=vzq95fa9&dl=0    ',
