@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-23-2026
+# 05-25-2026
 
 import concurrent.futures
 import logging
@@ -48,12 +48,18 @@ import rasterio
 import requests
 from PIL import Image, ImageDraw
 from rasterio.transform import from_bounds
+from typing import Any
 from tqdm import tqdm
 
 from rapidtools.config import REQUESTS_TIMEOUT_VAL, get_configured_session
 from rapidtools.core import BoundingBox, PolygonRegion, ImageAsset, PhysicalAssetCollection
-from rapidtools.data_sources import OrthomosaicReader
-
+from rapidtools.data_sources import OrthomosaicReader, MapillaryClient
+from .pano_utils import (
+    build_footprint_index,
+    index_panos,
+    find_best_panos,
+    crop_panorama_to_asset
+)
 
 class AerialImageryExtractor:
     """
@@ -338,6 +344,307 @@ class AerialImageryExtractor:
             f'total of {total_extracted_count} assets.'
         )
         
+        return asset_collection
+    
+
+class MapillaryImageExtractor:
+    """
+    Advanced Mapillary street-view extractor that extracts the best unobstructed 
+    panoramas of an asset from multiple viewing angles.
+    
+    This extractor acts as an intelligent pipeline component. Instead of making 
+    thousands of API calls, it fetches regional metadata once, builds spatial 
+    indexes (KDTree and STRtree), and uses ray-casting to simulate lines of sight. 
+    It actively culls occluded views (e.g., if a neighboring building blocks the 
+    camera) and downloads only the valid panoramas.
+    
+    If `strict_content_filter` is enabled, the extractor checks the semantic 
+    contents of the image before downloading the heavy JPEG. If the target asset 
+    type is not actually visible in the image, it skips it to save bandwidth.
+
+    Example:
+        >>> from rapidtools.processing import MapillaryPanoramaExtractor
+        >>>
+        >>> # Option 1: Using manual dictionary mapping
+        >>> extractor = MapillaryPanoramaExtractor(
+        ...     access_token='YOUR_TOKEN',
+        ...     save_directory='output/streetview',
+        ...     strict_content_filter=True,
+        ...     asset_type_mapping={
+        ...         'building': ['construction--structure--building'],
+        ...         'pole': ['object--support--utility-pole']
+        ...     }
+        ... )
+        >>>
+        >>> # Option 2: Using the Gemma LLM Mapper for dynamic mapping
+        >>> from rapidtools.models import Gemma4Inference
+        >>> from rapidtools.processing.label_mappers import MapillaryLabelMapper
+        >>> mapper = MapillaryLabelMapper(Gemma4Inference())
+        >>> extractor_llm = MapillaryPanoramaExtractor(
+        ...     access_token='YOUR_TOKEN',
+        ...     save_directory='output/streetview',
+        ...     strict_content_filter=True,
+        ...     label_mapper=mapper
+        ... )
+        >>> 
+        >>> processed_assets = extractor(my_asset_collection)
+    """
+
+    def __init__(
+        self,
+        access_token: str,
+        save_directory: str | Path,
+        start_date: str = '',
+        end_date: str = '',
+        filter_rapid_only: bool = True,
+        cast_corner_rays: bool = True,
+        smart_crop: bool = True,
+        strict_content_filter: bool = False,
+        label_mapper: Any = None,
+        asset_type_mapping: dict[str, list[str]] | None = None,
+        image_prefix: str = 'street',
+        max_workers: int = 10,
+    ) -> None:
+        """
+        Initialize the Mapillary Panorama Extractor.
+
+        Args:
+            access_token (str): 
+                Mapillary API Access Token.
+            save_directory (str | Path): 
+                The directory where the final cropped JPEG images will be saved.
+            start_date (str, optional): 
+                Inclusive lower bound for the image capture date (YYYY-MM-DD). 
+                Defaults to '' (no lower bound).
+            end_date (str, optional): 
+                Inclusive upper bound for the image capture date (YYYY-MM-DD). 
+                Defaults to '' (no upper bound).
+            filter_rapid_only (bool, optional): 
+                If True, strictly fetches images uploaded by the RAPID organization. 
+                Set to False to search all public street-view images. Defaults to True.
+            cast_corner_rays (bool, optional): 
+                If False, limits extraction to the 4 principal axes (faces) of the 
+                building. If True, also extracts views pointing directly at the 4 
+                corners (up to 8 images). Defaults to False.
+            smart_crop (bool, optional): 
+                If True, downloads the semantic mask for the panorama and intelligently 
+                crops out the sky and the data-collection vehicle. Defaults to True.
+            strict_content_filter (bool, optional):
+                If True, verifies that the target asset type is semantically present in 
+                the image before downloading the high-resolution JPEG. Defaults to False.
+            label_mapper (Any, optional):
+                An instance of `MapillaryLabelMapper` that uses an LLM to dynamically 
+                map asset types to Mapillary labels. Used if `strict_content_filter` 
+                is True.
+            asset_type_mapping (dict[str, list[str]] | None, optional):
+                A manual dictionary mapping your asset types to official Mapillary 
+                labels (e.g., {'building': ['construction--structure--building']}). 
+                Used as a fallback or alternative to the `label_mapper`. 
+                Defaults to None.
+            image_prefix (str, optional): 
+                Prefix applied to the saved image filenames. Defaults to 'street'.
+            max_workers (int, optional): 
+                The number of concurrent threads used to download and crop images. 
+                Defaults to 10.
+        """
+        self.save_directory = Path(save_directory).resolve()
+        self.start_date = start_date
+        self.end_date = end_date
+        self.filter_rapid_only = filter_rapid_only
+        self.cast_corner_rays = cast_corner_rays
+        self.smart_crop = smart_crop
+
+        self.strict_content_filter = strict_content_filter
+        self.label_mapper = label_mapper
+        self.asset_type_mapping = asset_type_mapping or {}
+
+        self.image_prefix = image_prefix
+        self.max_workers = max_workers
+
+        self.client = MapillaryClient(
+            access_token=access_token,
+            save_dir=self.save_directory,
+        )
+
+    def __call__(
+        self, asset_collection: PhysicalAssetCollection
+    ) -> PhysicalAssetCollection:
+        """
+        Execute the extraction process on the provided asset collection.
+
+        Args:
+            asset_collection (PhysicalAssetCollection): 
+                The collection of physical assets to extract street-view imagery for.
+
+        Returns:
+            PhysicalAssetCollection: 
+                The mutated collection, with new `ImageAsset` objects representing the 
+                cropped panoramas attached to their corresponding `PhysicalAsset` 
+                entities.
+        """
+        self.save_directory.mkdir(parents=True, exist_ok=True)
+
+        # 1. Resolve Target Labels for Strict Content Filtering
+        if self.strict_content_filter:
+            # Find all unique asset types in the collection
+            unique_types = {a.asset_type for a in asset_collection if a.asset_type}
+            unmapped_types = [
+                t for t in unique_types if t not in self.asset_type_mapping
+            ]
+
+            # If we have a label mapper (LLM), dynamically map any unknown types
+            if unmapped_types and self.label_mapper:
+                logging.info(
+                    f'Using LLM to dynamically map asset types: {unmapped_types}'
+                )
+                for asset_type in unmapped_types:
+                    mapped_labels = self.label_mapper.map_classes([asset_type])
+                    self.asset_type_mapping[asset_type] = mapped_labels
+
+            logging.info(f'Content filter mapping: {self.asset_type_mapping}')
+
+        # 2. Fetch regional metadata
+        collection_bbox = asset_collection.combined_bounding_box
+        logging.info('Fetching regional Mapillary metadata...')
+
+        regional_images = self.client.fetch_images_in_bbox(
+            bbox=collection_bbox,
+            save_to_disk=False,
+            start_date=self.start_date,
+            end_date=self.end_date,
+            filter_rapid_only=self.filter_rapid_only,
+        )
+
+        if len(regional_images) == 0:
+            logging.warning('No Mapillary images found in the collection region.')
+            return asset_collection
+
+        logging.info('Building KDTree for panos and STRtree for footprints...')
+        tree, coords_deg, headings = index_panos(regional_images)
+        building_tree, building_geoms = build_footprint_index(asset_collection)
+
+        # Threaded processing function for a single asset
+        def process_asset(asset) -> int:
+            """Finds valid panoramas, verifies semantics, downloads, and crops."""
+            if not asset.geometry:
+                return 0
+
+            # Determine valid labels for this specific asset
+            valid_labels = []
+            if self.strict_content_filter and asset.asset_type:
+                valid_labels = self.asset_type_mapping.get(asset.asset_type, [])
+
+            extracted_count = 0
+            best_panos_map = find_best_panos(
+                target_asset_wgs84=asset,
+                pano_collection=regional_images,
+                building_tree=building_tree,
+                building_geoms=building_geoms,
+                tree=tree,
+                coords_deg=coords_deg,
+                print_results=False,
+                cast_corner_rays=self.cast_corner_rays,
+                interval_deg=90.0 if not self.cast_corner_rays else 45.0,
+            )
+
+            for axis_name, pano_compact in best_panos_map.items():
+                if pano_compact is None:
+                    continue
+
+                try:
+                    needs_semantics = self.smart_crop or self.strict_content_filter
+
+                    pano = self.client.fetch_image(
+                        pano_compact.id,
+                        save_to_disk=False,
+                        process_masks=['semantic'] if needs_semantics else None,
+                    )
+
+                    if pano is None:
+                        continue
+
+                    # Strict content filter check
+                    if self.strict_content_filter and valid_labels:
+                        present_labels = (
+                            list(pano.semantic_map.values())
+                            if pano.semantic_map
+                            else []
+                        )
+
+                        if not any(label in present_labels for label in valid_labels):
+                            continue
+
+                    # Target asset is confirmed visible, download heavy JPEG
+                    pano.load_image_from_url()
+
+                    pano.properties['longitude'] = pano_compact.properties.get(
+                        'longitude'
+                    )
+                    pano.properties['latitude'] = pano_compact.properties.get(
+                        'latitude'
+                    )
+                    pano.properties['compass_angle'] = pano_compact.properties.get(
+                        'compass_angle'
+                    )
+
+                    cropped_pil = crop_panorama_to_asset(
+                        target_asset=asset,
+                        pano_image=pano,
+                        vertical_crop_mode='smart' if self.smart_crop else 'full',
+                    )
+
+                    filename = f'{self.image_prefix}_{asset.id}_{axis_name}.jpg'
+                    save_path = self.save_directory / filename
+                    cropped_pil.save(save_path, format='JPEG')
+
+                    new_asset = ImageAsset(
+                        id=f'{asset.id}_{axis_name}',
+                        path=save_path,
+                        allow_missing_file=False,
+                        properties={
+                            'view_angle': axis_name,
+                            'original_pano_id': pano_compact.id,
+                        },
+                    )
+                    asset.add_image_assets(new_asset)
+                    extracted_count += 1
+
+                except Exception as e:
+                    logging.error(
+                        f'Failed to process pano {pano_compact.id} '
+                        f'for asset {asset.id}: {e}'
+                    )
+
+            return extracted_count
+
+        # Execute parallel downloads
+        total_extracted = 0
+        logging.info(f'Extracting panos using {self.max_workers} threads...')
+
+        # Scale the connection pool to match the number of workers
+        for prefix in ('http://', 'https://'):
+            adapter = self.client.session.adapters.get(prefix)
+            if adapter:
+                adapter.pool_connections = self.max_workers
+                adapter.pool_maxsize = self.max_workers * 2
+
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=self.max_workers
+        ) as executor:
+            futures = [
+                executor.submit(process_asset, asset) for asset in asset_collection
+            ]
+            for future in tqdm(
+                concurrent.futures.as_completed(futures),
+                total=len(futures),
+                desc='Extracting Panoramas',
+            ):
+                total_extracted += future.result()
+
+        logging.info(
+            f'Finished! Successfully extracted {total_extracted} multi-angle '
+            'cropped panoramas.'
+        )
         return asset_collection
     
 class BingOrthomosaicExtractor:
