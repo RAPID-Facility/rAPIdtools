@@ -154,22 +154,25 @@ class Gemma4Inference(BaseLocalInferenceModel):
                 A standardized output object containing the generated text and
                 raw response dictionary, or None if inference fails.
         """
-        # Ensure image_inputs is a list so multiple images can be processed:
-        if not isinstance(image_inputs, list):
+        # Handle None or empty inputs gracefully
+        if image_inputs is None:
+            image_inputs = []
+        elif not isinstance(image_inputs, list):
             image_inputs = [image_inputs]
 
         content_list = []
 
-        # Load images:
+        # Load images if any were provided:
         for img_input in image_inputs:
             pil_img = self._load_image_as_pil(img_input)
             if pil_img:
-                # Hugging Face accepts the PIL image object directly in the dict
                 content_list.append({'type': 'image', 'image': pil_img})
             else:
                 logging.warning(f'Skipping failed image: {img_input}')
 
-        if not content_list:
+        # ONLY abort if the user *tried* to pass images but they all failed to load.
+        # If they passed an empty list on purpose (text-only prompt), let it proceed!
+        if len(image_inputs) > 0 and not content_list:
             logging.error('No valid images loaded. Cannot proceed with inference.')
             return None
 
@@ -182,14 +185,14 @@ class Gemma4Inference(BaseLocalInferenceModel):
             inputs = self.processor.apply_chat_template(
                 messages,
                 tokenize=True,
+                add_generation_prompt=True,
                 return_dict=True,
                 return_tensors='pt',
-                add_generation_prompt=True,
             ).to(self.model.device)
 
             input_len = inputs['input_ids'].shape[-1]
 
-            # Prepare generation parameters (overrides default via kwargs):
+            # Prepare generation parameters:
             gen_kwargs = {
                 'max_new_tokens': kwargs.get('max_tokens', self.max_tokens),
                 'temperature': kwargs.get('temperature', self.temperature),
@@ -200,13 +203,12 @@ class Gemma4Inference(BaseLocalInferenceModel):
             with torch.no_grad():
                 outputs = self.model.generate(**inputs, **gen_kwargs)
 
-            # Decode generated tokens (ignoring the input prompt tokens):
+            # Decode generated tokens:
             response_text = self.processor.decode(
-                outputs[0][input_len:], skip_special_tokens=False
+                outputs[0][input_len:], skip_special_tokens=True
             )
 
-            # Note: The Gemma-4 cookbook uses processor.parse_response
-            # We run it here and safely store it inside the raw_response dict:
+            # Safely parse response
             parsed = getattr(self.processor, 'parse_response', lambda x: x)(
                 response_text
             )
