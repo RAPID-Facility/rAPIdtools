@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-23-2026
+# 05-25-2026
 
 import difflib
 import logging
@@ -82,6 +82,12 @@ DATASET_REGISTRY: dict[str, list[RemoteFile]] = {
             filename='Eaton_Trinity38_RGBortho_20250214.tiff',
         )
     ],
+    'mapillary_token': [
+        RemoteFile(
+            url='https://www.dropbox.com/scl/fi/wkfxeyjv65rlj4zgsawh2/mapillary_token.txt?rlkey=ns1v51demkr8lm3grmonmw9py&st=vzq95fa9&dl=0    ',
+            filename='mapillary_token.txt',
+        )
+    ]
 }
 
 
