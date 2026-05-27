@@ -102,8 +102,15 @@ DATASET_REGISTRY: dict[str, list[RemoteFile]] = {
     ],    
     'mapillary_token': [
         RemoteFile(
-            url='https://www.dropbox.com/scl/fi/wkfxeyjv65rlj4zgsawh2/mapillary_token.txt?rlkey=ns1v51demkr8lm3grmonmw9py&st=vzq95fa9&dl=0    ',
+            url='https://www.dropbox.com/scl/fi/wkfxeyjv65rlj4zgsawh2/mapillary_token.txt?rlkey=ns1v51demkr8lm3grmonmw9py&st=vzq95fa9&dl=0',
             filename='mapillary_token.txt',
+        )
+    ]
+    ,    
+    'hf_token': [
+        RemoteFile(
+            url='https://www.dropbox.com/scl/fi/mcguhhyofca9ozefs7xts/hf_token.txt?rlkey=v2lqqzj6ug102oesdnsz8lnbn&st=ydpbswnj&dl=0',
+            filename='hf_token.txt',
         )
     ]
 }

@@ -35,12 +35,14 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-26-2026
+# 05-27-2026
 
 """Initializations and metadata for the rapidtools package."""
 
 import logging
+from pathlib import Path
 import sys
+from huggingface_hub import login, get_token
 
 from .config import DATE_FORMAT, LOG_FORMAT
 
@@ -130,3 +132,32 @@ __all__ = [
     'TileUtils',
     'download_dataset',
 ]
+
+# Trigger auto-authentication silently upon package initialization:
+def _auto_authenticate_huggingface(dataset_id: str = 'hf_token') -> None:
+    """
+    Checks if a Hugging Face token is locally cached. If not, securely downloads 
+    the token from the rapidtools registry, authenticates the session, and 
+    immediately deletes the token file.
+    """
+    # If a token is already cached on this machine, exit instantly:
+    if get_token() is not None:
+        return
+
+    try:
+        # Download and read the token:
+        [token_path] = download_dataset([dataset_id])
+        token_file = Path(token_path)
+        hf_token = token_file.read_text().strip()
+        
+        # Authenticate (this permanently caches the token on the local machine):
+        login(token=hf_token, add_to_git_credential=False)
+        
+        # Securely destroy the downloaded file:
+        token_file.unlink()
+        logging.info('Hugging Face auto-authentication successful.')
+        
+    except Exception as e:
+        logging.error(f'Failed to auto-authenticate with Hugging Face: {e}')
+
+_auto_authenticate_huggingface('hf_token')
