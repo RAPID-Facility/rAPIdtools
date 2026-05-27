@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-26-2026
+# 05-27-2026
 
 import difflib
 import logging
@@ -72,7 +72,7 @@ DATASET_REGISTRY: dict[str, list[RemoteFile]] = {
     ],
     'street_recovery_prompts': [
         RemoteFile(
-            url='https://www.dropbox.com/scl/fi/nest9dvd0hq8erltjwt3m/street_level_recovery_prompts.txt?rlkey=f1umaoyxkj5osmbzf4f3d76dl&st=8qhfk2ke&dl=0',
+            url='https://www.dropbox.com/scl/fi/nest9dvd0hq8erltjwt3m/street_level_recovery_prompts.txt?rlkey=f1umaoyxkj5osmbzf4f3d76dl&st=y4frb6bq&dl=0',
             filename='street_level_recovery_prompts.txt',
         )
     ],    
