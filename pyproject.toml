@@ -43,6 +43,7 @@ keywords = ["gis", "geospatial", "damage detection", "computer vision"]
 dependencies = [
     "accelerate",
     "bitsandbytes",
+    "huggingface-hub",
     "mapbox_vector_tile",
     "matplotlib",
     "networkx",
