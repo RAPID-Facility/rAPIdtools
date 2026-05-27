@@ -3,7 +3,8 @@
 [![Tests](https://github.com/RAPID-Facility/rAPIdtools/actions/workflows/ci.yml/badge.svg?label=Tests)](https://github.com/RAPID-Facility/rAPIdtools/actions/workflows/ci.yml)
 ![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/bacetiner/c890ae687368838a74c5e442b9ff5b94/raw/coverage.json)
 [![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
-<!-- [![Typing](https://img.shields.io/pypi/types/rapidtools)](https://pypi.org/project/rapidtools/) -->
+[![Typing](https://img.shields.io/pypi/types/rapidtools)](https://pypi.org/project/rapidtools/)
+
 
 A high-performance toolkit for performing large-scale AI inference and localization on post-disaster geospatial datasets.
 
