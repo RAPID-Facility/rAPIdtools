@@ -753,7 +753,7 @@ class MapillaryClient:
         self,
         image_id: str,
         fields: list[str],
-        retries: int = 3,
+        retries: int = 5,
         backoff_factor: float = 0.5
     ) -> dict[str, Any] | None:
         """Retrieve metadata for a specific image from the API.
@@ -783,33 +783,47 @@ class MapillaryClient:
     
         for attempt in range(retries):
             try:
-                resp = self.session.get(
+                # Bypass the custom session to avoid hidden headers
+                resp = requests.get(
                     url, 
                     params=params, 
-                    timeout=REQUESTS_TIMEOUT_VAL
+                    timeout=15
                 )
-                resp.raise_for_status()  # Will raise for 4xx/5xx responses
+                
+                # If we get rate-limited (429) or forbidden (403), force a retry
+                if resp.status_code in [429, 403]:
+                    raise requests.exceptions.RequestException(
+                        f"Rate limited or forbidden (HTTP {resp.status_code})"
+                    )
+                    
+                resp.raise_for_status() 
+                
+                # Check to make sure it is actually JSON before decoding
+                if "application/json" not in resp.headers.get("Content-Type", ""):
+                    raise requests.exceptions.RequestException(
+                        "Response is not JSON format. Likely an API error page."
+                    )
+
                 return resp.json()
             
             except requests.exceptions.RequestException as e:
-                # Log the failed attempt:
-                logging.warning(
-                    "Attempt %d/%d failed for image %s: %s",
-                    attempt + 1, retries, image_id, e
+                # Calculate exponential wait time: 1s, 2s, 4s, 8s...
+                wait_time = backoff_factor * (2 ** attempt)
+                logging.debug(
+                    f"API rejected request for {image_id} ({e}). "
+                    f"Retrying in {wait_time}s..."
                 )
                 
-                # If on the last attempt, break out of the loop:
                 if attempt + 1 == retries:
                     break
                 
-                # Calculate wait time and sleep:
-                wait_time = backoff_factor * (2 ** attempt)
                 time.sleep(wait_time)
+            
+            except json.JSONDecodeError:
+                # If the JSON parsing still fails, it's a corrupted response
+                break
     
-        # This part is reached only if all retries fail
-        logging.error(
-            f'All {retries} attempts to fetch metadata for {image_id} failed.'
-            )
+        logging.warning(f'All {retries} attempts to fetch metadata for {image_id} failed.')
         return None
 
     @staticmethod
