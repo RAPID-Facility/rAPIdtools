@@ -44,7 +44,7 @@ dependencies = [
     "accelerate",
     "bitsandbytes",
     "huggingface-hub",
-    "mapbox_vector_tile",
+    "mapbox_vector_tile>=2.2",
     "matplotlib",
     "networkx",
     "pandas",
@@ -58,7 +58,7 @@ dependencies = [
     "torch",
     "torchvision",
     "tqdm",
-    "transformers>=5.5"
+    "transformers>=5.9"
 ]
 
 # --- Optional Dependencies ---
