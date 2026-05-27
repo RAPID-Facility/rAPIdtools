@@ -576,7 +576,7 @@ class MapillaryClient:
     
         try:
             # Download the tile data:
-            response = self.session.get(tile_url, timeout=REQUESTS_TIMEOUT_VAL)
+            response = requests.get(tile_url, timeout=30)
             response.raise_for_status()
             raw_data = response.content
     
