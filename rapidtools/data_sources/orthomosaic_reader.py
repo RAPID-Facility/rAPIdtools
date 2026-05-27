@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 03-25-2026
+# 05-25-2026
 
 import math
 from pathlib import Path
@@ -51,7 +51,7 @@ from rasterio.warp import transform_bounds, transform_geom
 import rasterio.windows
 from rasterio.windows import Window, from_bounds
 from shapely.geometry import shape
-from shapely.geometry.base import BaseGeometry       
+from shapely.geometry.base import BaseGeometry 
 
 from rapidtools.constants import (
     EARTH_RADIUS_KM, 
@@ -293,18 +293,18 @@ class OrthomosaicReader:
          
         # Construct a GeoJSON-like dictionary to transform all at once:
         geo_dict = {'type': geom_type, 'coordinates': coords}    
- 
+         
         # Project geographic coordinates to the raster's native coordinate
         # system:
         projected_geo_dict = transform_geom(
-                    src_crs=CRS.from_epsg(4326), 
-                    dst_crs=self._dataset.crs, 
-                    geom=geo_dict
-                )
+            src_crs=CRS.from_epsg(4326), 
+            dst_crs=self._dataset.crs, 
+            geom=geo_dict
+        )
         
         # Automatically build the Shapely geometry from the projected dict:
         geom = shape(projected_geo_dict)
-          
+        
         # Determine CRS characteristics for accurate real-world buffering:
         crs = self._dataset.crs
         is_geo = crs.is_geographic
@@ -364,7 +364,7 @@ class OrthomosaicReader:
         # _read_image_window does:
         window = from_bounds(*buffered_bounds, transform=self._dataset.transform)
         raster_window = Window(0, 0, self._dataset.width, self._dataset.height)
-        safe_window = window.intersection(raster_window)
+        safe_window = window.intersection(raster_window).round_offsets()
         
         # Calculate bounds of the safe window in native CRS:
         safe_native_bounds = rasterio.windows.bounds(
@@ -763,7 +763,7 @@ class OrthomosaicReader:
         """
         window = from_bounds(*bounds, transform=dataset.transform)
         raster_window = Window(0, 0, dataset.width, dataset.height)
-        safe_window = window.intersection(raster_window)
+        safe_window = window.intersection(raster_window).round_offsets()
         
         return dataset.read(window=safe_window)
 
@@ -875,8 +875,12 @@ class OrthomosaicReader:
         # Calculate offset using the raw un-intersected bounds to keep local 
         # geometry intact:
         window = from_bounds(*buffered_bounds, transform=dataset.transform)
+        raster_window = Window(0, 0, dataset.width, dataset.height)
+
+        # Must round offsets exactly as we did in _read_image_window
+        safe_window = window.intersection(raster_window).round_offsets()
         
-        return[
-            (int(col - window.col_off), int(row - window.row_off)) 
-            for row, col in pixel_coords_global
+        return [
+            (int(col - safe_window.col_off), int(row - safe_window.row_off)) 
+            for row, col in pixel_coords_global 
         ]
