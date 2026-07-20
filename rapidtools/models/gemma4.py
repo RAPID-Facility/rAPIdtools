@@ -209,9 +209,10 @@ class Gemma4Inference(BaseLocalInferenceModel):
             )
 
             # Safely parse response
-            parsed = getattr(self.processor, 'parse_response', lambda x: x)(
-                response_text
-            )
+            if hasattr(self.processor, 'parse_response'):
+                parsed = self.processor.parse_response(response_text, prefix="")
+            else:
+                parsed = response_text
 
             return ModelOutput(
                 text=response_text.strip(),
