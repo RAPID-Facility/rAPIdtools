@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-27-2026
+# 07-20-2026
 
 import difflib
 import logging
@@ -111,6 +111,12 @@ DATASET_REGISTRY: dict[str, list[RemoteFile]] = {
         RemoteFile(
             url='https://www.dropbox.com/scl/fi/mcguhhyofca9ozefs7xts/hf_token.txt?rlkey=v2lqqzj6ug102oesdnsz8lnbn&st=ydpbswnj&dl=0',
             filename='hf_token.txt',
+        )
+    ],    
+    'synthetic_landslide_image': [
+        RemoteFile(
+            url='https://www.dropbox.com/scl/fi/ocrv60lphskqo9uf024nb/HurricaneInducedLandslide.png?rlkey=l2m6el6lfl6s9wc6ombjkhdyy&st=rd8usvyj&dl=0',
+            filename='HurricaneInducedLandslide.png',
         )
     ]
 }
