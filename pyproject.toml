@@ -14,7 +14,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rapidtools"
 version = "0.1.0"
-description = "A toolkit for damage detection in regional assets using AI and geospatial data."
+description = "A high-performance toolkit for performing large-scale AI inference and localization on post-disaster geospatial datasets."
 readme = "README.md"
 authors = [
   { name = "UW RAPID", email = "uwrapid@uwrapid.org" },
@@ -36,7 +36,39 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Image Processing",
     "Typing :: Typed",
 ]
-keywords = ["gis", "geospatial", "damage detection", "computer vision"]
+keywords = [
+    # Engineering & Core Domain
+    "infrastructure reconnaissance",
+    "civil engineering",
+    "structural engineering",
+    "forensic engineering",
+    "spatial analysis",
+    "remote sensing", 
+    "gis",
+    
+    # Use Case / Application
+    "damage assessment", 
+    "post-disaster recovery",
+    "structural inspection",
+    "infrastructure management",
+    "natural hazards", 
+    "longitudinal analysis",
+    
+    # AI & Automated Processing
+    "computer vision", 
+    "vlm", 
+    "large vision models",
+    "feature extraction",
+    "automated inspection",
+    "image inference",
+    "image segmentation", 
+    
+    # Data Types & Assets
+    "orthomosaic",
+    "aerial imagery", 
+    "street-level imagery", 
+    "oblique imagery"
+]
 
 # --- Core Dependencies ---
 # These are the libraries your application ALWAYS needs to run.
@@ -50,7 +82,7 @@ dependencies = [
     "pandas",
     "pillow",
     "pyproj",
-    "pyshp",
+    "pyshp<3.1",
     "rasterio",
     "requests",
     "scikit-image",
