@@ -82,7 +82,7 @@ dependencies = [
     "pandas",
     "pillow",
     "pyproj",
-    "pyshp<3.1",
+    "pyshp<3.0.9",
     "rasterio",
     "requests",
     "scikit-image",
