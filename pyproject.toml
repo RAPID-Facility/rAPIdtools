@@ -13,7 +13,7 @@ build-backend = "setuptools.build_meta"
 # This is the core information about your installable package.
 [project]
 name = "rapidtools"
-version = "0.1.0"
+version = "0.1.1"
 description = "A high-performance toolkit for performing large-scale AI inference and localization on post-disaster geospatial datasets."
 readme = "README.md"
 authors = [
