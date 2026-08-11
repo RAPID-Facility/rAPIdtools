@@ -35,10 +35,11 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-23-2026
+# 08-05-2026
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 from pathlib import Path
@@ -46,7 +47,9 @@ from pathlib import Path
 import rasterio
 from rasterio.warp import transform_bounds
 from shapely.geometry import box as shapely_box
+from shapely.geometry import shape
 from shapely.geometry.base import BaseGeometry
+
 
 from .region import Region
 
@@ -150,6 +153,95 @@ class BoundingBox(Region):
         """
         min_x, min_y, max_x, max_y = self.bounds
         return ((min_x + max_x) / 2, (min_y + max_y) / 2)
+
+    @classmethod
+    def from_geojson(cls, filepath: str | Path) -> BoundingBox:
+        """
+        Create a BoundingBox representing the total spatial extent of a GeoJSON file.
+
+        Uses pre-computed 'bbox' fields when available for max performance, and 
+        streams geometry bounds without building large in-memory lists. Automatically 
+        reprojects to WGS84 (EPSG:4326) if a non-4326 CRS is declared.
+
+        Args:
+            filepath (str | Path): Path to the GeoJSON file.
+
+        Returns:
+            BoundingBox: A box covering the entire extent of the GeoJSON.
+
+        Raises:
+            ValueError: If the GeoJSON contains no valid geometries or is malformed.
+
+        Example:
+            >>> from rapidtools.core import BoundingBox
+            >>>
+            >>> bbox = BoundingBox.from_geojson('data.geojson')
+            >>> print(bbox.bounds)
+            (-118.5, 34.0, -118.0, 34.5)
+        """
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        # 1. Fast path: top-level 'bbox'
+        if "bbox" in data:
+            bbox = data["bbox"]
+            if len(bbox) == 4:
+                return cls(bbox[0], bbox[1], bbox[2], bbox[3])
+            elif len(bbox) == 6:
+                return cls(bbox[0], bbox[1], bbox[3], bbox[4])
+
+        # Extract items streamingly
+        doc_type = data.get("type")
+        if doc_type == "FeatureCollection":
+            items = data.get("features", [])
+        elif doc_type == "Feature":
+            items = [data]
+        elif doc_type in ["Point", "MultiPoint", "LineString", "MultiLineString", 
+                          "Polygon", "MultiPolygon", "GeometryCollection"]:
+            items = [{"geometry": data}]
+        else:
+            raise ValueError(f"Unsupported GeoJSON type: {doc_type}")
+
+        min_x = min_y = float('inf')
+        max_x = max_y = float('-inf')
+        found_valid = False
+
+        # 2. Stream bounds calculation without storing all Shapely objects in memory
+        for item in items:
+            # Check feature-level 'bbox' first
+            if "bbox" in item and len(item["bbox"]) in (4, 6):
+                b = item["bbox"]
+                b_minx, b_miny = b[0], b[1]
+                b_maxx, b_maxy = (b[2], b[3]) if len(b) == 4 else (b[3], b[4])
+                found_valid = True
+            elif item.get("geometry"):
+                geom = shape(item["geometry"])
+                # Ignore empty geometries to prevent NaN bounds corrupting min/max
+                if geom.is_empty:
+                    continue
+                b_minx, b_miny, b_maxx, b_maxy = geom.bounds
+                found_valid = True
+            else:
+                continue
+
+            if b_minx < min_x: min_x = b_minx
+            if b_miny < min_y: min_y = b_miny
+            if b_maxx > max_x: max_x = b_maxx
+            if b_maxy > max_y: max_y = b_maxy
+
+        if not found_valid:
+            raise ValueError("No valid or non-empty geometries found in the GeoJSON to calculate bounds.")
+
+        # 3. Optional: Reproject if legacy GeoJSON CRS is specified and not EPSG:4326
+        crs_info = data.get("crs", {})
+        if crs_info:
+            crs_name = crs_info.get("properties", {}).get("name", "")
+            if crs_name and "4326" not in crs_name:
+                min_x, min_y, max_x, max_y = transform_bounds(
+                    crs_name, 'EPSG:4326', min_x, min_y, max_x, max_y
+                )
+
+        return cls(min_x, min_y, max_x, max_y)
 
     @classmethod
     def from_geometry(cls, geometry: BaseGeometry) -> BoundingBox:

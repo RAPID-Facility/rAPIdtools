@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-27-2026
+# 07-21-2026
 
 """Initializations and metadata for the rapidtools package."""
 
@@ -48,7 +48,7 @@ from .config import DATE_FORMAT, LOG_FORMAT
 
 # Package metadata:
 name = 'rapidtools'
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 __copyright__ = 'Copyright (c) 2025, The University of Washington'
 __license__ = 'BSD 3-Clause License'
 
