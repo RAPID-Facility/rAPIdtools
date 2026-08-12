@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-25-2026
+# 08-12-2026
 
 import logging
 from pathlib import Path
@@ -320,10 +320,23 @@ class Gemma4Inference(BaseLocalInferenceModel):
             # Reconstruct the results list, placing None where assets failed
             results = [None] * len(batch_messages)
             for valid_idx, response_text in zip(valid_indices, decoded_responses):
-                parsed = getattr(self.processor, 'parse_response', lambda x: x)(response_text)
+                
+                # Safely parse response with fallback for prefix requirement
+                if hasattr(self.processor, 'parse_response'):
+                    try:
+                        parsed = self.processor.parse_response(
+                            response_text, 
+                            prefix=""
+                        )
+                    except TypeError:
+                        parsed = self.processor.parse_response(response_text)
+                else:
+                    parsed = response_text
+
                 results[valid_idx] = ModelOutput(
                     text=response_text.strip(),
-                    raw_response={'generated_text': response_text, 'parsed_response': parsed},
+                    raw_response={'generated_text': response_text, 
+                                  'parsed_response': parsed},
                 )
             return results
 
