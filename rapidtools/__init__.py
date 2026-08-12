@@ -48,7 +48,7 @@ from .config import DATE_FORMAT, LOG_FORMAT
 
 # Package metadata:
 name = 'rapidtools'
-__version__ = '0.1.1'
+__version__ = '0.1.2'
 __copyright__ = 'Copyright (c) 2025, The University of Washington'
 __license__ = 'BSD 3-Clause License'
 
