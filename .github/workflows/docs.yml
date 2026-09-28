@@ -32,7 +32,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           # CPU-only PyTorch keeps the install small; autodoc only imports it.
-          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          # torch and torchvision must come from the same index, otherwise the
+          # default torchvision wheel is built against a different torch and
+          # every model module fails with "operator torchvision::nms does not
+          # exist".
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
           pip install -e ".[docs]"
 
       - name: Build the site
