@@ -34,14 +34,33 @@
 # Contributors:
 # Barbaros Cetiner
 #
-# Last updated:
-# 03-24-2026
 
 """
 Definitions for global constants used throughout the rapidtools package.
 
 This module centralizes static reference data, mathematical constants,
 and shared mapping dictionaries for consistency across all modules.
+
+Attributes:
+    EARTH_RADIUS_KM (int): Mean radius of the Earth in kilometers, used by
+        haversine-style distance calculations.
+    LATITUDE_SPACING_KM (float): Approximate ground distance of one degree
+        of latitude in kilometers.
+    UNIT_ALIASES (dict[str, str]): Maps unit spellings, abbreviations, and
+        plurals (e.g. ``'ft'``, ``'foot'``, ``'feet'``) to a canonical unit
+        name (``'feet'``). Canonical names are ``'pixels'``, ``'meters'``,
+        ``'kilometers'``, ``'feet'``, ``'yards'``, and ``'miles'``.
+    METERS_CONVERSION_FACTORS (dict[str, float]): Multipliers that convert a
+        length in meters into each canonical distance unit. Divide by the
+        factor to go the other way.
+
+Example:
+    >>> from rapidtools.constants import METERS_CONVERSION_FACTORS, UNIT_ALIASES
+    >>> unit = UNIT_ALIASES['ft']
+    >>> round(100 * METERS_CONVERSION_FACTORS[unit], 2)  # 100 m in feet
+    328.08
+    >>> round(50 / METERS_CONVERSION_FACTORS[unit], 2)  # 50 ft in meters
+    15.24
 """
 
 EARTH_RADIUS_KM = 6371  # Mean radius of the Earth in km
@@ -56,6 +75,7 @@ UNIT_ALIASES = {
     'meter': 'meters',
     'meters': 'meters',
     'metre': 'meters',
+    'metres': 'meters',
     'km': 'kilometers',
     'kilometer': 'kilometers',
     'kilometers': 'kilometers',
