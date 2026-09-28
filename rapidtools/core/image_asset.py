@@ -35,7 +35,16 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-04-2026
+# 09-22-2026
+
+"""
+Image assets and image collections.
+
+:class:`ImageAsset` wraps a single image file (local or yet-to-be-downloaded)
+together with its metadata and optional semantic / instance segmentation
+masks. :class:`ImageCollection` is a light container that adds filtering,
+merging, batch downloading and metadata export on top of a list of assets.
+"""
 
 from __future__ import annotations
 
@@ -68,11 +77,42 @@ from rapidtools.config import (
     MaskType,
 )
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass(kw_only=True)
 class ImageAsset:
     """
     A single image asset, its location, metadata, and segmentation info.
+
+    Attributes:
+        path (Path):
+            Absolute path of the image file on disk.
+        id (str | None):
+            Unique identifier. Defaults to the file stem when omitted.
+        properties (dict[str, Any]):
+            Free-form metadata (e.g. ``latitude``, ``longitude``, ``url``).
+        semantic_map (dict[int, str] | None):
+            Pixel value to class name mapping for the semantic mask.
+        instance_map (dict[int, Any] | None):
+            Instance ID to metadata mapping for the instance mask.
+        allow_missing_file (bool):
+            If ``True``, the file does not need to exist yet (deferred
+            download).
+
+    Example:
+        >>> from rapidtools.core import ImageAsset
+        >>>
+        >>> img = ImageAsset(
+        ...     id='img_001',
+        ...     path='images/img_001.jpg',
+        ...     properties={'url': 'https://example.com/img_001.jpg'},
+        ...     allow_missing_file=True,
+        ... )
+        >>> img.is_downloaded
+        False
+        >>> img.filename
+        'img_001.jpg'
     """
 
     path: Path
@@ -396,7 +436,7 @@ class ImageAsset:
         """
         # Check if the image needs to be downloaded:
         if self.is_downloaded and not overwrite:
-            logging.info(f'Skipping download, file already exists: {self.filename}')
+            logger.info(f'Skipping download, file already exists: {self.filename}')
             return
 
         # Determine the image URL:
@@ -428,7 +468,7 @@ class ImageAsset:
 
         # Download image:
         try:
-            logging.info(f"Downloading '{self.id}' from {target_url}...")
+            logger.info(f"Downloading '{self.id}' from {target_url}...")
 
             with requester.get(
                 target_url, headers=REQUESTS_HEADERS, stream=True, timeout=30
@@ -442,7 +482,7 @@ class ImageAsset:
 
             # Rename the atomic file:
             temp_path.replace(self.path)
-            logging.info(f'Successfully downloaded: {self.filename}')
+            logger.info(f'Successfully downloaded: {self.filename}')
 
         except Exception as e:
             # If download fails (e.g., partial file), clean up:
@@ -452,7 +492,7 @@ class ImageAsset:
                 except OSError:
                     pass  # Ignore cleanup errors during exception handling
 
-            logging.error(f'Download failed for {self.id}: {e}')
+            logger.error(f'Download failed for {self.id}: {e}')
             raise
 
     def get_mask_path(
@@ -516,7 +556,7 @@ class ImageAsset:
         except ValueError:
             raise ValueError(
                 f"Invalid mask_type '{mask_type}'. Expected one of: "
-                f"{[m.value for m in MaskType]}"
+                f'{[m.value for m in MaskType]}'
             ) from None
 
         return self.path.with_name(f'{self.stem}_{valid_type.value}.png')
@@ -691,11 +731,10 @@ class ImageAsset:
             )
 
         try:
-            logging.info(f'Loading image data from: {self.path}')
+            logger.info(f'Loading image data from: {self.path}')
 
             # Open the image as a context manager to ensure file handle safety:
             with PillowImage.open(self.path) as opened_img:
-
                 # Assign to 'img' and explicitly hint it as the generic base class.
                 # This allows 'img' to accept results from .convert() and
                 # .exif_transpose():
@@ -724,7 +763,7 @@ class ImageAsset:
             return self._pil_image
 
         except OSError as e:
-            logging.error(f'Failed to load image file at {self.path}: {e}')
+            logger.error(f'Failed to load image file at {self.path}: {e}')
             self._pil_image = None
             raise
 
@@ -835,15 +874,15 @@ class ImageAsset:
         if not target_url:
             available_keys = ', '.join(k for k in self.properties.keys() if 'url' in k)
             raise ValueError(
-                f"Cannot load image for {self.id}: URL not provided and "
+                f'Cannot load image for {self.id}: URL not provided and '
                 f"property '{url_key}' not found.\nAvailable URL-like keys"
-                f": {available_keys}"
+                f': {available_keys}'
             )
 
         try:
             # Only log if verbose is True
             if verbose:
-                logging.info(f'Downloading {self.id} into memory...')
+                logger.info(f'Downloading {self.id} into memory...')
 
             # Use provided session or create a temporary one:
             requester = session if session else requests
@@ -882,7 +921,7 @@ class ImageAsset:
             return self._pil_image
 
         except Exception as e:
-            logging.error(f'Failed to load image from URL for {self.id}: {e}')
+            logger.error(f'Failed to load image from URL for {self.id}: {e}')
             self._pil_image = None
             raise
 
@@ -969,7 +1008,7 @@ class ImageAsset:
         except ValueError:
             raise ValueError(
                 f"Invalid mask_type '{mask_type}'. Expected one of: "
-                f"{[m.value for m in MaskType]}"
+                f'{[m.value for m in MaskType]}'
             ) from None
 
         # Map Enum to internal cache attributes:
@@ -1004,7 +1043,7 @@ class ImageAsset:
             return mask_data
 
         except OSError as e:
-            logging.error(f'Failed to load {valid_type.value} mask for {self.id}: {e}')
+            logger.error(f'Failed to load {valid_type.value} mask for {self.id}: {e}')
             raise
 
     def merge(
@@ -1089,7 +1128,7 @@ class ImageAsset:
             raise ValueError(
                 f"Cannot combine assets: IDs do not match ('{self.id}' vs "
                 f"'{other.id}'). Set ignore_id_mismatch=True to bypass this"
-                "requirement."
+                'requirement.'
             )
 
         # Merge asset properties:
@@ -1197,7 +1236,7 @@ class ImageAsset:
             pil_img = self.load_image_from_disk()
             mask = self.load_mask(valid_type)
         except FileNotFoundError:
-            logging.error('Cannot generate HTML: Image or Mask not found.')
+            logger.error('Cannot generate HTML: Image or Mask not found.')
             return
 
         img_width, img_height = pil_img.size
@@ -1285,7 +1324,7 @@ class ImageAsset:
         )
         colormap = plt.get_cmap(cmap_name)
 
-        logging.info(f'Generating HTML polygons for {len(unique_ids)} {mask_type}s...')
+        logger.info(f'Generating HTML polygons for {len(unique_ids)} {mask_type}s...')
 
         for obj_id in unique_ids:
             # Create binary mask for this specific object ID:
@@ -1363,7 +1402,7 @@ class ImageAsset:
         with open(target_path, 'w', encoding='utf-8') as f:
             f.write(html_content)
 
-        logging.info(f'Saved interactive HTML to: {target_path}')
+        logger.info(f'Saved interactive HTML to: {target_path}')
 
     def save_image(
         self,
@@ -1428,9 +1467,9 @@ class ImageAsset:
         """
         if self._pil_image is None:
             raise ValueError(
-                "No image loaded in memory. Please call "
+                'No image loaded in memory. Please call '
                 "'load_image_from_disk()' or 'load_image_from_url()' before"
-                " saving."
+                ' saving.'
             )
 
         # Extract the target save path:
@@ -1440,7 +1479,7 @@ class ImageAsset:
         target_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Save the iamge:
-        logging.info(f'Saving image to {target_path}')
+        logger.info(f'Saving image to {target_path}')
         self._pil_image.save(target_path, format=format, quality=quality)
 
     def save_mask(
@@ -1510,7 +1549,7 @@ class ImageAsset:
         except ValueError:
             raise ValueError(
                 f"Invalid mask_type '{mask_type}'. "
-                f"Expected one of: {[m.value for m in MaskType]}"
+                f'Expected one of: {[m.value for m in MaskType]}'
             ) from None
 
         # Ensure the data exists (this checks cache and disk):
@@ -1532,7 +1571,7 @@ class ImageAsset:
         # Convert NumPy array to PIL image and save as PNG (lossless):
         img = PillowImage.fromarray(mask_data)
 
-        logging.info(f'Saving {valid_type} mask to {target_path}')
+        logger.info(f'Saving {valid_type} mask to {target_path}')
         img.save(target_path, format='PNG')
 
     def set_mask(
@@ -1612,7 +1651,7 @@ class ImageAsset:
         except ValueError:
             raise ValueError(
                 f"Unknown mask type '{mask_type}'. "
-                f"Supported types: {list(target_attrs.keys())}"
+                f'Supported types: {list(target_attrs.keys())}'
             ) from None
 
         # Unpack attribute names:
@@ -1712,9 +1751,9 @@ class ImageAsset:
         ]
 
         if output_type not in valid_options:
-            logging.warning(
+            logger.warning(
                 f"The output type '{output_type}' is not supported. "
-                f"Please specify one of: {', '.join(map(repr, valid_options))}"
+                f'Please specify one of: {", ".join(map(repr, valid_options))}'
             )
             return
 
@@ -1724,7 +1763,7 @@ class ImageAsset:
             try:
                 self.load_image_from_disk().show(title=f'{self.filename} - Base image')
             except Exception as e:
-                logging.error(f'Could not load/show base image: {e}')
+                logger.error(f'Could not load/show base image: {e}')
             return
 
         # Determine mask type and defaults:
@@ -1739,10 +1778,11 @@ class ImageAsset:
         def create_visual_mask(
             mask_type: MaskType, color_map_name: str
         ) -> PillowImage.Image | None:
+            """Colorize a mask with ``color_map_name``; ``None`` if missing."""
             try:
                 mask_data = self.load_mask(mask_type)
             except FileNotFoundError:
-                logging.warning(f'No {mask_type} mask found to show.')
+                logger.warning(f'No {mask_type} mask found to show.')
                 return None
 
             # Get colormap and put it in a look up table for efficiency:
@@ -1791,7 +1831,7 @@ class ImageAsset:
                 base_img = self.load_image_from_disk().convert('RGBA')
                 final_image = PillowImage.alpha_composite(base_img, final_image)
             except Exception as e:
-                logging.warning(
+                logger.warning(
                     f'Could not load base image for overlay ({e}). '
                     'Displaying mask only.'
                 )
@@ -1877,21 +1917,55 @@ class ImageCollection:
 
     This class provides utilities for filtering, batch downloading, and
     exporting metadata for a collection of images.
+
+    Example:
+        >>> from rapidtools.core import ImageAsset, ImageCollection
+        >>>
+        >>> images = ImageCollection(
+        ...     [
+        ...         ImageAsset(id='a', path='a.jpg', allow_missing_file=True),
+        ...         ImageAsset(id='b', path='b.jpg', allow_missing_file=True),
+        ...     ]
+        ... )
+        >>> len(images), 'a' in images, images.get_ids()
+        (2, True, ['a', 'b'])
     """
 
     def __init__(self, assets: list[ImageAsset] | None = None) -> None:
         """
-        Initializes the ImageCollection.
+        Initialize the ImageCollection.
 
         Args:
-            assets: An optional list of ImageAsset objects to initialize the
+            assets (list[ImageAsset] | None):
+                An optional list of ImageAsset objects to initialize the
                 collection with. Defaults to an empty list.
+
+        Example:
+            >>> from rapidtools.core import ImageCollection
+            >>>
+            >>> len(ImageCollection())
+            0
         """
         self._assets: list[ImageAsset] = assets if assets else []
 
     def __contains__(self, item: str | ImageAsset) -> bool:
         """
-        Checks if an image ID or ImageAsset object exists in the collection.
+        Check whether an image ID or ImageAsset object exists in the collection.
+
+        Args:
+            item (str | ImageAsset):
+                Either an ID string or an ImageAsset whose ``id`` is compared.
+
+        Returns:
+            bool: ``True`` if an asset with a matching ID is present.
+
+        Example:
+            >>> from rapidtools.core import ImageAsset, ImageCollection
+            >>>
+            >>> img = ImageAsset(id='a', path='a.jpg', allow_missing_file=True)
+            >>> images = ImageCollection([img])
+            >>> 'a' in images, img in images, 'zzz' in images
+            (True, True, False)
         """
         # Check by string ID by looping through the assets to see if any ID
         # matches the string:
@@ -1906,32 +1980,113 @@ class ImageCollection:
         return False
 
     def __getitem__(self, index: int) -> ImageAsset:
+        """
+        Return the asset at a positional index.
+
+        Args:
+            index (int): Zero-based position (negative indices are allowed).
+
+        Returns:
+            ImageAsset: The asset stored at ``index``.
+
+        Raises:
+            IndexError: If ``index`` is out of range.
+
+        Example:
+            >>> from rapidtools.core import ImageAsset, ImageCollection
+            >>>
+            >>> img = ImageAsset(id='a', path='a.jpg', allow_missing_file=True)
+            >>> ImageCollection([img])[0].id
+            'a'
+        """
         return self._assets[index]
 
     def __iter__(self) -> Iterator[ImageAsset]:
+        """
+        Iterate over the assets in insertion order.
+
+        Returns:
+            Iterator[ImageAsset]: An iterator over the contained assets.
+
+        Example:
+            >>> from rapidtools.core import ImageAsset, ImageCollection
+            >>>
+            >>> img = ImageAsset(id='a', path='a.jpg', allow_missing_file=True)
+            >>> [asset.id for asset in ImageCollection([img])]
+            ['a']
+        """
         return iter(self._assets)
 
     def __len__(self) -> int:
+        """
+        Return the number of assets in the collection.
+
+        Returns:
+            int: The asset count.
+
+        Example:
+            >>> from rapidtools.core import ImageCollection
+            >>>
+            >>> len(ImageCollection())
+            0
+        """
         return len(self._assets)
 
     def __repr__(self) -> str:
+        """
+        Return a concise, human-readable representation.
+
+        Returns:
+            str: ``'<ImageCollection containing N image assets>'``.
+
+        Example:
+            >>> from rapidtools.core import ImageCollection
+            >>>
+            >>> repr(ImageCollection())
+            '<ImageCollection containing 0 image assets>'
+        """
         return f'<ImageCollection containing {len(self)} image assets>'
 
     def add(
         self, items: ImageAsset | list[ImageAsset], overwrite: bool = False
     ) -> None:
         """
-        Adds one or more assets to the collection.
+        Add one or more assets to the collection.
 
         This method accepts either a single ImageAsset object or a list of
-        objects. It checks for duplicates based on the asset ID.
+        objects. It checks for duplicates based on the asset ID. Assets whose
+        ``id`` is ``None`` are always appended.
 
         Args:
-            items: A single ImageAsset object or a list of ImageAsset objects
-                to add.
-            overwrite: If True, existing assets with the same ID will be
-                replaced by the new ones. If False, duplicates are ignored
-                (the existing asset is kept). Defaults to False.
+            items (ImageAsset | list[ImageAsset]):
+                A single ImageAsset object or a list of ImageAsset objects to
+                add.
+            overwrite (bool):
+                If ``True``, existing assets with the same ID will be replaced
+                by the new ones. If ``False``, duplicates are ignored (the
+                existing asset is kept) and an INFO message is logged.
+                Defaults to ``False``.
+
+        Example:
+            >>> from rapidtools.core import ImageAsset, ImageCollection
+            >>>
+            >>> images = ImageCollection()
+            >>> images.add(ImageAsset(id='a', path='a.jpg', allow_missing_file=True))
+            >>> images.add(
+            ...     [
+            ...         ImageAsset(id='a', path='a_v2.jpg', allow_missing_file=True),
+            ...         ImageAsset(id='b', path='b.jpg', allow_missing_file=True),
+            ...     ]
+            ... )
+            INFO: Skipping duplicate asset with ID: a
+            >>> images.get_ids()
+            ['a', 'b']
+            >>> images.add(
+            ...     ImageAsset(id='a', path='a_v2.jpg', allow_missing_file=True),
+            ...     overwrite=True,
+            ... )
+            >>> images[0].filename
+            'a_v2.jpg'
         """
         # Normalize input to a list for uniform processing:
         assets_to_add = items if isinstance(items, list) else [items]
@@ -1952,7 +2107,7 @@ class ImageCollection:
                     self._assets[index] = asset
                 else:
                     # Log that we are ignoring the duplicate:
-                    logging.info(f'Skipping duplicate asset with ID: {asset.id}')
+                    logger.info(f'Skipping duplicate asset with ID: {asset.id}')
             else:
                 # Add new asset:
                 self._assets.append(asset)
@@ -2000,21 +2155,23 @@ class ImageCollection:
             add_new=add_new,
         )
 
-        logging.info(
-            f'Merge complete: {merged} merged, {added} added, ' f'{skipped} skipped.'
+        logger.info(
+            f'Merge complete: {merged} merged, {added} added, {skipped} skipped.'
         )
 
     def filter(self, func: Callable[[ImageAsset], bool]) -> ImageCollection:
         """
-        Filters the collection using a custom function.
+        Filter the collection using a custom function.
 
         Args:
-            func: A callable that takes an ImageAsset as input and returns
-                True if the asset should be kept, or False otherwise.
+            func (Callable[[ImageAsset], bool]):
+                A callable that takes an ImageAsset as input and returns
+                ``True`` if the asset should be kept, or ``False`` otherwise.
 
         Returns:
-            A new ImageCollection instance containing only the assets for
-            which the function returned True.
+            ImageCollection:
+                A new instance containing only the assets for which the
+                function returned ``True``. The original is left untouched.
 
         Example:
             >>> subset = collection.filter(
@@ -2026,44 +2183,105 @@ class ImageCollection:
 
     def filter_by_property(self, key: str, value: Any) -> ImageCollection:
         """
-        Filters assets where a specific property matches a given value.
+        Filter assets where a specific property matches a given value.
 
         Args:
-            key: The property key to check (e.g., 'event_name').
-            value: The value the property must match.
+            key (str): The property key to check (e.g., ``'event_name'``).
+            value (Any): The value the property must equal.
 
         Returns:
-            A new ImageCollection containing the matching assets.
+            ImageCollection: A new collection containing the matching assets.
+
+        Example:
+            >>> from rapidtools.core import ImageAsset, ImageCollection
+            >>>
+            >>> images = ImageCollection(
+            ...     [
+            ...         ImageAsset(
+            ...             id='a',
+            ...             path='a.jpg',
+            ...             properties={'event': 'eaton'},
+            ...             allow_missing_file=True,
+            ...         ),
+            ...         ImageAsset(
+            ...             id='b',
+            ...             path='b.jpg',
+            ...             properties={'event': 'palisades'},
+            ...             allow_missing_file=True,
+            ...         ),
+            ...     ]
+            ... )
+            >>> images.filter_by_property('event', 'eaton').get_ids()
+            ['a']
         """
         return self.filter(lambda a: a.properties.get(key) == value)
 
     def filter_downloaded(self) -> ImageCollection:
         """
-        Filters for assets that currently exist on disk.
+        Filter for assets that currently exist on disk.
 
         Returns:
-            A new ImageCollection containing only assets where
-            `is_downloaded` is True.
+            ImageCollection:
+                A new collection containing only assets whose
+                ``is_downloaded`` property is ``True``.
+
+        Example:
+            >>> from rapidtools.core import ImageAsset, ImageCollection
+            >>>
+            >>> pending = ImageAsset(
+            ...     id='p', path='missing.jpg', allow_missing_file=True
+            ... )
+            >>> len(ImageCollection([pending]).filter_downloaded())
+            0
         """
         return self.filter(lambda a: a.is_downloaded)
 
     def filter_by_bbox(self, bbox: BoundingBox) -> ImageCollection:
         """
-        Filters images that fall within a geographic bounding box.
+        Filter images that fall within a geographic bounding box.
 
         This method filters the collection to include only images whose
-        coordinates (longitude/latitude) fall within the provided BoundingBox.
+        ``latitude`` / ``longitude`` properties fall within the provided
+        BoundingBox. Images without coordinates are excluded.
 
         Args:
-            bbox: The BoundingBox object defining the geographic area.
+            bbox (BoundingBox): The BoundingBox object defining the area.
 
         Returns:
-            A new ImageCollection containing only the assets within the bounds.
+            ImageCollection:
+                A new collection containing only the assets within the bounds.
+
+        Example:
+            >>> from rapidtools.core import BoundingBox, ImageAsset, ImageCollection
+            >>>
+            >>> images = ImageCollection(
+            ...     [
+            ...         ImageAsset(
+            ...             id='inside',
+            ...             path='a.jpg',
+            ...             properties={'latitude': 34.15, 'longitude': -118.15},
+            ...             allow_missing_file=True,
+            ...         ),
+            ...         ImageAsset(
+            ...             id='outside',
+            ...             path='b.jpg',
+            ...             properties={'latitude': 40.0, 'longitude': -74.0},
+            ...             allow_missing_file=True,
+            ...         ),
+            ...         ImageAsset(
+            ...             id='no_coords', path='c.jpg', allow_missing_file=True
+            ...         ),
+            ...     ]
+            ... )
+            >>> bbox = BoundingBox(-118.2, 34.1, -118.1, 34.2)
+            >>> images.filter_by_bbox(bbox).get_ids()
+            ['inside']
         """
         # Extract bounds from the internal shapely geometry of the BoundingBox:
         min_lon, min_lat, max_lon, max_lat = bbox.bounds
 
         def inside_box(asset: ImageAsset) -> bool:
+            """Return ``True`` if the asset's coordinates fall inside the box."""
             lat = asset.properties.get('latitude')
             lon = asset.properties.get('longitude')
 
@@ -2077,14 +2295,27 @@ class ImageCollection:
 
     def get_ids(self, ignore_none: bool = True) -> list[str | int | None]:
         """
-        Retrieves a list of IDs for all assets in the collection.
+        Retrieve a list of IDs for all assets in the collection.
 
         Args:
-            ignore_none: If ``True``, assets with no ID (None) are excluded
-                         from the list. Defaults to ``True``.
+            ignore_none (bool):
+                If ``True``, assets with no ID (``None``) are excluded from
+                the list. Defaults to ``True``.
 
         Returns:
-            list: A list of IDs corresponding to the assets.
+            list[str | int | None]: The IDs in collection order.
+
+        Example:
+            >>> from rapidtools.core import ImageAsset, ImageCollection
+            >>>
+            >>> images = ImageCollection(
+            ...     [
+            ...         ImageAsset(id='a', path='a.jpg', allow_missing_file=True),
+            ...         ImageAsset(id='b', path='b.jpg', allow_missing_file=True),
+            ...     ]
+            ... )
+            >>> images.get_ids()
+            ['a', 'b']
         """
         if ignore_none:
             return [asset.id for asset in self._assets if asset.id is not None]
@@ -2139,22 +2370,35 @@ class ImageCollection:
 
         if removed_count > 0:
             suffix = 's' if removed_count != 1 else ''
-            logging.info(f'Removed {removed_count} asset{suffix} from the collection.')
+            logger.info(f'Removed {removed_count} asset{suffix} from the collection.')
         else:
-            logging.warning('No matching assets found to remove.')
+            logger.warning('No matching assets found to remove.')
 
     def subset(self, indices: list[int]) -> ImageCollection:
         """
-        Creates a new ImageCollection containing assets at the specific indices.
+        Create a new ImageCollection containing assets at the given indices.
 
         Args:
-            indices: A list of integer indices (e.g., [0, 5, 10]).
+            indices (list[int]): A list of integer indices (e.g., ``[0, 5, 10]``).
 
         Returns:
-            A new ImageCollection instance.
+            ImageCollection: A new instance holding the selected assets.
 
         Raises:
             IndexError: If any index is out of bounds.
+
+        Example:
+            >>> from rapidtools.core import ImageAsset, ImageCollection
+            >>>
+            >>> images = ImageCollection(
+            ...     [
+            ...         ImageAsset(id='a', path='a.jpg', allow_missing_file=True),
+            ...         ImageAsset(id='b', path='b.jpg', allow_missing_file=True),
+            ...         ImageAsset(id='c', path='c.jpg', allow_missing_file=True),
+            ...     ]
+            ... )
+            >>> images.subset([0, 2]).get_ids()
+            ['a', 'c']
         """
         # Extract the assets using list comprehension:
         selected_assets = [self._assets[i] for i in indices]
@@ -2164,17 +2408,39 @@ class ImageCollection:
 
     def download_all(self, max_workers: int = 5, overwrite: bool = False) -> None:
         """
-        Downloads all images in the collection using multi-threading.
+        Download all images in the collection using multi-threading.
+
+        Each asset's :meth:`ImageAsset.download` is called with a shared
+        ``requests.Session``. Failures are logged per asset and do not stop
+        the remaining downloads. Progress is logged every ten images.
 
         Args:
-            max_workers: The maximum number of parallel download threads.
-                Defaults to 5.
-            overwrite: If True, existing files will be re-downloaded and
-                overwritten. Defaults to False.
+            max_workers (int):
+                The maximum number of parallel download threads. Defaults to
+                ``5``.
+            overwrite (bool):
+                If ``True``, existing files will be re-downloaded and
+                overwritten. Defaults to ``False``.
+
+        Example:
+            >>> from rapidtools.core import ImageAsset, ImageCollection
+            >>>
+            >>> images = ImageCollection(
+            ...     [
+            ...         ImageAsset(
+            ...             id='a',
+            ...             path='downloads/a.jpg',
+            ...             properties={'url': 'https://example.com/a.jpg'},
+            ...             allow_missing_file=True,
+            ...         )
+            ...     ]
+            ... )
+            >>> images.download_all(max_workers=2)
+            INFO: Starting batch download for 1 images with 2 workers.
         """
         total = len(self)
-        logging.info(
-            f'Starting batch download for {total} images with {max_workers} ' 'workers.'
+        logger.info(
+            f'Starting batch download for {total} images with {max_workers} workers.'
         )
 
         # Create a single session to reuse TCP connections
@@ -2193,23 +2459,38 @@ class ImageCollection:
                     try:
                         future.result()
                     except Exception as e:
-                        logging.error(f'Failed to download {asset.id}: {e}')
+                        logger.error(f'Failed to download {asset.id}: {e}')
 
                     # Optional: Print progress every 10 images
                     if (i + 1) % 10 == 0:
-                        logging.info(f'Progress: {i + 1}/{total} completed.')
+                        logger.info(f'Progress: {i + 1}/{total} completed.')
 
     def to_dataframe(self) -> Any:
         """
-        Converts the collection metadata to a Pandas DataFrame.
+        Convert the collection metadata to a Pandas DataFrame.
 
         Returns:
-            pd.DataFrame: A DataFrame where each row represents an asset.
-                Columns include 'id', 'path', 'is_downloaded', and all keys
-                found in the asset properties.
+            pd.DataFrame:
+                A DataFrame where each row represents an asset. Columns
+                include ``id``, ``path``, ``is_downloaded``, and all keys found
+                in the asset properties.
 
-        Raises:
-            ImportError: If the pandas library is not installed.
+        Example:
+            >>> from rapidtools.core import ImageAsset, ImageCollection
+            >>>
+            >>> images = ImageCollection(
+            ...     [
+            ...         ImageAsset(
+            ...             id='a',
+            ...             path='a.jpg',
+            ...             properties={'event': 'eaton'},
+            ...             allow_missing_file=True,
+            ...         )
+            ...     ]
+            ... )
+            >>> df = images.to_dataframe()
+            >>> list(df.columns)
+            ['id', 'path', 'is_downloaded', 'event']
         """
         data = []
         for asset in self._assets:
@@ -2226,10 +2507,22 @@ class ImageCollection:
 
     def to_json(self, filepath: str | Path) -> None:
         """
-        Exports the collection metadata to a JSON file.
+        Export the collection metadata to a JSON file.
+
+        The output is a list of ``{'id', 'path', 'properties'}`` objects.
+        Values that are not natively JSON-serializable are written via
+        ``str()``.
 
         Args:
-            filepath: The path where the JSON file will be saved.
+            filepath (str | Path): The path where the JSON file will be saved.
+
+        Example:
+            >>> from rapidtools.core import ImageAsset, ImageCollection
+            >>>
+            >>> images = ImageCollection(
+            ...     [ImageAsset(id='a', path='a.jpg', allow_missing_file=True)]
+            ... )
+            >>> images.to_json('images.json')
         """
         data = [
             {'id': a.id, 'path': str(a.path), 'properties': a.properties}
@@ -2267,7 +2560,6 @@ class ImageCollection:
         for incoming_asset in other:
             # Merge if a match is found:
             if incoming_asset.id is not None and incoming_asset.id in current_map:
-
                 existing_asset = current_map[incoming_asset.id]
                 existing_asset.merge(
                     incoming_asset,

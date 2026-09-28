@@ -35,12 +35,48 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 01-23-2025
+# 09-22-2026
+
+"""
+Core domain models for rapidtools.
+
+This subpackage defines the spatial and media primitives that every other
+part of the library builds on:
+
+- :class:`BoundingBox` and :class:`PolygonRegion` describe geographic
+  regions of interest.
+- :class:`PhysicalAsset` and :class:`PhysicalAssetCollection` model real-world
+  assets (buildings, roads, poles, ...) together with their attributes and
+  linked imagery.
+- :class:`ImageAsset` and :class:`ImageCollection` manage image files, their
+  metadata, and segmentation masks.
+- :class:`OperationCancelled` plus the ``is_cancelled`` / ``raise_if_cancelled``
+  helpers provide cooperative cancellation for long-running components.
+
+Example:
+    >>> from rapidtools.core import BoundingBox, PhysicalAsset
+    >>> from shapely.geometry import Point
+    >>>
+    >>> bbox = BoundingBox(-118.1, 34.1, -118.0, 34.2)
+    >>> asset = PhysicalAsset(id='b1', geometry=Point(-118.05, 34.15))
+    >>> bbox.contains(asset.geometry)
+    True
+"""
 
 from .bounding_box import BoundingBox
+from .cancellation import OperationCancelled, is_cancelled, raise_if_cancelled
 from .image_asset import ImageAsset, ImageCollection
-from .physical_asset import PhysicalAsset
-from .physical_asset import PhysicalAssetCollection
+from .physical_asset import PhysicalAsset, PhysicalAssetCollection
 from .polygon_region import PolygonRegion
 
-
+__all__ = [
+    'BoundingBox',
+    'ImageAsset',
+    'ImageCollection',
+    'OperationCancelled',
+    'PhysicalAsset',
+    'PhysicalAssetCollection',
+    'PolygonRegion',
+    'is_cancelled',
+    'raise_if_cancelled',
+]

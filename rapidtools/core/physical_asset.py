@@ -35,7 +35,24 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-25-2026
+# 09-22-2026
+
+"""
+Physical assets and their collections: the core domain model of rapidtools.
+
+A :class:`PhysicalAsset` is the digital twin of a real-world object (a building,
+road segment, pole, ...) holding its geometry, attributes and image records;
+a :class:`PhysicalAssetCollection` is an indexed, spatially queryable container
+of assets with GeoJSON/Shapefile/DataFrame conversions.
+
+Example:
+    >>> from shapely.geometry import box
+    >>> from rapidtools.core import PhysicalAsset, PhysicalAssetCollection
+    >>> col = PhysicalAssetCollection()
+    >>> col.add(PhysicalAsset(id='b1', geometry=box(0, 0, 1, 1)))
+    >>> len(col)
+    1
+"""
 
 from __future__ import annotations
 
@@ -59,6 +76,8 @@ from shapely.geometry.base import BaseGeometry
 from .bounding_box import BoundingBox
 from .image_asset import ImageAsset, ImageCollection
 from .polygon_region import PolygonRegion
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(kw_only=True, repr=False)
@@ -123,7 +142,7 @@ class PhysicalAsset:
         """
         if not isinstance(self.id, str):
             raise TypeError(
-                "PhysicalAsset 'id' must be a string, got " f"{type(self.id).__name__}."
+                f"PhysicalAsset 'id' must be a string, got {type(self.id).__name__}."
             )
 
         if not self.id.strip():
@@ -132,13 +151,13 @@ class PhysicalAsset:
         if not isinstance(self.geometry, BaseGeometry):
             raise TypeError(
                 "The 'geometry' attribute must be a valid shapely geometry"
-                f" object, not {type(self.geometry)}."
+                f' object, not {type(self.geometry)}.'
             )
 
         if not self.geometry.is_valid:
-            logging.warning(
+            logger.warning(
                 f"Asset '{self.id}' contains invalid geometry (e.g., "
-                f"self-intersection)."
+                f'self-intersection).'
             )
 
     def __repr__(self) -> str:
@@ -199,38 +218,37 @@ class PhysicalAsset:
         # If the loop finishes without finding any of the keys, return None:
         return None
 
-    
     @asset_type.setter
     def asset_type(self, value: str) -> None:
         """
         Sets the asset type using the primary standard key ('asset_type').
-        
-        This allows you to assign the type directly (e.g., asset.asset_type = 
+
+        This allows you to assign the type directly (e.g., asset.asset_type =
         'building'), which automatically updates the underlying attributes
         dictionary.
-        
+
         Example:
             Create a basic asset with no attributes:
-        
+
             >>> from shapely.geometry import Point
             >>> from rapidtools.core import PhysicalAsset
             >>> asset = PhysicalAsset(id='bldg_02', geometry=Point(0, 0))
-            
+
             Set the asset type directly using the property:
-        
+
             >>> asset.asset_type = 'building'
             >>> print(asset.asset_type)
             building
-            
+
             Verify that it automatically updated the underlying dictionary
             using the primary key:
-        
+
             >>> print(asset.attributes['asset_type'])
             building
         """
         # Always use the first key in the class list for asset type:
         primary_key = self._ASSET_TYPE_KEYS[0]
-        self.attributes[primary_key] = value    
+        self.attributes[primary_key] = value
 
     def add_attributes(
         self, new_attributes: dict[str, Any], overwrite: bool = False
@@ -297,13 +315,13 @@ class PhysicalAsset:
                 if overwrite:
                     # If overwrite is True, update the value and log it for traceability
                     self.attributes[key] = value
-                    logging.debug(f"Overwrote attribute '{key}' in asset '{self.id}'.")
+                    logger.debug(f"Overwrote attribute '{key}' in asset '{self.id}'.")
                 else:
                     # If overwrite is False, skip and inform the user
-                    logging.info(
+                    logger.info(
                         f"Attribute '{key}' already exists in asset "
                         f"'{self.id}'. Skipping attribute as 'overwrite is set"
-                        " to False."
+                        ' to False.'
                     )
             else:
                 # If the key is new, simply add it
@@ -410,18 +428,18 @@ class PhysicalAsset:
                     ):
                         valid_assets_to_add.append(item)
                     else:
-                        logging.warning(
+                        logger.warning(
                             f"Ignored item of type '{type(item).__name__}' "
-                            f"found inside a container argument. This method"
+                            f'found inside a container argument. This method'
                             " supports adding 'ImageAsset' objects only."
                         )
 
             # Unsupported top-level argument:
             else:
-                logging.warning(
+                logger.warning(
                     f"Ignored argument of type '{type(arg).__name__}'. "
-                    "This method supports ImageAsset, list, tuple, or "
-                    "ImageCollection."
+                    'This method supports ImageAsset, list, tuple, or '
+                    'ImageCollection.'
                 )
 
         # Batch add everything to the internal collection:
@@ -507,7 +525,7 @@ class PhysicalAsset:
 
         if asset_id is None:
             generated_id = f'no_id_{uuid.uuid4().hex[:8]}'
-            logging.debug(
+            logger.debug(
                 "GeoJSON feature is missing an 'id' field. Generated "
                 f"placeholder '{generated_id}'."
             )
@@ -531,8 +549,8 @@ class PhysicalAsset:
                     img_obj = ImageAsset(**img_dict)
                     rehydrated_images.append(img_obj)
                 except Exception as e:
-                    logging.warning(
-                        f"Failed to rehydrate an image asset from GeoJSON for "
+                    logger.warning(
+                        f'Failed to rehydrate an image asset from GeoJSON for '
                         f"asset '{asset_id}': {e}"
                     )
 
@@ -601,7 +619,7 @@ class PhysicalAsset:
                 found_attributes[key] = self.attributes[key]
             else:
                 # If not, log a warning with helpful context (the asset ID)
-                logging.warning(
+                logger.warning(
                     f"Attribute key '{key}' not found for asset '{self.id}'."
                 )
         return found_attributes
@@ -677,7 +695,7 @@ class PhysicalAsset:
             if key in lookup:
                 results.append(lookup[key])
             else:
-                logging.warning(f"Image asset '{key}' not found in asset '{self.id}'.")
+                logger.warning(f"Image asset '{key}' not found in asset '{self.id}'.")
 
         return results
 
@@ -732,9 +750,9 @@ class PhysicalAsset:
         for key in keys:
             if key in self.attributes:
                 del self.attributes[key]
-                logging.debug(f"Removed attribute '{key}' from asset '{self.id}'.")
+                logger.debug(f"Removed attribute '{key}' from asset '{self.id}'.")
             else:
-                logging.warning(
+                logger.warning(
                     f"Attempted to remove non-existent attribute '{key}' "
                     f"from asset '{self.id}'."
                 )
@@ -810,12 +828,12 @@ class PhysicalAsset:
             if asset_to_remove:
                 _ = self.image_assets._remove_core(asset_to_remove)
                 removed_items.append(asset_to_remove)
-                logging.debug(
+                logger.debug(
                     f"Successfully removed image asset '{target_id}' from "
                     f"asset '{self.id}'."
                 )
             else:
-                logging.warning(
+                logger.warning(
                     f"Attempted to remove image '{target_id}' from asset "
                     f"'{self.id}', but no matching asset was found."
                 )
@@ -1093,8 +1111,7 @@ class PhysicalAssetCollection:
 
         if not isinstance(value, PhysicalAsset):
             raise TypeError(
-                'Value must be a PhysicalAsset instance, got '
-                f'{type(value).__name__}.'
+                f'Value must be a PhysicalAsset instance, got {type(value).__name__}.'
             )
 
         # Enforce consistency to prevent data corruption:
@@ -1230,10 +1247,10 @@ class PhysicalAssetCollection:
             items_to_process = assets
         else:
             # Handle top-level invalid input:
-            logging.warning(
-                "Input must be a PhysicalAsset or iterable of PhysicalAsset"
+            logger.warning(
+                'Input must be a PhysicalAsset or iterable of PhysicalAsset'
                 f" objects. Received input of type: '{type(assets).__name__}'."
-                " No asset imported."
+                ' No asset imported.'
             )
             return
 
@@ -1244,17 +1261,16 @@ class PhysicalAssetCollection:
                 not isinstance(asset, PhysicalAsset)
                 and type(asset).__name__ != 'PhysicalAsset'
             ):
-                logging.warning(
-                    f"Skipping invalid item: Expected PhysicalAsset, got "
+                logger.warning(
+                    f'Skipping invalid item: Expected PhysicalAsset, got '
                     f"'{type(asset).__name__}'."
                 )
                 continue
 
             # Check for duplicate ID:
             if asset.id in self._data:
-                logging.warning(
-                    f"Skipping duplicate asset with ID '{asset.id}' "
-                    "(already exists)."
+                logger.warning(
+                    f"Skipping duplicate asset with ID '{asset.id}' (already exists)."
                 )
                 continue
 
@@ -1329,7 +1345,7 @@ class PhysicalAssetCollection:
             assets_with_images += 1
 
         suffix = 's' if assets_with_images != 1 else ''
-        logging.info(
+        logger.info(
             f'Collected {len(master_collection)} image{suffix} from '
             f'{assets_with_images} assets.'
         )
@@ -1338,10 +1354,10 @@ class PhysicalAssetCollection:
 
     @classmethod
     def from_geojson(
-        cls, 
+        cls,
         source: str | Path | dict[str, Any],
         asset_type: str | None = None,
-        overwrite_asset_type: bool = False
+        overwrite_asset_type: bool = False,
     ) -> PhysicalAssetCollection:
         """
         Creates a new ``PhysicalAssetCollection`` from a GeoJSON source.
@@ -1350,11 +1366,11 @@ class PhysicalAssetCollection:
         pointing to a GeoJSON file, or a dictionary object representing valid
         GeoJSON data. It parses the 'features' list and initializes a new
         collection containing the assets found.
-        
+
         Mixed-Type Datasets:
-            This method automatically extracts all properties from the GeoJSON. 
-            If the file contains a mix of asset types under standard keys (like 
-            'asset_type', 'type', or 'category'), they are natively preserved 
+            This method automatically extracts all properties from the GeoJSON.
+            If the file contains a mix of asset types under standard keys (like
+            'asset_type', 'type', or 'category'), they are natively preserved
             and instantly accessible via the `asset.asset_type` property.
 
         Args:
@@ -1374,7 +1390,7 @@ class PhysicalAssetCollection:
             overwrite_asset_type (bool, optional):
                 If ``True``, overrides any existing type labels in the GeoJSON. If
                 ``False``, only applies the `asset_type` to assets that do not
-                already have one (perfect for data with missing labels). 
+                already have one (perfect for data with missing labels).
                 Defaults to ``False``.
 
         Returns:
@@ -1400,7 +1416,9 @@ class PhysicalAssetCollection:
             Loading from a file path and assigning a default asset type:
 
             >>> path = 'data/assets.geojson'
-            >>> collection = PhysicalAssetCollection.from_geojson(path, asset_type='building')
+            >>> collection = PhysicalAssetCollection.from_geojson(
+            ...     path, asset_type='building'
+            ... )
             >>> print(len(collection))
             5
 
@@ -1416,7 +1434,9 @@ class PhysicalAssetCollection:
             ...         }
             ...     ]
             ... }
-            >>> collection = PhysicalAssetCollection.from_geojson(data, asset_type='pump')
+            >>> collection = PhysicalAssetCollection.from_geojson(
+            ...     data, asset_type='pump'
+            ... )
             >>> asset = collection.get("A1")
             >>> asset.summary()
             --- PhysicalAsset Summary ---
@@ -1456,8 +1476,7 @@ class PhysicalAssetCollection:
         # Validate structure:
         if geojson_data.get('type') != 'FeatureCollection':
             raise ValueError(
-                "Input data must be a valid GeoJSON with 'type': "
-                "'FeatureCollection'."
+                "Input data must be a valid GeoJSON with 'type': 'FeatureCollection'."
             )
 
         features = geojson_data.get('features', [])
@@ -1473,7 +1492,7 @@ class PhysicalAssetCollection:
 
             # Check if the asset had a valid geometry:
             if not geom_dict:
-                logging.warning(f'Skipping feature index {i}: Missing geometry.')
+                logger.warning(f'Skipping feature index {i}: Missing geometry.')
                 continue
 
             # Determine asset ID:
@@ -1488,9 +1507,9 @@ class PhysicalAssetCollection:
 
             # Check if ID exists in the NEW collection being built.
             if assigned_id in new_collection._data:
-                logging.warning(
+                logger.warning(
                     f"Skipping duplicate asset with ID '{assigned_id}' found "
-                    "in GeoJSON input."
+                    'in GeoJSON input.'
                 )
                 continue
 
@@ -1506,22 +1525,22 @@ class PhysicalAssetCollection:
                 new_collection.add(new_asset)
 
             except (ValueError, TypeError, AttributeError) as e:
-                logging.error(f"Failed to create asset for ID '{assigned_id}': {e}")
+                logger.error(f"Failed to create asset for ID '{assigned_id}': {e}")
                 continue
 
         # Apply the default asset type if requested:
         if asset_type is not None:
             new_collection.set_asset_type(asset_type, overwrite=overwrite_asset_type)
 
-        logging.info(f'Loaded {len(new_collection._data)} assets from GeoJSON.')
+        logger.info(f'Loaded {len(new_collection._data)} assets from GeoJSON.')
         return new_collection
 
     @classmethod
     def from_shapefile(
-        cls, 
+        cls,
         file: str | Path,
         asset_type: str | None = None,
-        overwrite_asset_type: bool = False
+        overwrite_asset_type: bool = False,
     ) -> PhysicalAssetCollection:
         """
         Creates a new ``PhysicalAssetCollection`` from an ESRI Shapefile.
@@ -1530,11 +1549,11 @@ class PhysicalAssetCollection:
         attribute tables, and populates a new collection. It attempts to
         reconstruct the original `id` if it was saved in the shapefile's
         attribute table.
-        
+
         Mixed-Type Datasets:
-            This method automatically maps the Shapefile's DBF attribute table 
-            to the asset properties. If the Shapefile contains mixed asset types 
-            under standard columns (like 'asset_type', 'type', or 'category'), 
+            This method automatically maps the Shapefile's DBF attribute table
+            to the asset properties. If the Shapefile contains mixed asset types
+            under standard columns (like 'asset_type', 'type', or 'category'),
             they are natively preserved.
 
         Args:
@@ -1548,12 +1567,12 @@ class PhysicalAssetCollection:
             asset_type (str or None, optional):
                 A default asset type to apply to the imported assets
                 (e.g., 'road'). If the shapefile already contains mixed types,
-                leave this as None to preserve them, or use it alongside 
+                leave this as None to preserve them, or use it alongside
                 ``overwrite_asset_type=False`` to automatically fill in any
                 unlabeled/blank rows. Defaults to ``None``.
             overwrite_asset_type (bool, optional):
-                If ``True``, overrides any existing type labels in the shapefile's 
-                attribute table. If False, only applies the `asset_type` to assets 
+                If ``True``, overrides any existing type labels in the shapefile's
+                attribute table. If False, only applies the `asset_type` to assets
                 that don't already have one. Defaults to ``False``.
 
         Returns:
@@ -1572,7 +1591,9 @@ class PhysicalAssetCollection:
             (ensuring accompanying .shx and .dbf files are in the same directory):
 
             >>> path = 'data/assets.shp'
-            >>> collection = PhysicalAssetCollection.from_shapefile(path, asset_type='building')
+            >>> collection = PhysicalAssetCollection.from_shapefile(
+            ...     path, asset_type='building'
+            ... )
             INFO: Loaded 5 assets from Shapefile.
             >>> print(len(collection))
             5
@@ -1618,7 +1639,7 @@ class PhysicalAssetCollection:
                         or not shapely_geom.is_valid
                         or any(math.isnan(c) for c in shapely_geom.bounds)
                     ):
-                        logging.warning('Skipping asset: Geometry is empty or invalid.')
+                        logger.warning('Skipping asset: Geometry is empty or invalid.')
                         continue
 
                 except (AttributeError, ValueError, TypeError, Exception):
@@ -1664,9 +1685,9 @@ class PhysicalAssetCollection:
                         new_asset.attributes['images_raw_str'] = images_str
 
                 if assigned_id in new_collection._data:
-                    logging.warning(
+                    logger.warning(
                         f"Skipping duplicate asset with ID '{assigned_id}' "
-                        "found in Shapefile input."
+                        'found in Shapefile input.'
                     )
                     continue
 
@@ -1676,7 +1697,7 @@ class PhysicalAssetCollection:
         if asset_type is not None:
             new_collection.set_asset_type(asset_type, overwrite=overwrite_asset_type)
 
-        logging.info(f'Loaded {len(new_collection._data)} assets from Shapefile.')
+        logger.info(f'Loaded {len(new_collection._data)} assets from Shapefile.')
         return new_collection
 
     def get(
@@ -1751,7 +1772,7 @@ class PhysicalAssetCollection:
 
         # Case 3: Invalid Input:
         raise TypeError(
-            "asset_ids must be specified as a string or iterable of strings. "
+            'asset_ids must be specified as a string or iterable of strings. '
             f"Got '{type(asset_ids).__name__}'."
         )
 
@@ -1870,8 +1891,7 @@ class PhysicalAssetCollection:
 
         if operator not in ops:
             raise ValueError(
-                f"Unsupported operator: '{operator}'. Valid options: "
-                f"{list(ops.keys())}"
+                f"Unsupported operator: '{operator}'. Valid options: {list(ops.keys())}"
             )
 
         compare_func = ops[operator]
@@ -1879,7 +1899,7 @@ class PhysicalAssetCollection:
         for asset in self._data.values():
             # Skip if attribute is missing completely:
             if key not in asset.attributes:
-                logging.warning(
+                logger.warning(
                     f"Missing attribute [Asset ID: '{asset.id}']: "
                     f"Attribute '{key}' was not found. Skipping asset"
                 )
@@ -1894,12 +1914,12 @@ class PhysicalAssetCollection:
             except TypeError:
                 # Catch errors where types are incompatible (e.g.,
                 # comparing str > int) and skip the asset:
-                logging.warning(
+                logger.warning(
                     f"Filter type mismatch [Asset ID: '{asset.id}']: "
                     f"Cannot compare attribute '{key}' value '{attr_val}' "
                     f"({type(attr_val).__name__}) with filter value '{value}' "
                     f"({type(value).__name__}) using operator '{operator}'. "
-                    "Skipping asset."
+                    'Skipping asset.'
                 )
                 continue
 
@@ -2030,8 +2050,8 @@ class PhysicalAssetCollection:
             search_shape = box(*geometry.bounds)
         else:
             raise TypeError(
-                "Input must be a rapidtools BoundingBox/PolygonRegion) "
-                "or Shapely Geometry. Got type: "
+                'Input must be a rapidtools BoundingBox/PolygonRegion) '
+                'or Shapely Geometry. Got type: '
                 f"'{type(geometry).__name__}'"
             )
 
@@ -2039,7 +2059,7 @@ class PhysicalAssetCollection:
         if predicate not in VALID_PREDICATES:
             raise ValueError(
                 f"Invalid spatial predicate '{predicate}'. "
-                f"Supported options: {VALID_PREDICATES}"
+                f'Supported options: {VALID_PREDICATES}'
             )
 
         # Filter assets:
@@ -2169,7 +2189,7 @@ class PhysicalAssetCollection:
 
         if strategy not in VALID_STRATEGIES:
             raise ValueError(
-                f"Invalid strategy '{strategy}'. Must be one of: " f"{VALID_STRATEGIES}"
+                f"Invalid strategy '{strategy}'. Must be one of: {VALID_STRATEGIES}"
             )
 
         stats = {'added': 0, 'overwritten': 0, 'skipped': 0}
@@ -2190,7 +2210,7 @@ class PhysicalAssetCollection:
                 self._data[asset_id] = new_asset
                 stats['added'] += 1
 
-        logging.info(f"Merge complete using strategy '{strategy}': {stats}")
+        logger.info(f"Merge complete using strategy '{strategy}': {stats}")
 
     def remove(self, asset_ids: str | Iterable[str]) -> None:
         """
@@ -2252,14 +2272,14 @@ class PhysicalAssetCollection:
             ids_to_remove = asset_ids
         else:
             raise TypeError(
-                f"asset_id must be a string or iterable of strings. "
+                f'asset_id must be a string or iterable of strings. '
                 f"Got '{type(asset_ids).__name__}'."
             )
 
         # Remove specified IDs:
         for uid in ids_to_remove:
             if self._data.pop(uid, None) is None:
-                logging.warning(f"Asset ID '{uid}' not found. Skipping removal.")
+                logger.warning(f"Asset ID '{uid}' not found. Skipping removal.")
 
     def set_attribute(self, key: str, value: Any, overwrite: bool = False) -> None:
         """
@@ -2366,21 +2386,21 @@ class PhysicalAssetCollection:
 
         # Use module-level logger (best practice) instead of root logging
         suffix = 's' if count != 1 else ''
-        logging.info(f"Updated attribute '{key}' for {count} asset{suffix}.")
+        logger.info(f"Updated attribute '{key}' for {count} asset{suffix}.")
 
     def set_asset_type(self, asset_type: str, overwrite: bool = True) -> None:
         """
         Batch assign a specific asset type to all assets in the collection.
 
-        This is a convenience wrapper around `set_attribute` that ensures the 
+        This is a convenience wrapper around `set_attribute` that ensures the
         type is saved using the standardized primary key ('asset_type').
 
         Args:
-            asset_type (str): 
+            asset_type (str):
                 The type label to assign (e.g., 'building', 'utility_pole').
-            overwrite (bool): 
-                If True, overwrites any existing asset types. If False, only 
-                assigns the type to assets that do not currently have one. 
+            overwrite (bool):
+                If True, overwrites any existing asset types. If False, only
+                assigns the type to assets that do not currently have one.
                 Defaults to True.
 
         Examples:
@@ -2402,10 +2422,10 @@ class PhysicalAssetCollection:
             >>> print(collection['2'].asset_type)
             building
         """
-        # Dynamically grab the "gold standard" key defined in the 
+        # Dynamically grab the "gold standard" key defined in the
         # PhysicalAsset class to ensure it always matches the standard schema:
         primary_key = PhysicalAsset._ASSET_TYPE_KEYS[0]
-        
+
         # Use the existing batch-update logic:
         self.set_attribute(key=primary_key, value=asset_type, overwrite=overwrite)
 
@@ -2778,7 +2798,7 @@ class PhysicalAssetCollection:
             while col in seen_fields:
                 suffix = str(counter)
                 # Trim the base just enough to make room for the suffix:
-                col = f'{base[:10 - len(suffix)]}{suffix}'
+                col = f'{base[: 10 - len(suffix)]}{suffix}'
                 counter += 1
             seen_fields.add(col)
             return col
@@ -2863,7 +2883,7 @@ class PhysicalAssetCollection:
         else:
             # If a user provides a custom CRS, we skip creation rather than
             # guessing or writing a bad PRJ:
-            logging.info(
+            logger.info(
                 f"Skipping .prj generation for custom CRS '{crs}'. "
-                "You may need to provide this manually."
+                'You may need to provide this manually.'
             )

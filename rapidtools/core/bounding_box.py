@@ -35,7 +35,20 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 08-05-2026
+# 09-22-2026
+
+"""
+Axis-aligned rectangular regions.
+
+:class:`BoundingBox` wraps a rectangular Shapely polygon and adds constructors
+from GeoJSON files, rasters, geometries and unions, plus tiling helpers used
+by the data-source clients.
+
+Example:
+    >>> from rapidtools.core import BoundingBox
+    >>> BoundingBox(0, 0, 2, 1).area
+    2.0
+"""
 
 from __future__ import annotations
 
@@ -50,8 +63,9 @@ from shapely.geometry import box as shapely_box
 from shapely.geometry import shape
 from shapely.geometry.base import BaseGeometry
 
-
 from .region import Region
+
+logger = logging.getLogger(__name__)
 
 
 class BoundingBox(Region):
@@ -110,7 +124,7 @@ class BoundingBox(Region):
     @property
     def area(self) -> float:
         """
-        Return the area of the bounding box .
+        Return the area of the bounding box.
 
         Overridden from ``Region`` to use simple float math instead of
         Shapely logic for performance.
@@ -157,20 +171,30 @@ class BoundingBox(Region):
     @classmethod
     def from_geojson(cls, filepath: str | Path) -> BoundingBox:
         """
-        Create a BoundingBox representing the total spatial extent of a GeoJSON file.
+        Create a BoundingBox covering the total spatial extent of a GeoJSON file.
 
-        Uses pre-computed 'bbox' fields when available for max performance, and 
-        streams geometry bounds without building large in-memory lists. Automatically 
-        reprojects to WGS84 (EPSG:4326) if a non-4326 CRS is declared.
+        The method uses a pre-computed top-level ``bbox`` member when one is
+        present (the fastest path) and otherwise streams the bounds of every
+        feature without building large in-memory geometry lists. Feature-level
+        ``bbox`` members are honoured before falling back to the geometry.
+        Empty geometries are skipped. If the file declares a legacy ``crs``
+        member that is not EPSG:4326, the resulting bounds are reprojected to
+        WGS84.
 
         Args:
-            filepath (str | Path): Path to the GeoJSON file.
+            filepath (str | Path):
+                Path to a GeoJSON file containing a ``FeatureCollection``, a
+                single ``Feature``, or a bare geometry object.
 
         Returns:
-            BoundingBox: A box covering the entire extent of the GeoJSON.
+            BoundingBox:
+                A box covering the entire extent of the GeoJSON content, in
+                WGS84 (EPSG:4326) coordinates.
 
         Raises:
-            ValueError: If the GeoJSON contains no valid geometries or is malformed.
+            ValueError:
+                If the top-level ``type`` is not a supported GeoJSON type, or
+                if the file contains no valid, non-empty geometries.
 
         Example:
             >>> from rapidtools.core import BoundingBox
@@ -179,44 +203,51 @@ class BoundingBox(Region):
             >>> print(bbox.bounds)
             (-118.5, 34.0, -118.0, 34.5)
         """
-        with open(filepath, 'r', encoding='utf-8') as f:
+        with open(filepath, encoding='utf-8') as f:
             data = json.load(f)
 
-        # 1. Fast path: top-level 'bbox'
-        if "bbox" in data:
-            bbox = data["bbox"]
+        # 1. Fast path: a pre-computed top-level 'bbox' (2D or 3D):
+        if 'bbox' in data:
+            bbox = data['bbox']
             if len(bbox) == 4:
                 return cls(bbox[0], bbox[1], bbox[2], bbox[3])
             elif len(bbox) == 6:
                 return cls(bbox[0], bbox[1], bbox[3], bbox[4])
 
-        # Extract items streamingly
-        doc_type = data.get("type")
-        if doc_type == "FeatureCollection":
-            items = data.get("features", [])
-        elif doc_type == "Feature":
+        # Normalize the document into a list of feature-like items:
+        doc_type = data.get('type')
+        if doc_type == 'FeatureCollection':
+            items = data.get('features', [])
+        elif doc_type == 'Feature':
             items = [data]
-        elif doc_type in ["Point", "MultiPoint", "LineString", "MultiLineString", 
-                          "Polygon", "MultiPolygon", "GeometryCollection"]:
-            items = [{"geometry": data}]
+        elif doc_type in [
+            'Point',
+            'MultiPoint',
+            'LineString',
+            'MultiLineString',
+            'Polygon',
+            'MultiPolygon',
+            'GeometryCollection',
+        ]:
+            items = [{'geometry': data}]
         else:
-            raise ValueError(f"Unsupported GeoJSON type: {doc_type}")
+            raise ValueError(f'Unsupported GeoJSON type: {doc_type}')
 
         min_x = min_y = float('inf')
         max_x = max_y = float('-inf')
         found_valid = False
 
-        # 2. Stream bounds calculation without storing all Shapely objects in memory
+        # 2. Stream the bounds without keeping every Shapely object in memory:
         for item in items:
-            # Check feature-level 'bbox' first
-            if "bbox" in item and len(item["bbox"]) in (4, 6):
-                b = item["bbox"]
+            # Prefer a feature-level 'bbox' when one is present:
+            if 'bbox' in item and len(item['bbox']) in (4, 6):
+                b = item['bbox']
                 b_minx, b_miny = b[0], b[1]
                 b_maxx, b_maxy = (b[2], b[3]) if len(b) == 4 else (b[3], b[4])
                 found_valid = True
-            elif item.get("geometry"):
-                geom = shape(item["geometry"])
-                # Ignore empty geometries to prevent NaN bounds corrupting min/max
+            elif item.get('geometry'):
+                geom = shape(item['geometry'])
+                # Ignore empty geometries so NaN bounds cannot corrupt min/max:
                 if geom.is_empty:
                     continue
                 b_minx, b_miny, b_maxx, b_maxy = geom.bounds
@@ -224,22 +255,24 @@ class BoundingBox(Region):
             else:
                 continue
 
-            if b_minx < min_x: min_x = b_minx
-            if b_miny < min_y: min_y = b_miny
-            if b_maxx > max_x: max_x = b_maxx
-            if b_maxy > max_y: max_y = b_maxy
+            min_x = min(min_x, b_minx)
+            min_y = min(min_y, b_miny)
+            max_x = max(max_x, b_maxx)
+            max_y = max(max_y, b_maxy)
 
         if not found_valid:
-            raise ValueError("No valid or non-empty geometries found in the GeoJSON to calculate bounds.")
+            raise ValueError(
+                'No valid or non-empty geometries found in the GeoJSON to '
+                'calculate bounds.'
+            )
 
-        # 3. Optional: Reproject if legacy GeoJSON CRS is specified and not EPSG:4326
-        crs_info = data.get("crs", {})
-        if crs_info:
-            crs_name = crs_info.get("properties", {}).get("name", "")
-            if crs_name and "4326" not in crs_name:
-                min_x, min_y, max_x, max_y = transform_bounds(
-                    crs_name, 'EPSG:4326', min_x, min_y, max_x, max_y
-                )
+        # 3. Reproject if a legacy GeoJSON CRS other than EPSG:4326 is declared:
+        crs_info = data.get('crs') or {}
+        crs_name = crs_info.get('properties', {}).get('name', '')
+        if crs_name and '4326' not in crs_name:
+            min_x, min_y, max_x, max_y = transform_bounds(
+                crs_name, 'EPSG:4326', min_x, min_y, max_x, max_y
+            )
 
         return cls(min_x, min_y, max_x, max_y)
 
@@ -268,61 +301,61 @@ class BoundingBox(Region):
         """
         minx, miny, maxx, maxy = geometry.bounds
         return cls(minx, miny, maxx, maxy)
-    
+
     @classmethod
-    def from_raster(cls, filepath: str | Path) -> 'BoundingBox':
+    def from_raster(cls, filepath: str | Path) -> BoundingBox:
         """
         Create a BoundingBox representing the spatial extent of a raster file.
-        
-        Automatically reprojects the bounds to standard WGS84 (EPSG:4326) 
-        if the source raster is in a different coordinate reference system 
-        (e.g., a localized UTM zone).
- 
+
+        Automatically reprojects the bounds to WGS84 (EPSG:4326) if the source
+        raster is in a different coordinate reference system (e.g., a localized
+        UTM zone). Rasters without a CRS are assumed to already be in WGS84.
+
         Args:
             filepath (str | Path): Path to the georeferenced raster file.
- 
+
         Returns:
             BoundingBox: A WGS84 bounding box covering the extent of the raster.
-            
+
+        Raises:
+            rasterio.errors.RasterioIOError: If the file cannot be opened.
+
         Example:
             >>> from rapidtools.core import BoundingBox
             >>> from rapidtools import download_dataset
             >>>
             >>> # Download a sample drone flight:
             >>> [raster_path] = download_dataset('eaton_patch1')
-            >>> 
+            >>>
             >>> # Extract its spatial bounds instantly:
             >>> bbox = BoundingBox.from_raster(raster_path)
             >>> print(bbox.bounds)
             (-118.0934, 34.1842, -118.0911, 34.1858)
-        """        
+        """
         with rasterio.open(filepath) as src:
             bounds = src.bounds
             crs = src.crs
-            
-            # Reproject to WGS84 (EPSG:4326) if the raster uses a different CRS
+
+            # Reproject to WGS84 (EPSG:4326) if the raster uses a different CRS:
             if crs and crs.to_string() != 'EPSG:4326':
                 min_x, min_y, max_x, max_y = transform_bounds(
-                    crs, 
-                    'EPSG:4326', 
-                    bounds.left, 
-                    bounds.bottom, 
-                    bounds.right, 
-                    bounds.top
+                    crs,
+                    'EPSG:4326',
+                    bounds.left,
+                    bounds.bottom,
+                    bounds.right,
+                    bounds.top,
                 )
             else:
-                # Already in EPSG:4326 (or missing CRS entirely)
-                min_x = bounds.left
-                min_y = bounds.bottom
-                max_x = bounds.right
-                max_y = bounds.top
-            
-            return cls(
-                min_x=min_x,
-                min_y=min_y,
-                max_x=max_x,
-                max_y=max_y
-            )
+                # Already in EPSG:4326 (or missing CRS entirely):
+                min_x, min_y, max_x, max_y = (
+                    bounds.left,
+                    bounds.bottom,
+                    bounds.right,
+                    bounds.top,
+                )
+
+        return cls(min_x=min_x, min_y=min_y, max_x=max_x, max_y=max_y)
 
     @classmethod
     def from_union(cls, region1: Region, region2: Region) -> BoundingBox:
@@ -461,7 +494,7 @@ class BoundingBox(Region):
         """
         # Protect against zero-division if height or width is 0:
         if self.height <= 0 or self.width <= 0:
-            logging.warning('Cannot tile a BoundingBox with 0 width or height.')
+            logger.warning('Cannot tile a BoundingBox with 0 width or height.')
             return [self]
 
         # If the bounding box area is within the maximum allowed, return it:
@@ -477,7 +510,7 @@ class BoundingBox(Region):
         n_cols = math.ceil(math.sqrt(total_tiles_needed * aspect_ratio))
         n_rows = math.ceil(math.sqrt(total_tiles_needed / aspect_ratio))
 
-        logging.info(
+        logger.info(
             f'Tiling BoundingBox into {n_cols}x{n_rows} grid '
             f'(Target Area: {max_area}, Total Tiles: {n_cols * n_rows})'
         )

@@ -35,7 +35,17 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 01-28-2026
+# 09-22-2026
+
+"""
+Abstract base class shared by every geographic region type in rapidtools.
+
+Concrete regions (:class:`~rapidtools.core.BoundingBox`,
+:class:`~rapidtools.core.PolygonRegion`) wrap a Shapely geometry and expose a
+uniform, cached interface for bounds, area, centroid and the common spatial
+predicates so that downstream code never needs to know which region type it
+was handed.
+"""
 
 from __future__ import annotations
 
@@ -63,6 +73,18 @@ class Region(ABC):
            ``Polygon`` or ``MultiPolygon`` in their ``__init__`` method.
         2. Implementing the abstract methods: ``get_bounding_box``,
            ``buffer``, and ``from_geometry``.
+
+    Example:
+        Every concrete region shares the same interface:
+
+        >>> from rapidtools.core import BoundingBox, PolygonRegion
+        >>>
+        >>> box = BoundingBox(0, 0, 10, 10)
+        >>> tri = PolygonRegion([(2, 2), (8, 2), (5, 8)])
+        >>> box.contains(tri), box.intersects(tri)
+        (True, True)
+        >>> tri.get_bounding_box().bounds
+        (2.0, 2.0, 8.0, 8.0)
     """
 
     # All subclasses will have an internal shapely object for geometric
@@ -75,6 +97,22 @@ class Region(ABC):
 
         This uses Shapely's ``equals`` predicate, which returns ``True`` if the
         shapes cover the exact same set of points, even if defined differently.
+
+        Args:
+            other (object): The object to compare against.
+
+        Returns:
+            bool:
+                ``True`` if both regions cover the same point set;
+                ``NotImplemented`` if ``other`` is not a ``Region``.
+
+        Example:
+            >>> from rapidtools.core import BoundingBox, PolygonRegion
+            >>>
+            >>> box = BoundingBox(0, 0, 1, 1)
+            >>> square = PolygonRegion([(0, 0), (1, 0), (1, 1), (0, 1)])
+            >>> box == square
+            True
         """
         if self is other:
             return True
@@ -88,6 +126,15 @@ class Region(ABC):
         Create a hash based on the geometry's WKT representation.
 
         This allows Regions to be used in sets and as dictionary keys.
+
+        Returns:
+            int: A hash derived from the geometry's WKB bytes.
+
+        Example:
+            >>> from rapidtools.core import BoundingBox
+            >>>
+            >>> len({BoundingBox(0, 0, 1, 1), BoundingBox(0, 0, 1, 1)})
+            1
         """
         return hash(self._geom.wkb)
 
@@ -98,6 +145,15 @@ class Region(ABC):
         This includes the class name and a preview of the geometry in WKT
         (Well-Known Text) format. Long WKT strings are truncated to avoid
         cluttering logs.
+
+        Returns:
+            str: A string such as ``"PolygonRegion(wkt='POLYGON ((...))')"``.
+
+        Example:
+            >>> from rapidtools.core import PolygonRegion
+            >>>
+            >>> repr(PolygonRegion([(0, 0), (1, 0), (0, 1)]))
+            "PolygonRegion(wkt='POLYGON ((0 0, 1 0, 0 1, 0 0))')"
         """
         wkt = self.wkt
 
@@ -119,6 +175,13 @@ class Region(ABC):
             dict[str, Any]:
                 A dictionary containing ``type`` and ``coordinates`` keys
                 following the GeoJSON specification.
+
+        Example:
+            >>> from shapely.geometry import shape
+            >>> from rapidtools.core import BoundingBox
+            >>>
+            >>> shape(BoundingBox(0, 0, 1, 1)).area
+            1.0
         """
         return self._geom.__geo_interface__
 
@@ -133,6 +196,12 @@ class Region(ABC):
 
         Returns:
             Polygon: The Shapely Polygon defining the region.
+
+        Example:
+            >>> from rapidtools.core import BoundingBox
+            >>>
+            >>> BoundingBox(0, 0, 2, 2).geometry.geom_type
+            'Polygon'
         """
         return self._geom
 
@@ -143,6 +212,12 @@ class Region(ABC):
 
         Returns:
             float: The scalar height in the units of the coordinate system.
+
+        Example:
+            >>> from rapidtools.core import BoundingBox
+            >>>
+            >>> BoundingBox(0, 0, 10, 20).height
+            20.0
         """
         _, min_y, _, max_y = self.bounds
         return max_y - min_y
@@ -159,6 +234,12 @@ class Region(ABC):
 
         Returns:
             bool: ``True`` if the geometry contains zero points.
+
+        Example:
+            >>> from rapidtools.core import BoundingBox
+            >>>
+            >>> BoundingBox(0, 0, 1, 1).is_empty
+            False
         """
         return self.geometry.is_empty
 
@@ -173,6 +254,12 @@ class Region(ABC):
 
         Returns:
             bool: ``True`` if valid, ``False`` otherwise.
+
+        Example:
+            >>> from rapidtools.core import PolygonRegion
+            >>>
+            >>> PolygonRegion([(0, 0), (1, 1), (1, 0), (0, 1)]).is_valid  # bow-tie
+            False
         """
         return self.geometry.is_valid
 
@@ -183,6 +270,12 @@ class Region(ABC):
 
         Returns:
             float: The scalar width in the units of the coordinate system.
+
+        Example:
+            >>> from rapidtools.core import BoundingBox
+            >>>
+            >>> BoundingBox(0, 0, 10, 20).width
+            10.0
         """
         min_x, _, max_x, _ = self.bounds
         return max_x - min_x
@@ -194,6 +287,12 @@ class Region(ABC):
 
         Returns:
             str: The WKT string (e.g., 'POLYGON ((0 0, 1 0, 1 1, 0 0))').
+
+        Example:
+            >>> from rapidtools.core import PolygonRegion
+            >>>
+            >>> PolygonRegion([(0, 0), (1, 0), (1, 1)]).wkt
+            'POLYGON ((0 0, 1 0, 1 1, 0 0))'
         """
         return self._geom.wkt
 
@@ -210,6 +309,12 @@ class Region(ABC):
             - If coordinates are in degrees (e.g., WGS84), result is sq.
               degrees. Square degrees are generally not useful for physical
               size estimates.
+
+        Example:
+            >>> from rapidtools.core import PolygonRegion
+            >>>
+            >>> PolygonRegion([(0, 0), (4, 0), (0, 3)]).area
+            6.0
         """
         return self._geom.area
 
@@ -225,6 +330,12 @@ class Region(ABC):
             tuple[float, float, float, float]:
                 A tuple containing the (min_x, min_y, max_x, max_y)
                 coordinates of the geometry's extent.
+
+        Example:
+            >>> from rapidtools.core import PolygonRegion
+            >>>
+            >>> PolygonRegion([(1, 2), (5, 2), (3, 9)]).bounds
+            (1.0, 2.0, 5.0, 9.0)
         """
         return self._geom.bounds
 
@@ -236,6 +347,12 @@ class Region(ABC):
         Returns:
             tuple[float, float]:
                 The longitude (x) and latitude (y) of the center.
+
+        Example:
+            >>> from rapidtools.core import PolygonRegion
+            >>>
+            >>> PolygonRegion([(0, 0), (2, 0), (2, 2), (0, 2)]).centroid
+            (1.0, 1.0)
         """
         centroid = self._geom.centroid
         return (centroid.x, centroid.y)
@@ -254,6 +371,14 @@ class Region(ABC):
             ``True`` if no points of ``other`` lie in the exterior of this
             region and at least one point of the interior of ``other`` lies in
             the interior of this region.
+
+        Example:
+            >>> from shapely.geometry import Point
+            >>> from rapidtools.core import BoundingBox
+            >>>
+            >>> box = BoundingBox(0, 0, 10, 10)
+            >>> box.contains(Point(5, 5)), box.contains(Point(50, 50))
+            (True, False)
         """
         if isinstance(other, Region):
             return self.geometry.contains(other.geometry)
@@ -271,6 +396,12 @@ class Region(ABC):
             float:
                 Distance in the units of the coordinate system (e.g.,
                 degrees or meters). Returns 0.0 if the regions intersect.
+
+        Example:
+            >>> from rapidtools.core import BoundingBox
+            >>>
+            >>> BoundingBox(0, 0, 1, 1).distance(BoundingBox(4, 0, 5, 1))
+            3.0
         """
         if isinstance(other, Region):
             return self.geometry.distance(other.geometry)
@@ -289,6 +420,15 @@ class Region(ABC):
         Returns:
             ``True`` if the boundary or interior of this region shares any
             points with ``other``; ``False`` otherwise.
+
+        Example:
+            >>> from rapidtools.core import BoundingBox
+            >>>
+            >>> a = BoundingBox(0, 0, 2, 2)
+            >>> a.intersects(BoundingBox(1, 1, 3, 3))
+            True
+            >>> a.intersects(BoundingBox(5, 5, 6, 6))
+            False
         """
         if isinstance(other, Region):
             return self.geometry.intersects(other.geometry)
@@ -310,6 +450,12 @@ class Region(ABC):
         Returns:
             Self:
                 A new concrete Region instance representing the buffered area.
+
+        Example:
+            >>> from rapidtools.core import BoundingBox
+            >>>
+            >>> BoundingBox(0, 0, 1, 1).buffer(1).bounds
+            (-1.0, -1.0, 2.0, 2.0)
         """
 
     @classmethod
@@ -325,6 +471,13 @@ class Region(ABC):
 
         Returns:
             Self: An instance of the concrete Region subclass.
+
+        Example:
+            >>> from shapely.geometry import Point
+            >>> from rapidtools.core import BoundingBox
+            >>>
+            >>> BoundingBox.from_geometry(Point(1, 2).buffer(1)).bounds
+            (0.0, 1.0, 2.0, 3.0)
         """
 
     @abstractmethod
@@ -335,4 +488,10 @@ class Region(ABC):
         Returns:
             BoundingBox:
                 A new BoundingBox instance derived from the geometry's extrema.
+
+        Example:
+            >>> from rapidtools.core import PolygonRegion
+            >>>
+            >>> PolygonRegion([(0, 0), (4, 0), (2, 3)]).get_bounding_box()
+            BoundingBox(minx=0.0, miny=0.0, maxx=4.0, maxy=3.0)
         """

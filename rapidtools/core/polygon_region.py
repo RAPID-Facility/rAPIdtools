@@ -35,7 +35,20 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-04-2026
+# 09-22-2026
+
+"""
+Arbitrary polygonal regions.
+
+:class:`PolygonRegion` wraps a Shapely polygon so irregular study areas can be
+used wherever a :class:`~rapidtools.core.Region` is expected.
+
+Example:
+    >>> from rapidtools.core import PolygonRegion
+    >>> region = PolygonRegion([(0, 0), (4, 0), (4, 3), (0, 3)])
+    >>> region.get_bounding_box().bounds
+    (0.0, 0.0, 4.0, 3.0)
+"""
 
 from __future__ import annotations
 
@@ -122,7 +135,7 @@ class PolygonRegion(Region):
         """
         if not isinstance(geometry, Polygon):
             raise TypeError(
-                'PolygonRegion requires a Polygon, got ' f'{type(geometry).__name__}'
+                f'PolygonRegion requires a Polygon, got {type(geometry).__name__}'
             )
 
         instance = cls.__new__(cls)
