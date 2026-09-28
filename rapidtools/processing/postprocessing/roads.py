@@ -35,7 +35,29 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-25-2026
+# 09-22-2026
+
+"""
+Regularization of raster-derived road polygons into clean centerlines.
+
+This module provides :class:`RoadwayRegularizer`, a pure-geometry pipeline
+component that converts the jagged blobs produced by raster-to-vector road
+segmentation (e.g., from
+:class:`~rapidtools.processing.SAM3OrthoFeatureExtractor` with the prompt
+``'road'``) into straight centerline segments with statistically sampled
+widths, and rebuilds clean, non-overlapping road polygons from them.
+
+All computation happens in a local azimuthal-equidistant projection in US
+survey feet; inputs and outputs are WGS84.
+
+Example:
+    >>> from rapidtools.core import PhysicalAssetCollection
+    >>> from rapidtools.processing import RoadwayRegularizer
+    >>> raw_roads = PhysicalAssetCollection.from_geojson('roads_raw.geojson')
+    >>> centerlines, polygons = RoadwayRegularizer(min_width_ft=20)(raw_roads)
+    >>> centerlines.to_geojson('centerlines.geojson')
+    >>> polygons.to_geojson('roads_clean.geojson')
+"""
 
 import logging
 import math
@@ -45,13 +67,14 @@ from typing import Any
 
 import networkx as nx
 import pyproj
+import shapely
 from shapely.geometry import LineString, MultiPoint
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import linemerge, transform, unary_union, voronoi_diagram
 from tqdm import tqdm
 
-# Import your core inventory classes (adjust the import path as needed)
 from rapidtools.core import PhysicalAsset, PhysicalAssetCollection
+from rapidtools.processing.step import Stage
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +95,7 @@ SKELETON_SIMPLIFY_FACTOR = 0.1  # Initial smoothing tolerance
 SKELETON_BUFFER_FACTOR = 0.2  # Outward/Inward buffer to remove jagged edges
 SKELETON_SEGMENTIZE_FACTOR = 0.5  # Distance between points injected along boundary
 SKELETON_CLIP_FACTOR = 0.05  # Negative buffer to clip Voronoi lines inside polygon
+SKELETON_SNAP_GRID_FT = 0.001  # Grid used to snap Voronoi edge endpoints before merging
 
 # 3. Graph Healing & Pruning
 COORD_ROUNDING_DECIMALS = 1  # Precision used when identifying graph nodes
@@ -95,66 +119,131 @@ OUTPUT_ROUNDING_DECIMALS = 2  # Decimals used when storing properties (width, az
 
 class RoadwayRegularizer:
     """
-    Pipeline component to regularize jagged raster-to-vector road polygons into
-    clean, statistically sized, continuous straight segments.
+    Pipeline component to regularize jagged raster-to-vector road polygons.
 
     This regularizer processes raw input geometries, extracts a Voronoi-based
     centerline skeleton, heals the graph, merges collinear segments, and
-    statistically samples widths. It outputs in-memory `PhysicalAssetCollection`
-    objects for both the centerlines and the reconstructed polygons.
+    statistically samples widths. It outputs in-memory
+    ``PhysicalAssetCollection`` objects for both the centerlines and the
+    reconstructed polygons.
 
     Args:
         min_width_ft (float, optional):
             The minimum enforced width for any regularized road segment in
             feet. Defaults to 22.0.
         min_network_length_ft (float, optional):
-            The minimum cumulative length a polygon collection must possess to be
-            considered a valid road network. Any disconnected stub networks
-            shorter than this value will be filtered out. Defaults to 100.0.
+            The minimum cumulative length a connected skeleton component must
+            possess to be considered a valid road network. Any disconnected
+            stub networks shorter than this value will be filtered out.
+            Defaults to 100.0.
+
+    Example:
+        >>> from rapidtools.core import PhysicalAssetCollection
+        >>> from rapidtools.processing import RoadwayRegularizer
+        >>>
+        >>> raw = PhysicalAssetCollection.from_geojson('roads_raw.geojson')
+        >>> regularizer = RoadwayRegularizer(
+        ...     min_width_ft=22.0, min_network_length_ft=150.0
+        ... )
+        >>> centerlines, polygons = regularizer(raw)
+        >>> centerlines[0].attributes
+        {'asset_type': 'road_centerline', 'width_ft': 24.5, 'azimuth_deg': 91.2}
     """
+
+    stage = Stage.REGULARIZE
 
     def __init__(
         self,
         min_width_ft: float = 22.0,
         min_network_length_ft: float = 100.0,
+        output: str = 'both',
     ):
+        """
+        Initialize the regularizer thresholds.
+
+        Args:
+            min_width_ft (float, optional):
+                Minimum enforced road width in feet.
+            min_network_length_ft (float, optional):
+                Minimum cumulative length of a skeleton component in feet.
+        """
         self.min_width_ft = min_width_ft
         self.min_network_length_ft = min_network_length_ft
+        if output not in ('both', 'polygons', 'centerlines'):
+            raise ValueError(
+                f"output must be 'both', 'polygons' or 'centerlines', got {output!r}."
+            )
+        # 'both' returns (centerlines, polygons); the single-collection modes make
+        # the regularizer usable as a Pipeline step.
+        self.output = output
 
     def __call__(
         self, input_assets: PhysicalAssetCollection
     ) -> tuple[PhysicalAssetCollection, PhysicalAssetCollection]:
         """
-        Allows the instance to be called directly like a function.
+        Allow the instance to be called directly like a function.
 
         Args:
-            input_assets (PhysicalAssetCollection): The raw input road polygons.
+            input_assets (PhysicalAssetCollection):
+                The raw input road polygons (WGS84).
 
         Returns:
-            tuple[PhysicalAssetCollection, PhysicalAssetCollection]: A tuple containing
-                the centerlines collection and the reconstructed polygons collection.
+            tuple[PhysicalAssetCollection, PhysicalAssetCollection]:
+                A tuple containing the centerlines collection and the
+                reconstructed polygons collection.
+
+        Example:
+            >>> centerlines, polygons = RoadwayRegularizer()(raw_roads)
         """
-        return self.process(input_assets)
+        centerlines, polygons = self.process(input_assets)
+        if self.output == 'polygons':
+            return polygons
+        if self.output == 'centerlines':
+            return centerlines
+        return centerlines, polygons
 
     def process(
         self, input_assets: PhysicalAssetCollection
     ) -> tuple[PhysicalAssetCollection, PhysicalAssetCollection]:
         """
-        Executes the regularization logic and returns asset collections.
+        Execute the regularization logic and return asset collections.
+
+        The steps are: project to a local feet-based CRS, drop polygons
+        smaller than ``MIN_POLYGON_AREA_SQFT``, fuse near-touching polygons,
+        skeletonize with a Voronoi diagram, heal/prune the skeleton graph,
+        remove short stub networks, merge collinear segments, sample widths
+        and azimuths, and finally rebuild WGS84 centerline and polygon
+        assets.
 
         Args:
-            input_assets (PhysicalAssetCollection): The raw input road polygons.
+            input_assets (PhysicalAssetCollection):
+                The raw input road polygons (WGS84).
 
         Returns:
-            tuple[PhysicalAssetCollection, PhysicalAssetCollection]: A tuple containing:
-                - `centerlines_collection`: Assets representing the road centerlines.
-                - `polygons_collection`: Assets representing the regularized polygons.
+            tuple[PhysicalAssetCollection, PhysicalAssetCollection]:
+                A tuple containing:
+
+                - ``centerlines_collection``: Assets representing the road
+                  centerlines (``LineString`` geometries) with the attributes
+                  ``'asset_type': 'road_centerline'``, ``'width_ft'`` and
+                  ``'azimuth_deg'``.
+                - ``polygons_collection``: Assets representing the regularized
+                  polygons with ``'asset_type': 'road_polygon'`` and the same
+                  width/azimuth attributes.
+
+                Both collections are empty when the input is empty or when no
+                polygon exceeds the minimum area.
+
+        Example:
+            >>> centerlines, polygons = RoadwayRegularizer().process(raw_roads)
+            >>> polygons[0].attributes['asset_type']
+            'road_polygon'
         """
         logger.info('Starting Roadway Regularization Pipeline...')
 
         # 1. Extract Geometries & Project
         raw_geometries = [asset.geometry for asset in input_assets]
-        
+
         if not raw_geometries:
             logger.warning('No valid geometries found in input collection. Exiting.')
             return PhysicalAssetCollection(), PhysicalAssetCollection()
@@ -167,6 +256,12 @@ class RoadwayRegularizer:
             for g in raw_geometries
             if transform(project_to_feet, g).area > MIN_POLYGON_AREA_SQFT
         ]
+
+        if not valid_polys:
+            logger.warning(
+                f'No input polygon exceeds {MIN_POLYGON_AREA_SQFT} sq ft. Exiting.'
+            )
+            return PhysicalAssetCollection(), PhysicalAssetCollection()
 
         all_networks = unary_union(
             [
@@ -208,7 +303,7 @@ class RoadwayRegularizer:
         polygons_collection = self._build_polygons_collection(
             analyzed_segments, project_to_wgs84
         )
-        
+
         # 9. Default undefined asset types to 'road'
         centerlines_collection.set_asset_type(ASSET_TYPE, overwrite=False)
         polygons_collection.set_asset_type(ASSET_TYPE, overwrite=False)
@@ -219,13 +314,35 @@ class RoadwayRegularizer:
     # --- Private Helper Methods ---
 
     def _get_geoms(self, geometry: BaseGeometry) -> list[BaseGeometry]:
-        """Extracts a list of sub-geometries from a multi-part Shapely geometry."""
+        """
+        Extract the list of sub-geometries from a (multi-part) geometry.
+
+        Args:
+            geometry (BaseGeometry):
+                Any Shapely geometry.
+
+        Returns:
+            list[BaseGeometry]:
+                The parts of a multi-part geometry, or ``[geometry]`` for a
+                single-part geometry.
+        """
         if hasattr(geometry, 'geoms'):
             return list(geometry.geoms)
         return [geometry]
 
     def _get_lines(self, geom: BaseGeometry) -> list[LineString]:
-        """Recursively extracts LineStrings from a geometry or geometry collection."""
+        """
+        Recursively extract ``LineString`` parts from a geometry.
+
+        Args:
+            geom (BaseGeometry):
+                A ``LineString``, ``MultiLineString`` or nested
+                ``GeometryCollection``.
+
+        Returns:
+            list[LineString]:
+                All ``LineString`` parts found (empty for point/polygon input).
+        """
         lines = []
         if geom.geom_type == 'LineString':
             lines.append(geom)
@@ -235,7 +352,21 @@ class RoadwayRegularizer:
         return lines
 
     def _get_transformers(self, base_geom: BaseGeometry) -> tuple[Any, Any]:
-        """Configures pyproj transformers to convert between metric and WGS84."""
+        """
+        Build pyproj transformers between WGS84 and a local feet-based CRS.
+
+        The local CRS is an azimuthal equidistant projection centred on the
+        centroid of ``base_geom`` with units of US survey feet.
+
+        Args:
+            base_geom (BaseGeometry):
+                WGS84 geometry whose centroid defines the projection origin.
+
+        Returns:
+            tuple[Callable, Callable]:
+                ``(project_to_feet, project_to_wgs84)`` transform functions
+                suitable for :func:`shapely.ops.transform`.
+        """
         proj_wgs84 = pyproj.CRS('EPSG:4326')
         proj_feet = pyproj.CRS(
             f'+proj=aeqd +lat_0={base_geom.centroid.y} '
@@ -250,7 +381,18 @@ class RoadwayRegularizer:
         return project_to_feet, project_to_wgs84
 
     def _get_largest_polygon(self, geom: BaseGeometry) -> BaseGeometry:
-        """Finds the largest single polygon within a multi-polygon."""
+        """
+        Find the largest single polygon within a multi-part geometry.
+
+        Args:
+            geom (BaseGeometry):
+                A ``Polygon``, ``MultiPolygon`` or ``GeometryCollection``.
+
+        Returns:
+            BaseGeometry:
+                The polygon part with the largest area, or ``geom`` itself
+                when it is not multi-part.
+        """
         if geom.geom_type in ['MultiPolygon', 'GeometryCollection']:
             return max(
                 [g for g in self._get_geoms(geom) if g.geom_type == 'Polygon'],
@@ -259,7 +401,18 @@ class RoadwayRegularizer:
         return geom
 
     def _extract_all_coords(self, geom: BaseGeometry) -> list[tuple[float, float]]:
-        """Recursively extracts coordinate tuples from a geometry."""
+        """
+        Recursively extract coordinate tuples from a geometry.
+
+        Args:
+            geom (BaseGeometry):
+                Any geometry; multi-part geometries are flattened.
+
+        Returns:
+            list[tuple[float, float]]:
+                All coordinates found, in order. Objects with neither
+                ``geoms`` nor ``coords`` yield an empty list.
+        """
         if hasattr(geom, 'geoms'):
             pts = []
             for g in geom.geoms:
@@ -272,7 +425,25 @@ class RoadwayRegularizer:
     def _generate_voronoi_skeleton(
         self, network_geom: BaseGeometry, approx_width: float
     ) -> BaseGeometry:
-        """Generates a skeleton geometry from raw polygons using a Voronoi diagram."""
+        """
+        Generate a centerline skeleton from road polygons using a Voronoi diagram.
+
+        The polygon is smoothed, its boundary densified, and the Voronoi edges
+        of the boundary points are clipped to the polygon interior. Edges that
+        remain form the medial axis approximation. Edge endpoints are snapped
+        to ``SKELETON_SNAP_GRID_FT`` so that adjoining edges merge cleanly.
+
+        Args:
+            network_geom (BaseGeometry):
+                The fused road polygons in the local feet CRS.
+            approx_width (float):
+                Estimated road width in feet; scales all tolerances.
+
+        Returns:
+            BaseGeometry:
+                A ``LineString`` or ``MultiLineString`` of merged skeleton
+                edges.
+        """
         logger.info('Generating Voronoi skeleton...')
         smoothed_poly = (
             network_geom.simplify(approx_width * SKELETON_SIMPLIFY_FACTOR)
@@ -290,12 +461,38 @@ class RoadwayRegularizer:
             smoothed_poly.buffer(-approx_width * SKELETON_CLIP_FACTOR)
         )
 
-        return linemerge(unary_union(clipped_lines))
+        # Voronoi edge endpoints computed from different cells can differ by
+        # floating-point noise; snap them to a fine grid so that linemerge
+        # recognises them as shared vertices and produces continuous lines.
+        snapped_lines = shapely.set_precision(
+            unary_union(clipped_lines), SKELETON_SNAP_GRID_FT
+        )
+        return linemerge(snapped_lines)
 
     def _build_and_heal_graph(
         self, merged_lines: BaseGeometry, approx_width: float
     ) -> nx.Graph:
-        """Builds a NetworkX graph from lines and prunes or heals segments."""
+        """
+        Build a NetworkX graph from skeleton lines and prune or heal segments.
+
+        Nodes are line endpoints rounded to ``COORD_ROUNDING_DECIMALS``; the
+        line vertices are snapped onto those node coordinates so edges join
+        exactly. Edges carry ``geom`` and ``length`` attributes. Degree-2 nodes
+        are collapsed by merging their two edges,
+        and dead-end edges shorter than ``approx_width *
+        DEAD_END_PRUNING_FACTOR`` are removed. The two operations alternate
+        until the graph stops changing.
+
+        Args:
+            merged_lines (BaseGeometry):
+                Skeleton lines from :meth:`_generate_voronoi_skeleton`.
+            approx_width (float):
+                Estimated road width in feet.
+
+        Returns:
+            nx.Graph:
+                The healed and pruned skeleton graph.
+        """
         logger.info('Building and healing graph...')
         G = nx.Graph()
 
@@ -312,6 +509,14 @@ class RoadwayRegularizer:
                 round(line.coords[-1][1], COORD_ROUNDING_DECIMALS),
             )
             if start != end:
+                # Snap the line's end vertices onto the rounded node keys so
+                # that every edge meeting at a node shares exactly the same
+                # coordinate; otherwise linemerge cannot fuse them when the
+                # node is healed below.
+                coords = list(line.coords)
+                coords[0] = start
+                coords[-1] = end
+                line = LineString(coords)
                 G.add_edge(start, end, geom=line, length=line.length)
 
         # Heal and Prune
@@ -349,7 +554,21 @@ class RoadwayRegularizer:
         return G
 
     def _filter_stub_networks(self, G: nx.Graph, approx_width: float) -> nx.Graph:
-        """Filters out structurally insignificant stub networks based on path length."""
+        """
+        Remove connected components whose total length is too short.
+
+        Args:
+            G (nx.Graph):
+                Skeleton graph with ``length`` edge attributes.
+            approx_width (float):
+                Estimated road width in feet (currently unused; kept for
+                signature symmetry with the other graph helpers).
+
+        Returns:
+            nx.Graph:
+                A new graph containing only the edges of components longer
+                than ``min_network_length_ft``.
+        """
         logger.info('Structurally filtering stub networks...')
         valid_edges = []
         for comp in list(nx.connected_components(G)):
@@ -367,7 +586,24 @@ class RoadwayRegularizer:
     def _merge_collinear_segments(
         self, G: nx.Graph, approx_width: float
     ) -> list[LineString]:
-        """Simplifies and merges collinear sub-segments into continuous lines."""
+        """
+        Simplify graph edges and merge collinear sub-segments into straight lines.
+
+        Each edge geometry is simplified with a tolerance proportional to
+        ``approx_width`` and split into straight parts. Pairs of parts that
+        share an endpoint and deviate by less than ``MAX_MERGE_ANGLE_DEG`` are
+        merged repeatedly until no further merge is possible.
+
+        Args:
+            G (nx.Graph):
+                Healed skeleton graph with ``geom`` edge attributes.
+            approx_width (float):
+                Estimated road width in feet.
+
+        Returns:
+            list[LineString]:
+                Straight, merged centerline segments.
+        """
         logger.info('Merging collinear segments into continuous roads...')
         straight_segments = []
         for _, _, data in G.edges(data=True):
@@ -423,7 +659,30 @@ class RoadwayRegularizer:
     def _calculate_widths_and_azimuths(
         self, segments: list[LineString], network: BaseGeometry, approx_width: float
     ) -> list[dict[str, Any]]:
-        """Samples the physical width and heading of segments against the network."""
+        """
+        Sample the physical width and heading of each segment against the network.
+
+        At evenly spaced stations along a segment, a "measuring tape" line
+        perpendicular to the local heading is intersected with the road
+        polygon; the median intersection length (floored at
+        ``min_width_ft``) is the segment width. The azimuth is the compass
+        bearing (degrees clockwise from north) from the first to the last
+        vertex.
+
+        Args:
+            segments (list[LineString]):
+                Straight centerline segments in the local feet CRS.
+            network (BaseGeometry):
+                The fused road polygons in the same CRS.
+            approx_width (float):
+                Estimated road width in feet; sets sample spacing and tape
+                length.
+
+        Returns:
+            list[dict[str, Any]]:
+                One dict per segment with keys ``'geometry'``, ``'width'``
+                (feet) and ``'azimuth'`` (degrees).
+        """
         logger.info('Statistically sampling road widths & calculating azimuth...')
         analyzed = []
         for seg in tqdm(segments, desc='   -> Sampling'):
@@ -478,15 +737,18 @@ class RoadwayRegularizer:
         self, analyzed_segments: list[dict[str, Any]], proj_transform: Any
     ) -> PhysicalAssetCollection:
         """
-        Converts analyzed LineStrings into a PhysicalAssetCollection.
+        Convert analyzed LineStrings into a WGS84 ``PhysicalAssetCollection``.
 
         Args:
-            analyzed_segments (list[dict[str, Any]]): Data generated by the analyzer
+            analyzed_segments (list[dict[str, Any]]):
+                Data generated by :meth:`_calculate_widths_and_azimuths`
                 containing geometry, width, and azimuth.
-            proj_transform (Any): A pyproj coordinate transformer.
+            proj_transform (Any):
+                A pyproj transform function from the local CRS to WGS84.
 
         Returns:
-            PhysicalAssetCollection: The resulting centerline assets.
+            PhysicalAssetCollection:
+                The resulting centerline assets (IDs ``'cl_<hash>'``).
         """
         logger.info('Building centerlines PhysicalAssetCollection...')
         collection = PhysicalAssetCollection()
@@ -514,15 +776,23 @@ class RoadwayRegularizer:
         self, analyzed_segments: list[dict[str, Any]], proj_transform: Any
     ) -> PhysicalAssetCollection:
         """
-        Reconstructs linear polygons and packages them into a PhysicalAssetCollection.
+        Reconstruct non-overlapping road polygons from analyzed centerlines.
+
+        Segments are buffered by half their width (flat caps) from widest to
+        narrowest; each new polygon has all previously placed polygons
+        subtracted so that intersections are owned by the wider road.
 
         Args:
-            analyzed_segments (list[dict[str, Any]]): Data generated by the analyzer
-                containing geometry, width, and azimuth.
-            proj_transform (Any): A pyproj coordinate transformer.
+            analyzed_segments (list[dict[str, Any]]):
+                Data generated by :meth:`_calculate_widths_and_azimuths`
+                containing geometry, width, and azimuth. Sorted in place by
+                width (descending).
+            proj_transform (Any):
+                A pyproj transform function from the local CRS to WGS84.
 
         Returns:
-            PhysicalAssetCollection: The resulting polygon assets.
+            PhysicalAssetCollection:
+                The resulting polygon assets (IDs ``'poly_<hash>'``).
         """
         logger.info(
             'Reconstructing linear polygons and building PhysicalAssetCollection...'

@@ -35,25 +35,113 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-24-2026
+# 09-22-2026
+
+"""
+Batched, prompt-guided image segmentation for asset imagery.
+
+This module provides :class:`SAM3ImageSegmenter`, a pipeline component that
+runs a locally hosted SAM 3 (Segment Anything Model 3) over every downloaded
+image attached to the assets of a
+:class:`~rapidtools.core.PhysicalAssetCollection`. Masks and bounding boxes
+are written back into each asset's ``attributes`` so that downstream steps
+(e.g., :class:`~rapidtools.processing.BuildingRegularizer`) can georeference
+them.
+
+Example:
+    >>> from rapidtools.processing import (
+    ...     AerialImageryExtractor, Pipeline, SAM3ImageSegmenter
+    ... )
+    >>> pipeline = Pipeline([
+    ...     AerialImageryExtractor('ortho.tif', save_directory='crops'),
+    ...     SAM3ImageSegmenter(prompt=['building', 'roof'], batch_size=8),
+    ... ])
+    >>> result = pipeline.run(my_collection)
+    >>> result['bldg_01'].attributes['sam3_masks'].keys()
+    dict_keys(['bldg_01_aerial'])
+"""
 
 import logging
+import threading
 from collections.abc import Callable
 
 from tqdm import tqdm
 
-from rapidtools.core import ImageAsset, PhysicalAsset, PhysicalAssetCollection
+from rapidtools.core import (
+    ImageAsset,
+    PhysicalAsset,
+    PhysicalAssetCollection,
+    raise_if_cancelled,
+)
 from rapidtools.models import SAM3Inference
+
+from .step import Stage
+
+logger = logging.getLogger(__name__)
 
 
 class SAM3ImageSegmenter:
     """
     Pipeline component that uses local SAM 3 to segment images attached to assets.
 
-    This segmenter gathers filtered images across all `PhysicalAsset`s, batches them
-    together (to maximize GPU utilization without causing OOM errors), and stores
-    the resulting segmentation masks directly in the corresponding asset's attributes.
+    This segmenter gathers filtered images across all ``PhysicalAsset``
+    objects, batches them together (to maximize GPU utilization without
+    causing OOM errors), and stores the resulting segmentation masks directly
+    in the corresponding asset's attributes under the following keys:
+
+        - ``'sam3_masks'``: ``{image_id: masks}`` where ``masks`` is the
+          per-image mask stack returned by the model (typically an
+          ``(N, H, W)`` boolean array).
+        - ``'sam3_bounding_boxes'``: ``{image_id: boxes}`` (only when the
+          model returns boxes).
+        - ``'ai_model_used'``: The Hugging Face model ID that was used.
+
+    Args:
+        prompt (str | list[str], optional):
+            The text prompt (or list of prompts) to guide the segmentation
+            (e.g., ``'building'`` or ``['building', 'tree']``). Lists are
+            joined into a single period-separated prompt. Defaults to ``''``.
+        model_id (str, optional):
+            The Hugging Face repository ID for the SAM 3 model. Defaults to
+            ``'facebook/sam3'``.
+        device (str, optional):
+            The compute device to use (``'cuda'``, ``'cpu'``, ``'auto'``).
+            Defaults to ``'auto'``.
+        load_in_4bit (bool, optional):
+            Whether to load the model using 4-bit quantization. Defaults to
+            ``True``.
+        batch_size (int, optional):
+            Number of images to process simultaneously across assets.
+            Defaults to 4.
+        threshold (float, optional):
+            Confidence threshold for predictions. Defaults to 0.5.
+        mask_threshold (float, optional):
+            Threshold for binarizing the masks. Defaults to 0.5.
+        image_filter (Callable[[ImageAsset], bool] | None, optional):
+            A function that takes an ``ImageAsset`` and returns ``True`` if
+            the image should be segmented. If ``None``, all downloaded images
+            attached to the asset are processed. Defaults to ``None``.
+        cancel_event (threading.Event | None, optional):
+            Cooperative cancellation flag. When set, the segmenter raises
+            :class:`~rapidtools.core.OperationCancelled` before starting the
+            next batch. Defaults to ``None``.
+
+    Example:
+        Segment only the aerial crops of each asset:
+
+        >>> from rapidtools.processing import SAM3ImageSegmenter
+        >>> segmenter = SAM3ImageSegmenter(
+        ...     prompt='building',
+        ...     batch_size=8,
+        ...     image_filter=lambda img: img.id.endswith('_aerial'),
+        ... )
+        >>> collection = segmenter(my_collection)
+        >>> masks = collection['bldg_01'].attributes['sam3_masks']
+        >>> masks['bldg_01_aerial'].shape  # (num_instances, height, width)
+        (2, 512, 512)
     """
+
+    stage = Stage.SEGMENT
 
     def __init__(
         self,
@@ -65,31 +153,34 @@ class SAM3ImageSegmenter:
         threshold: float = 0.5,
         mask_threshold: float = 0.5,
         image_filter: Callable[[ImageAsset], bool] | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> None:
         """
-        Initialize the SAM 3 Image Segmenter.
+        Initialize the SAM 3 Image Segmenter and load the model once.
 
         Args:
-            prompt: 
-                The text prompt (or list of prompts) to guide the segmentation
-                (e.g., 'building' or ['building', 'tree']).
-            model_id: 
+            prompt (str | list[str], optional):
+                The text prompt (or list of prompts) to guide the
+                segmentation. Lists are joined with ``'. '``.
+            model_id (str, optional):
                 The Hugging Face repository ID for the SAM 3 model.
-            device: 
-                The compute device to use ('cuda', 'cpu', 'auto').
-            load_in_4bit: 
+            device (str, optional):
+                The compute device to use (``'cuda'``, ``'cpu'``, ``'auto'``).
+            load_in_4bit (bool, optional):
                 Whether to load the model using 4-bit quantization.
-            batch_size: 
+            batch_size (int, optional):
                 Number of images to process simultaneously across assets.
-            threshold: 
+            threshold (float, optional):
                 Confidence threshold for predictions.
-            mask_threshold: 
+            mask_threshold (float, optional):
                 Threshold for binarizing the masks.
-            image_filter: 
-                A function that takes an ``ImageAsset`` and returns ``True``
-                if the image should be segmented. If ``None``, all downloaded
-                images attached to the asset are processed.
+            image_filter (Callable[[ImageAsset], bool] | None, optional):
+                Predicate selecting which images of each asset to segment.
+            cancel_event (threading.Event | None, optional):
+                Cooperative cancellation flag checked between batches.
         """
+        # Cooperative cancellation (stops between batches):
+        self.cancel_event = cancel_event
         if isinstance(prompt, list):
             self.prompt = '. '.join(prompt)
         else:
@@ -114,11 +205,30 @@ class SAM3ImageSegmenter:
         """
         Execute the segmentation process on the provided asset collection.
 
+        Images are collected from every asset (optionally filtered by
+        ``image_filter``), restricted to those that exist on disk, and
+        processed in batches of ``batch_size``. A batch that fails (model
+        returns ``None`` or raises) is counted and logged, but does not stop
+        the remaining batches.
+
         Args:
-            asset_collection: The collection of physical assets to process.
+            asset_collection (PhysicalAssetCollection):
+                The collection of physical assets to process.
 
         Returns:
-            The mutated ``PhysicalAssetCollection`` with segmentation masks added.
+            PhysicalAssetCollection:
+                The mutated collection with ``'sam3_masks'``,
+                ``'sam3_bounding_boxes'`` and ``'ai_model_used'`` written to
+                the attributes of every asset that had at least one
+                successfully segmented image.
+
+        Raises:
+            OperationCancelled:
+                If ``cancel_event`` is set between two batches.
+
+        Example:
+            >>> segmenter = SAM3ImageSegmenter(prompt='utility pole')
+            >>> collection = segmenter(my_collection)
         """
         items_to_process: list[tuple[PhysicalAsset, ImageAsset]] = []
 
@@ -133,10 +243,10 @@ class SAM3ImageSegmenter:
                     items_to_process.append((asset, img))
 
         if not items_to_process:
-            logging.warning('No valid downloaded images found to segment.')
+            logger.warning('No valid downloaded images found to segment.')
             return asset_collection
 
-        logging.info(
+        logger.info(
             f'SAM 3: Segmenting {len(items_to_process)} images across '
             f'assets in batches of {self.batch_size}...'
         )
@@ -147,6 +257,7 @@ class SAM3ImageSegmenter:
             range(0, len(items_to_process), self.batch_size),
             desc='Segmenting Image Batches',
         ):
+            raise_if_cancelled(self.cancel_event, 'SAM 3 segmentation')
             batch = items_to_process[i : i + self.batch_size]
             image_paths = [str(img.path) for _, img in batch]
 
@@ -154,7 +265,7 @@ class SAM3ImageSegmenter:
                 # Run inference on the batch of images:
                 result = self.model.run_inference(
                     image_inputs=image_paths,
-                    prompt=self.prompt,  
+                    prompt=self.prompt,
                     threshold=self.threshold,
                     mask_threshold=self.mask_threshold,
                 )
@@ -165,12 +276,10 @@ class SAM3ImageSegmenter:
 
                 # Ensure the outputs are lists (in case of batch_size=1 remaining):
                 masks_list = (
-                    result.masks
-                    if isinstance(result.masks, list)
-                    else [result.masks]
+                    result.masks if isinstance(result.masks, list) else [result.masks]
                 )
 
-                boxes_list = [None] * len(batch)
+                boxes_list: list = [None] * len(batch)
                 if result.bounding_boxes is not None:
                     boxes_list = (
                         result.bounding_boxes
@@ -179,7 +288,9 @@ class SAM3ImageSegmenter:
                     )
 
                 # Map the results back to the original assets and images:
-                for (asset, img), masks, boxes in zip(batch, masks_list, boxes_list):
+                for (asset, img), masks, boxes in zip(
+                    batch, masks_list, boxes_list, strict=False
+                ):
                     asset.attributes.setdefault('sam3_masks', {})
                     asset.attributes.setdefault('sam3_bounding_boxes', {})
 
@@ -193,12 +304,12 @@ class SAM3ImageSegmenter:
                     asset.attributes['ai_model_used'] = self.model.model_id
 
             except Exception as e:
-                logging.debug(f'Unhandled exception processing batch: {e}')
+                logger.debug(f'Unhandled exception processing batch: {e}')
                 failed_count += len(batch)
 
         if failed_count > 0:
-            logging.error(f'SAM 3: {failed_count} images failed to process.')
+            logger.error(f'SAM 3: {failed_count} images failed to process.')
         else:
-            logging.info('SAM 3: All applicable images segmented successfully.')
+            logger.info('SAM 3: All applicable images segmented successfully.')
 
         return asset_collection

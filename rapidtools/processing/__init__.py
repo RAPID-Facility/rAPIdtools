@@ -35,53 +35,107 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-25-2026
+# 09-22-2026
 
 """
-This module orchestrates the analysis of regional infrastructure assets. 
+Processing components and the pipeline engine of ``rapidtools``.
 
-It provides the core Pipeline engine and the modular, swappable 
-tasks (Extractors, Predictors, Reporters) used to process asset data 
-and run AI workflows.
+This package orchestrates the analysis of regional infrastructure assets. It
+provides the core :class:`Pipeline` engine and the modular, swappable steps
+that operate on a :class:`~rapidtools.core.PhysicalAssetCollection`:
+
+    - Image extractors (``AerialImageryExtractor``, ``MapillaryImageExtractor``,
+      ``BingOrthomosaicExtractor``) gather imagery for assets.
+    - Feature extractors (``SAM3OrthoFeatureExtractor``) discover new assets
+      in orthomosaic rasters.
+    - Segmenters (``SAM3ImageSegmenter``) and analyzers (``*AssetAnalyzer``)
+      run AI models over the gathered imagery.
+    - Post-processing tools (``BuildingRegularizer``, ``RoadwayRegularizer``)
+      turn raw model outputs into clean vector geometries.
+
+Example:
+    >>> from rapidtools.core import PhysicalAssetCollection
+    >>> from rapidtools.processing import (
+    ...     AerialImageryExtractor, Gemma4AssetAnalyzer, Pipeline
+    ... )
+    >>> collection = PhysicalAssetCollection.from_geojson('buildings.geojson')
+    >>> pipeline = Pipeline([
+    ...     AerialImageryExtractor('ortho.tif', save_directory='crops'),
+    ...     Gemma4AssetAnalyzer(prompt='Describe the roof condition.'),
+    ... ])
+    >>> collection = pipeline.run(collection)
 """
 
 # Import the core pipeline engine:
-from .pipeline import Pipeline
+# Import feature extractors:
+from .feature_extractors import SAM3OrthoFeatureExtractor
+
+# Import the image analyzers:
+from .image_analyzers import (
+    AssetAnalyzer,
+    BaseAPIAssetAnalyzer,
+    BaseLocalAssetAnalyzer,
+    ClaudeAssetAnalyzer,
+    GeminiAssetAnalyzer,
+    Gemma4AssetAnalyzer,
+    HFVisionAssetAnalyzer,
+    LlamaVisionAssetAnalyzer,
+    MuseGlimmerAssetAnalyzer,
+    MuseSparkAssetAnalyzer,
+    OpenAIAssetAnalyzer,
+    QwenAssetAnalyzer,
+    QwenVisionAssetAnalyzer,
+    RateLimitPolicy,
+)
 
 # Import the image extractors:
 from .image_extractors import (
-    AerialImageryExtractor, 
+    AerialImageryExtractor,
     BingOrthomosaicExtractor,
-    MapillaryImageExtractor
+    GoogleOrthomosaicExtractor,
+    GoogleStreetViewImageExtractor,
+    MapillaryImageExtractor,
 )
-
-# Import the image analyzers:
-from .image_analyzers import GeminiAssetAnalyzer, Gemma4AssetAnalyzer
-
-# Import feature extractors:
-from .feature_extractors import SAM3OrthoFeatureExtractor
 
 # Import segmenters:
 from .image_segmenters import SAM3ImageSegmenter
 
 # Import label mappers:
 from .label_mappers import MapillaryLabelMapper
+from .pipeline import Pipeline
 
 # Import postprocessing tools:
 from .postprocessing.buildings import BuildingRegularizer
 from .postprocessing.roads import RoadwayRegularizer
+from .step import PipelineStep, Stage
 
-# Explicitly define what is available when a user types: 
+# Explicitly define what is available when a user types:
 __all__ = [
     'AerialImageryExtractor',
+    'AssetAnalyzer',
     'BingOrthomosaicExtractor',
+    'BaseAPIAssetAnalyzer',
+    'BaseLocalAssetAnalyzer',
     'BuildingRegularizer',
+    'ClaudeAssetAnalyzer',
     'GeminiAssetAnalyzer',
     'Gemma4AssetAnalyzer',
+    'GoogleOrthomosaicExtractor',
+    'GoogleStreetViewImageExtractor',
+    'HFVisionAssetAnalyzer',
+    'LlamaVisionAssetAnalyzer',
     'MapillaryLabelMapper',
     'MapillaryImageExtractor',
+    'MuseGlimmerAssetAnalyzer',
+    'MuseSparkAssetAnalyzer',
+    'OpenAIAssetAnalyzer',
     'Pipeline',
+    'PipelineStep',
+    'RateLimitPolicy',
+    'QwenAssetAnalyzer',
+    'QwenVisionAssetAnalyzer',
     'RoadwayRegularizer',
     'SAM3ImageSegmenter',
     'SAM3OrthoFeatureExtractor',
+    'Stage',
 ]
