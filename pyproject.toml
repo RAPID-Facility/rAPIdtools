@@ -13,7 +13,7 @@ build-backend = "setuptools.build_meta"
 # This is the core information about your installable package.
 [project]
 name = "rapidtools"
-version = "0.1.2"
+version = "0.2.0"
 description = "A high-performance toolkit for performing large-scale AI inference and localization on post-disaster geospatial datasets."
 readme = "README.md"
 authors = [
@@ -90,7 +90,7 @@ dependencies = [
     "torch",
     "torchvision",
     "tqdm",
-    "transformers>=5.9"
+    "transformers>=5.15"
 ]
 
 # --- Optional Dependencies ---
@@ -101,14 +101,29 @@ test = [
     "pytest-cov",
     "requests-mock"
 ]
-dev = [
-    "rapidtools[test]", 
-    "ruff",             
-    "black",            
-    "mypy",             
-    "sphinx",   
-    "shibuya",     
+docs = [
+    "sphinx>=8",
+    "sphinx-book-theme",
+    "sphinx-design",
+    "sphinx-copybutton",
 ]
+dev = [
+    "rapidtools[test,docs]",
+    "ruff",
+    "black",
+    "mypy",
+]
+
+# --- Package discovery ---
+# Only the library itself is a package; local output folders in a checkout
+# (crops, GeoJSON exports, ...) must not be picked up by auto-discovery.
+[tool.setuptools.packages.find]
+include = ["rapidtools*"]
+
+# --- Console Scripts ---
+# Installs a `rapidtools-gui` command that opens the asset analysis window.
+[project.scripts]
+rapidtools-gui = "rapidtools.gui.server:main"
 
 # --- Project URLs ---
 # These are helpful links that will be displayed on PyPI if you publish the package.
@@ -121,7 +136,7 @@ dev = [
 # Setuptools configuration: include the PEP 561 marker file
 # ==============================================================================
 [tool.setuptools.package-data]
-rapidtools = ["py.typed"]
+rapidtools = ["py.typed", "gui/static/*"]
 
 # ==============================================================================
 # Tool Configurations
@@ -169,4 +184,18 @@ minversion = "6.0"
 addopts = "-ra -q --cov=rapidtools --cov-report=term-missing"
 testpaths = [
     "tests",
+]
+
+# --- Coverage ---
+[tool.coverage.run]
+source = ["rapidtools"]
+omit = [
+    "rapidtools/gui/__main__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
 ]
