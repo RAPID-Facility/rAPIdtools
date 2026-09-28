@@ -1,18 +1,21 @@
 # rAPIdtools
 
-[![Tests](https://github.com/RAPID-Facility/rAPIdtools/actions/workflows/ci.yml/badge.svg?label=Tests)](https://github.com/RAPID-Facility/rAPIdtools/actions/workflows/ci.yml)
-![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/bacetiner/c890ae687368838a74c5e442b9ff5b94/raw/coverage.json)
-[![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
+<!-- Row 1: getting the package -->
 [![PyPI version](https://img.shields.io/pypi/v/rapidtools.svg)](https://pypi.org/project/rapidtools/)
-[![Typing](https://img.shields.io/pypi/types/rapidtools)](https://pypi.org/project/rapidtools/)
 [![Python](https://img.shields.io/pypi/pyversions/rapidtools.svg)](https://pypi.org/project/rapidtools/)
-[![Docs](https://img.shields.io/github/actions/workflow/status/RAPID-Facility/rAPIdtools/docs.yml?branch=main&label=docs)](https://rapid-facility.github.io/rAPIdtools/)
 [![Downloads](https://static.pepy.tech/badge/rapidtools/month)](https://pepy.tech/project/rapidtools)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-<!-- After the first Zenodo archive, replace XXXXXXX with the concept record ID and uncomment:
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
--->
+[![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 
+<!-- Row 2: project health -->
+[![Tests](https://github.com/RAPID-Facility/rAPIdtools/actions/workflows/ci.yml/badge.svg)](https://github.com/RAPID-Facility/rAPIdtools/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/bacetiner/c890ae687368838a74c5e442b9ff5b94/raw/coverage.json)](https://github.com/RAPID-Facility/rAPIdtools/actions/workflows/ci.yml)
+[![Docs](https://github.com/RAPID-Facility/rAPIdtools/actions/workflows/docs.yml/badge.svg?branch=main)](https://rapid-facility.github.io/rAPIdtools/)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Typing](https://img.shields.io/pypi/types/rapidtools)](https://pypi.org/project/rapidtools/)
+
+<!-- Row 3: citing. After the first Zenodo archive, replace XXXXXXX with the
+     concept record ID and uncomment the line below. -->
+<!-- [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX) -->
 
 A high-performance toolkit for performing large-scale AI inference and localization on post-disaster geospatial datasets.
 
@@ -47,7 +50,32 @@ You can install the latest stable release directly via pip:
 pip install rapidtools
 ```
 
-## The rapidtools API in Five Lines
+## Documentation
+
+The published documentation lives at [rapid-facility.github.io/rAPIdtools](https://rapid-facility.github.io/rAPIdtools/).
+It is built with Sphinx and the Book theme. Install the docs
+extra once, then build:
+
+```bash
+pip install -e ".[docs]"
+cd docs
+make html
+```
+
+Open `docs/build/html/index.html` in your browser for the user guide, the
+worked examples and the API reference (one page per class, generated from
+the docstrings).
+
+## Project Structure
+
+Designed for flexibility and scale, `rapidtools` utilizes a cleanly decoupled architecture that makes extending workflows and managing complex data pipelines effortless:
+
+* `rapidtools.core`: Domain models representing your data (`PhysicalAsset`, `PhysicalAssetCollection`, `ImageAsset`, `BoundingBox`).
+* `rapidtools.data_sources`: Clients for fetching raw data from external APIs and massive local files (e.g., `MapillaryClient`, `GoogleStreetViewClient`, `OrthomosaicReader`, `BingAerialImageExtractor`, `GoogleAerialImageExtractor`).
+* `rapidtools.models`: Base wrappers and handlers for executing ML models natively or via cloud APIs (`Gemma4Inference`, `SAM3Inference`, `GeminiInference`, `MuseSparkInference`, `QwenInference`, ...). See the table below.
+* `rapidtools.processing`: High-level workflow components (Extractors, Segmenters, Analyzers, and Regularizers) designed to snap together effortlessly into the `Pipeline` engine.
+
+## The rAPIdtools API in Five Lines
 
 Every model is created through one factory and every analysis step is the same class, so switching providers is a one-word change:
 
@@ -177,32 +205,6 @@ The image panel streams the original pixels when you zoom in (toggle *Full resol
 
 Progress and log output stream into the page while the heavy lifting runs on a background thread, and **Cancel** stops detection or inference at the next tile or batch, keeping any results produced so far. The same workflow is available headlessly through `rapidtools.gui.AssetAnalysisWorkflow` for scripting.
 
-## Keyless Google Imagery
-
-Both Google extractors use the same public tile and metadata endpoints as the Google Maps web app (the approach used by BRAILS++), so no API key or billing account is needed. These endpoints are unofficial and may change.
-
-```python
-from rapidtools import (
-    GoogleAerialImageExtractor,
-    GoogleStreetViewImageExtractor,
-    PhysicalAssetCollection,
-)
-
-# Satellite crops for every polygon in a GeoJSON file (padded to 640x640):
-with GoogleAerialImageExtractor('output/aerial', zoom_level=20) as aerial:
-    aerial.process_geojson('buildings.geojson', pad_to_square=True, resize_to=(640, 640))
-
-# Street-level crops of each building from the nearest Street View panorama:
-buildings = PhysicalAssetCollection.from_geojson('buildings.geojson')
-street = GoogleStreetViewImageExtractor(
-    'output/streetview', search_radius_m=50, max_images_per_asset=2, vertical_crop=(0.2, 0.9)
-)
-buildings = street(buildings)
-buildings.get('bldg_01').image_assets[0].properties['pano_id']
-```
-
-Bing Streetside cannot be accessed without a Bing Maps key, so only Bing *aerial* tiles are supported keylessly.
-
 ## Supported Models
 
 Every wrapper exposes `list_known_models()` (the curated catalogue below, no network) and `list_available_models(api_key)` (live listing from the provider where one exists). Pass any listed ID as `model_id`; the default is marked in bold.
@@ -227,31 +229,6 @@ from rapidtools import MuseSparkAssetAnalyzer, QwenVisionAssetAnalyzer
 cloud = MuseSparkAssetAnalyzer(api_key='...', prompt='Return JSON with a damage_level key.')
 local = QwenVisionAssetAnalyzer(prompt='Rate the fire damage 0-5.', model_id='Qwen/Qwen3.5-9B', load_in_4bit=True)
 ```
-
-## Project Structure
-
-Designed for flexibility and scale, `rapidtools` utilizes a cleanly decoupled architecture that makes extending workflows and managing complex data pipelines effortless:
-
-* `rapidtools.core`: Domain models representing your data (`PhysicalAsset`, `PhysicalAssetCollection`, `ImageAsset`, `BoundingBox`).
-* `rapidtools.data_sources`: Clients for fetching raw data from external APIs and massive local files (e.g., `MapillaryClient`, `GoogleStreetViewClient`, `OrthomosaicReader`, `BingAerialImageExtractor`, `GoogleAerialImageExtractor`).
-* `rapidtools.models`: Base wrappers and handlers for executing ML models natively or via cloud APIs (`Gemma4Inference`, `SAM3Inference`, `GeminiInference`, `MuseSparkInference`, `QwenInference`, ...). See the table below.
-* `rapidtools.processing`: High-level workflow components (Extractors, Segmenters, Analyzers, and Regularizers) designed to snap together effortlessly into the `Pipeline` engine.
-
-## Documentation
-
-The published documentation lives at [rapid-facility.github.io/rAPIdtools](https://rapid-facility.github.io/rAPIdtools/).
-It is built with Sphinx and the Book theme. Install the docs
-extra once, then build:
-
-```bash
-pip install -e ".[docs]"
-cd docs
-make html
-```
-
-Open `docs/build/html/index.html` in your browser for the user guide, the
-worked examples and the API reference (one page per class, generated from
-the docstrings).
 
 ## Citing rAPIdtools
 
