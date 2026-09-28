@@ -35,36 +35,42 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 07-21-2026
+# 09-28-2026
 
-"""Initializations and metadata for the rapidtools package."""
+"""
+Initializations and metadata for the rapidtools package.
 
+Importing ``rapidtools`` is side-effect free: it exposes the geospatial core,
+the data-source clients and the dataset downloader eagerly, while the model
+wrappers and processing components (which pull in PyTorch and Transformers)
+are imported lazily the first time they are accessed. Logging is left to the
+application; call :func:`configure_logging` to see progress messages, and
+:func:`login` to authenticate with the Hugging Face Hub.
+
+Example:
+    >>> import rapidtools
+    >>> rapidtools.__version__
+    '0.2.0'
+    >>> rapidtools.configure_logging()  # doctest: +ELLIPSIS
+    <Logger rapidtools (INFO)>
+    >>> rapidtools.GeminiInference  # imported on first access
+    <class 'rapidtools.models.gemini.GeminiInference'>
+"""
+
+from __future__ import annotations
+
+import importlib
 import logging
-from pathlib import Path
-import sys
-from huggingface_hub import login, get_token
+from typing import TYPE_CHECKING, Any
 
-from .config import DATE_FORMAT, LOG_FORMAT
-
-# Package metadata:
-name = 'rapidtools'
-__version__ = '0.1.2'
-__copyright__ = 'Copyright (c) 2025, The University of Washington'
-__license__ = 'BSD 3-Clause License'
-
-# Logger formatting:
-logging.basicConfig(
-    level=logging.INFO,
-    format=LOG_FORMAT,
-    datefmt=DATE_FORMAT,
-    stream=sys.stdout,
-    force=True,
-)
+from .auth import ensure_huggingface_login, login
+from .config import configure_logging
 
 # Import the core domain models:
 from .core import (
     BoundingBox,
     ImageAsset,
+    OperationCancelled,
     PhysicalAsset,
     PhysicalAssetCollection,
     PolygonRegion,
@@ -73,91 +79,192 @@ from .core import (
 # Import the data sources and clients:
 from .data_sources import (
     BingAerialImageExtractor,
+    GoogleAerialImageExtractor,
+    GoogleStreetViewClient,
     MapillaryClient,
     MapillaryLabels,
     OrthomosaicReader,
     TileUtils,
 )
 
-# Import AI models:
-from .models import (
-    GeminiInference,
-    Gemma4Inference,
-    SAM3Inference
-)
-
 # Import the dataset download utilities:
 from .datasets import download_dataset
 
-# Import the pipeline and processing tools:
-from .processing import (
-    AerialImageryExtractor,
-    BingOrthomosaicExtractor,
-    BuildingRegularizer,
-    GeminiAssetAnalyzer,
-    Gemma4AssetAnalyzer,
-    MapillaryLabelMapper,
-    MapillaryImageExtractor,
-    Pipeline,
-    RoadwayRegularizer,
-    SAM3ImageSegmenter,
-    SAM3OrthoFeatureExtractor,
-)
+# Package metadata:
+name = 'rapidtools'
+__version__ = '0.2.0'
+__copyright__ = 'Copyright (c) 2025, The University of Washington'
+__license__ = 'BSD 3-Clause License'
+
+# The library never configures logging itself; applications opt in with
+# configure_logging():
+logging.getLogger(__name__).addHandler(logging.NullHandler())
+
+# Names resolved lazily from the heavy subpackages.
+# Subpackages resolved on first attribute access:
+_LAZY_SUBMODULES = frozenset({'models', 'processing', 'gui'})
+
+_LAZY_ATTRIBUTES: dict[str, str] = {
+    # rapidtools.models
+    'ClaudeInference': 'rapidtools.models',
+    'GeminiInference': 'rapidtools.models',
+    'Gemma4Inference': 'rapidtools.models',
+    'HFVisionInference': 'rapidtools.models',
+    'LlamaVisionInference': 'rapidtools.models',
+    'MuseGlimmerInference': 'rapidtools.models',
+    'MuseSparkInference': 'rapidtools.models',
+    'OpenAIInference': 'rapidtools.models',
+    'QwenInference': 'rapidtools.models',
+    'QwenVisionInference': 'rapidtools.models',
+    'SAM3Inference': 'rapidtools.models',
+    # rapidtools.processing
+    'AerialImageryExtractor': 'rapidtools.processing',
+    'AssetAnalyzer': 'rapidtools.processing',
+    'RateLimitPolicy': 'rapidtools.processing',
+    'Stage': 'rapidtools.processing',
+    'BingOrthomosaicExtractor': 'rapidtools.processing',
+    'BuildingRegularizer': 'rapidtools.processing',
+    'ClaudeAssetAnalyzer': 'rapidtools.processing',
+    'GeminiAssetAnalyzer': 'rapidtools.processing',
+    'Gemma4AssetAnalyzer': 'rapidtools.processing',
+    'GoogleOrthomosaicExtractor': 'rapidtools.processing',
+    'GoogleStreetViewImageExtractor': 'rapidtools.processing',
+    'HFVisionAssetAnalyzer': 'rapidtools.processing',
+    'LlamaVisionAssetAnalyzer': 'rapidtools.processing',
+    'MapillaryImageExtractor': 'rapidtools.processing',
+    'MapillaryLabelMapper': 'rapidtools.processing',
+    'MuseGlimmerAssetAnalyzer': 'rapidtools.processing',
+    'MuseSparkAssetAnalyzer': 'rapidtools.processing',
+    'OpenAIAssetAnalyzer': 'rapidtools.processing',
+    'Pipeline': 'rapidtools.processing',
+    'QwenAssetAnalyzer': 'rapidtools.processing',
+    'QwenVisionAssetAnalyzer': 'rapidtools.processing',
+    'RoadwayRegularizer': 'rapidtools.processing',
+    'SAM3ImageSegmenter': 'rapidtools.processing',
+    'SAM3OrthoFeatureExtractor': 'rapidtools.processing',
+}
 
 # Explicitly define the top-level public API:
 __all__ = [
     'AerialImageryExtractor',
+    'AssetAnalyzer',
     'BingAerialImageExtractor',
     'BingOrthomosaicExtractor',
     'BoundingBox',
     'BuildingRegularizer',
+    'ClaudeAssetAnalyzer',
+    'ClaudeInference',
     'GeminiAssetAnalyzer',
     'GeminiInference',
     'Gemma4AssetAnalyzer',
     'Gemma4Inference',
+    'GoogleAerialImageExtractor',
+    'GoogleOrthomosaicExtractor',
+    'GoogleStreetViewClient',
+    'GoogleStreetViewImageExtractor',
+    'HFVisionAssetAnalyzer',
+    'HFVisionInference',
     'ImageAsset',
+    'LlamaVisionAssetAnalyzer',
+    'LlamaVisionInference',
     'MapillaryClient',
+    'MapillaryImageExtractor',
     'MapillaryLabelMapper',
     'MapillaryLabels',
-    'MapillaryImageExtractor',
+    'MuseGlimmerAssetAnalyzer',
+    'MuseGlimmerInference',
+    'MuseSparkAssetAnalyzer',
+    'MuseSparkInference',
+    'OpenAIAssetAnalyzer',
+    'OpenAIInference',
+    'OperationCancelled',
     'OrthomosaicReader',
     'PhysicalAsset',
     'PhysicalAssetCollection',
     'Pipeline',
     'PolygonRegion',
+    'QwenAssetAnalyzer',
+    'QwenInference',
+    'QwenVisionAssetAnalyzer',
+    'QwenVisionInference',
+    'RateLimitPolicy',
     'RoadwayRegularizer',
     'SAM3ImageSegmenter',
     'SAM3Inference',
     'SAM3OrthoFeatureExtractor',
+    'Stage',
     'TileUtils',
+    'configure_logging',
     'download_dataset',
+    'ensure_huggingface_login',
+    'login',
 ]
 
-# Trigger auto-authentication silently upon package initialization:
-def _auto_authenticate_huggingface(dataset_id: str = 'hf_token') -> None:
-    """
-    Checks if a Hugging Face token is locally cached. If not, securely downloads 
-    the token from the rapidtools registry, authenticates the session, and 
-    immediately deletes the token file.
-    """
-    # If a token is already cached on this machine, exit instantly:
-    if get_token() is not None:
-        return
 
-    try:
-        # Download and read the token:
-        [token_path] = download_dataset([dataset_id])
-        token_file = Path(token_path)
-        hf_token = token_file.read_text().strip()
-        
-        # Authenticate (this permanently caches the token on the local machine):
-        login(token=hf_token, add_to_git_credential=False)
-        
-        # Securely destroy the downloaded file:
-        token_file.unlink()
-        logging.info('Hugging Face auto-authentication successful.')
-        
-    except Exception as e:
-        logging.error(f'Failed to auto-authenticate with Hugging Face: {e}')
+def __getattr__(attr: str) -> Any:
+    """
+    Import model and processing classes on first access.
 
-_auto_authenticate_huggingface('hf_token')
+    This keeps ``import rapidtools`` fast for geometry-only work: PyTorch and
+    Transformers are loaded only when a model or pipeline component is used.
+    """
+    module_name = _LAZY_ATTRIBUTES.get(attr)
+    if module_name is None:
+        if attr in _LAZY_SUBMODULES:
+            # ``rapidtools.models`` / ``rapidtools.processing`` / ``rapidtools.gui``
+            # are heavy, so they are only imported when first referenced:
+            module = importlib.import_module(f'{__name__}.{attr}')
+            globals()[attr] = module
+            return module
+        raise AttributeError(f'module {__name__!r} has no attribute {attr!r}')
+    module = importlib.import_module(module_name)
+    value = getattr(module, attr)
+    globals()[attr] = value  # cache for subsequent lookups
+    return value
+
+
+def __dir__() -> list[str]:
+    """Include lazily loaded names in ``dir(rapidtools)``."""
+    return sorted(set(globals()) | set(__all__))
+
+
+if TYPE_CHECKING:  # pragma: no cover - static analysis only
+    from .models import (  # noqa: F401
+        ClaudeInference,
+        GeminiInference,
+        Gemma4Inference,
+        HFVisionInference,
+        LlamaVisionInference,
+        MuseGlimmerInference,
+        MuseSparkInference,
+        OpenAIInference,
+        QwenInference,
+        QwenVisionInference,
+        SAM3Inference,
+    )
+    from .processing import (  # noqa: F401
+        AerialImageryExtractor,
+        AssetAnalyzer,
+        BingOrthomosaicExtractor,
+        BuildingRegularizer,
+        ClaudeAssetAnalyzer,
+        GeminiAssetAnalyzer,
+        Gemma4AssetAnalyzer,
+        GoogleOrthomosaicExtractor,
+        GoogleStreetViewImageExtractor,
+        HFVisionAssetAnalyzer,
+        LlamaVisionAssetAnalyzer,
+        MapillaryImageExtractor,
+        MapillaryLabelMapper,
+        MuseGlimmerAssetAnalyzer,
+        MuseSparkAssetAnalyzer,
+        OpenAIAssetAnalyzer,
+        Pipeline,
+        QwenAssetAnalyzer,
+        QwenVisionAssetAnalyzer,
+        RateLimitPolicy,
+        RoadwayRegularizer,
+        SAM3ImageSegmenter,
+        SAM3OrthoFeatureExtractor,
+        Stage,
+    )
