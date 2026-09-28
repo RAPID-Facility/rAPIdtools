@@ -5,6 +5,13 @@
 [![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 [![PyPI version](https://img.shields.io/pypi/v/rapidtools.svg)](https://pypi.org/project/rapidtools/)
 [![Typing](https://img.shields.io/pypi/types/rapidtools)](https://pypi.org/project/rapidtools/)
+[![Python](https://img.shields.io/pypi/pyversions/rapidtools.svg)](https://pypi.org/project/rapidtools/)
+[![Docs](https://img.shields.io/github/actions/workflow/status/RAPID-Facility/rAPIdtools/docs.yml?branch=main&label=docs)](https://rapid-facility.github.io/rAPIdtools/)
+[![Downloads](https://static.pepy.tech/badge/rapidtools/month)](https://pepy.tech/project/rapidtools)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+<!-- After the first Zenodo archive, replace XXXXXXX with the concept record ID and uncomment:
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
+-->
 
 
 A high-performance toolkit for performing large-scale AI inference and localization on post-disaster geospatial datasets.
@@ -21,7 +28,10 @@ The UW RAPID Facility collects terabytes of perishable, hyper-resolution data in
 Seamlessly fuse massive local orthomosaics, regional shapefiles, and street-view vector tiles. The `PhysicalAssetCollection` engine provides fast lookups, patial filtering, and native conversions between GeoJSON, ESRI Shapefiles, and Pandas DataFrames.
 
 **Scalable AI Inference (Local & Cloud)**
-Run deployments tailored to your resources. Deploy powerful local vision-language models (such as Google's Gemma-4 and Meta's Llama-Vision) directly on consumer hardware using dynamic batching, automated tensor precision scaling, and strict VRAM garbage collection to prevent Out-Of-Memory (OOM) crashes. Alternatively, scale instantly using built-in integrations for enterprise APIs (OpenAI, Google Gemini, Anthropic Claude), which feature thread-safe global cooldowns and exponential backoff to handle rate limits automatically.
+Run deployments tailored to your resources. Deploy powerful local vision-language models directly on consumer hardware: Google's Gemma-4 (E2B to 31B), Meta's Llama 4 and Llama 3.2 Vision, Meta's open-weight Muse Glimmer, Alibaba's Qwen3.8 / Qwen3.6 / Qwen3.5 / Qwen3-VL, or any Hugging Face checkpoint (Gemma 3, LLaVA, InternVL, Pixtral, Granite Vision, ...) through `HFVisionAssetAnalyzer`, using dynamic batching, automated tensor precision scaling, and strict VRAM garbage collection to prevent Out-Of-Memory (OOM) crashes. Alternatively, scale instantly using built-in integrations for enterprise APIs (OpenAI GPT-5.x/GPT-6, Google Gemini 3.x, Anthropic Claude Opus 5 / Fable 5.1, Meta Muse Spark, Alibaba Qwen via Model Studio), which feature thread-safe global cooldowns and exponential backoff to handle rate limits automatically.
+
+**Keyless Aerial and Street-Level Imagery**
+Pull imagery for any footprint without provider API keys. `GoogleAerialImageExtractor` and `BingAerialImageExtractor` stitch satellite tiles for GeoJSON polygons (or yield raw tiles for ML pipelines), `GoogleOrthomosaicExtractor` / `BingOrthomosaicExtractor` synthesize georeferenced GeoTIFFs for a region, and `GoogleStreetViewImageExtractor` locates the nearest Google Street View panorama for each asset, downloads it, crops the field of view that covers the asset footprint (optionally with the decoded depth map) and attaches the result to the asset. Mapillary street-level imagery remains available through `MapillaryImageExtractor`.
 
 **Intelligent Feature Regularization**
 Move beyond raw AI pixel masks. The toolkit includes sophisticated geometric regularizers that instantly translate semantic segmentations into usable, GIS-ready asset geometries.
@@ -36,6 +46,31 @@ You can install the latest stable release directly via pip:
 ```bash
 pip install rapidtools
 ```
+
+## The rapidtools API in Five Lines
+
+Every model is created through one factory and every analysis step is the same class, so switching providers is a one-word change:
+
+```python
+import rapidtools as rt
+
+rt.configure_logging()                                   # opt in to progress output
+buildings = rt.PhysicalAssetCollection.from_geojson('buildings.geojson')
+model = rt.models.load('gemini', api_key='AIza...')      # or 'claude', 'openai', 'muse_spark', 'qwen',
+                                                         #    'gemma4', 'llama', 'muse_glimmer', 'qwen_vl', 'hf'
+pipeline = rt.Pipeline([
+    rt.AerialImageryExtractor('ortho.tif', save_directory='crops', buffer_m=20),
+    rt.AssetAnalyzer(model, prompt='Rate the damage 0-5 as JSON.'),
+])
+buildings = pipeline.run(buildings)
+```
+
+* `rapidtools.models.load(provider, **kwargs)` builds any wrapper from its registry key; `list_providers()`, `catalog(provider)` and `PROVIDERS` describe them without importing PyTorch.
+* `AssetAnalyzer(model, prompt, ...)` replaces the provider-specific `XAssetAnalyzer` classes (still available, deprecated). Hosted models run threaded with a `RateLimitPolicy` (shared cooldown after failures, then retry passes for the assets that failed, so timeouts and 429s do not leave holes); local models run sequentially or in batches. Hosted wrappers take `timeout=` (default 60 s) for slow responses. Pass `generation=GenerationConfig(json_mode=True, temperature=0.0)` for per-call options.
+* `AerialImageryExtractor` judges imagery coverage from the raster's mask (nodata value, alpha band or internal mask). By default a crop is skipped when more than `max_missing_data_ratio` of it is empty; pass `min_footprint_coverage=0.3` to keep every building whose footprint is at least 30% imaged, with edge crops padded so they keep their size.
+* `SAM3OrthoFeatureExtractor(prompt, ...)` scans a whole orthomosaic for a text concept. By default touching detections dissolve into one polygon (roofs, roads, vegetation); pass `merge_overlaps=False` for countable objects such as vehicles to keep one asset per detected instance, with its SAM 3 `confidence`, and only remove cross-tile duplicates.
+* Pipeline steps declare a `Stage` (`DETECT`, `EXTRACT_IMAGERY`, `REGULARIZE`, `SEGMENT`, `ANALYZE`, `EXPORT`), so steps can be added in any order.
+* `import rapidtools` is side-effect free and fast (about 2 s); model and processing classes load on first use. Call `rapidtools.login()` to authenticate with the Hugging Face Hub for gated weights, or let local model wrappers do it when they load.
 
 ## Quick Start: Aerial Damage Detection Pipeline
 
@@ -64,11 +99,17 @@ image_save_dir = Path('eaton_fire_aerial_feb25/overlaid_imagery')
 building_data = PhysicalAssetCollection.from_geojson(footprint_path)
 
 # 3. Configure the Extractor
-# Crops the orthomosaic around each asset and draws a reference outline
+# Crops the orthomosaic around each asset and draws a reference outline.
+# The outline can trace the footprint itself (default), its bounding box,
+# rotated bounding box, convex hull or just corner brackets, optionally
+# pushed away from the asset by a buffer, with any stroke width and colour.
 extractor = AerialImageryExtractor(
     dataset=raster_path,
     save_directory=image_save_dir,
     overlay_asset_outline=True,
+    outline_shape='rotated_bbox',
+    outline_buffer='2 m',
+    outline_width='1%',
     image_prefix='eaton_trinity_25',
     keep_multiple_copies=True,
 )
@@ -99,25 +140,137 @@ final_collection.to_geojson(
 )
 ```
 
+## Graphical Interface: Detect Assets and Run Inference Without Code
+
+`rapidtools` ships with a local web application that wraps the end-to-end workflow from `examples/asset_analysis_example_generalized.ipynb`. It runs on the Python standard library (no extra dependencies) and opens in your browser.
+
+```bash
+rapidtools-gui            # console script installed with the package
+python -m rapidtools.gui  # equivalent; add --port/--output-dir/--no-browser as needed
+```
+
+Or from Python:
+
+```python
+from rapidtools.gui import launch_asset_analysis_app
+
+launch_asset_analysis_app()
+```
+
+The app walks through three steps while the aerial image stays on screen and is updated with every result:
+
+1. **Imagery**: load a GeoTIFF from your computer, download a UW RAPID sample, or (coming soon) fetch it from TACC.
+2. **Detect & analyze**: type the assets you want extracted (for example `building, tree, swimming pool`) or load a file with their locations, then pick the model and write the prompt applied to every asset. Every analysis model in `rapidtools` is available: Google Gemini, Anthropic Claude, OpenAI, Meta Muse Spark, and Qwen through their APIs; Gemma-4, Llama Vision, Muse Glimmer, and Qwen locally; and, under *Other open models*, any Hugging Face vision-language checkpoint (Gemma 3, LLaVA, InternVL, Pixtral, Granite Vision, ...) with optional 4-bit loading. *Fetch models* lists the model IDs your API key can access, or the most downloaded open checkpoints on the Hub. Detection settings such as asset size, imagery source, and thresholds live under *Advanced options*.
+3. **Results**: hover over assets to inspect their attributes, click one to see the exact image crops the model analyzed, colour the overlay by any inferred attribute, browse the attribute table, and download the GeoJSON outputs.
+
+### Sharing the app with colleagues
+
+Run the server on the machine that has the GPU and the imagery, bind it to the network, and protect it with an access token:
+
+```bash
+rapidtools-gui --host 0.0.0.0 --token auto --data-root /data/eaton --no-browser
+```
+
+The terminal prints a share link of the form `http://<host>:8765/?token=...`. Anyone opening that link (or entering the token on the sign-in page) can use the app; everyone else gets the sign-in page. `--data-root` limits the file browser and every file path to one directory, and `RAPIDTOOLS_GUI_TOKEN` can supply the token instead of the flag. Everyone connected shares one workspace and one job queue, so this suits a small team taking turns rather than many simultaneous users. Keep the server on your institution's network or a VPN; the token protects the app, not the transport, which is plain HTTP.
+
+The image panel streams the original pixels when you zoom in (toggle *Full resolution* to fall back to the lightweight preview), so multi-gigabyte orthomosaics can be inspected at native resolution without loading them into the browser.
+
+Progress and log output stream into the page while the heavy lifting runs on a background thread, and **Cancel** stops detection or inference at the next tile or batch, keeping any results produced so far. The same workflow is available headlessly through `rapidtools.gui.AssetAnalysisWorkflow` for scripting.
+
+## Keyless Google Imagery
+
+Both Google extractors use the same public tile and metadata endpoints as the Google Maps web app (the approach used by BRAILS++), so no API key or billing account is needed. These endpoints are unofficial and may change.
+
+```python
+from rapidtools import (
+    GoogleAerialImageExtractor,
+    GoogleStreetViewImageExtractor,
+    PhysicalAssetCollection,
+)
+
+# Satellite crops for every polygon in a GeoJSON file (padded to 640x640):
+with GoogleAerialImageExtractor('output/aerial', zoom_level=20) as aerial:
+    aerial.process_geojson('buildings.geojson', pad_to_square=True, resize_to=(640, 640))
+
+# Street-level crops of each building from the nearest Street View panorama:
+buildings = PhysicalAssetCollection.from_geojson('buildings.geojson')
+street = GoogleStreetViewImageExtractor(
+    'output/streetview', search_radius_m=50, max_images_per_asset=2, vertical_crop=(0.2, 0.9)
+)
+buildings = street(buildings)
+buildings.get('bldg_01').image_assets[0].properties['pano_id']
+```
+
+Bing Streetside cannot be accessed without a Bing Maps key, so only Bing *aerial* tiles are supported keylessly.
+
+## Supported Models
+
+Every wrapper exposes `list_known_models()` (the curated catalogue below, no network) and `list_available_models(api_key)` (live listing from the provider where one exists). Pass any listed ID as `model_id`; the default is marked in bold.
+
+| Provider / family | Wrapper · Analyzer | Key (env var) | Models |
+|---|---|---|---|
+| Google Gemini (API) | `GeminiInference` · `GeminiAssetAnalyzer` | `GOOGLE_API_KEY` | **gemini-3.8-flash**, gemini-3.7-flash, gemini-3.6-flash, gemini-3.5-flash, gemini-3.5-flash-lite (analyzer default), gemini-3.1-pro-preview, gemini-3.1-flash-lite, gemini-3.1-flash-image, gemini-3.1-flash-lite-image, gemini-3-flash-preview, gemini-3-pro-image, gemini-omni-1.1-flash |
+| Anthropic Claude (API) | `ClaudeInference` · `ClaudeAssetAnalyzer` | `ANTHROPIC_API_KEY` | claude-fable-5-1, claude-fable-5, **claude-opus-5**, claude-opus-4-8, claude-opus-4-7, claude-opus-4-6, claude-sonnet-5, claude-sonnet-4-6, claude-haiku-4-5 |
+| OpenAI (API) | `OpenAIInference` · `OpenAIAssetAnalyzer` | `OPENAI_API_KEY` | gpt-6-astra, gpt-6-sol, gpt-6-luna, gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, **gpt-5.5**, gpt-5.5-pro, gpt-5.4, gpt-5.4-pro, gpt-5.4-mini, gpt-5.4-nano, gpt-5.2, gpt-5.1, o3, o3-pro, gpt-4.1, gpt-4.1-mini, gpt-4o, gpt-4o-mini |
+| Meta Muse Spark (API) | `MuseSparkInference` · `MuseSparkAssetAnalyzer` | `MODEL_API_KEY` | **muse-spark-1.3**, muse-spark-1.3-contributor, muse-spark-1.2, muse-spark-1.2-contributor, muse-spark-1.1 |
+| Alibaba Qwen (API, Model Studio) | `QwenInference` · `QwenAssetAnalyzer` | `DASHSCOPE_API_KEY` | **qwen3.8-max**, qwen3.8-omni-flash, qwen3.7-plus, qwen3.6-plus, qwen3.5-plus, qwen3-vl-plus, qwen3-vl-flash, qwen-vl-max, qwen-vl-plus |
+| Google Gemma 4 (local) | `Gemma4Inference` · `Gemma4AssetAnalyzer` | — | google/gemma-4-31B-it, google/gemma-4-26B-A4B-it, google/gemma-4-12B-it, google/gemma-4-E4B-it, **google/gemma-4-E2B-it** |
+| Meta Llama (local) | `LlamaVisionInference` · `LlamaVisionAssetAnalyzer` | — (gated download) | meta-llama/Llama-4-Scout-17B-16E-Instruct, meta-llama/Llama-4-Maverick-17B-128E-Instruct, **meta-llama/Llama-3.2-11B-Vision-Instruct**, meta-llama/Llama-3.2-90B-Vision-Instruct |
+| Meta Muse Glimmer (local) | `MuseGlimmerInference` · `MuseGlimmerAssetAnalyzer` | — | **meta-models/Muse-Glimmer-30B** (4-bit fits a 24 GB GPU; needs `transformers>=5.15`) |
+| Alibaba Qwen (local) | `QwenVisionInference` · `QwenVisionAssetAnalyzer` | — | Qwen/Qwen3.8-27B, Qwen/Qwen3.6-27B, Qwen/Qwen3.6-35B-A3B, Qwen/Qwen3.5-{397B-A17B, 122B-A10B, 35B-A3B, 27B, 9B, **4B**, 2B, 0.8B}, Qwen/Qwen3-VL-{235B-A22B, 32B, 30B-A3B, 8B, 4B, 2B}-Instruct, Qwen/Qwen2.5-VL-{72B, 32B, 7B, 3B}-Instruct, Qwen/Qwen2-VL-{7B, 2B}-Instruct |
+| Any Hugging Face VLM (local) | `HFVisionInference` · `HFVisionAssetAnalyzer` | — | Curated list (`OPEN_VLM_CATALOG`) plus any repo with a chat template; default **Qwen/Qwen3.5-4B** |
+| Meta SAM 3 (local segmentation) | `SAM3Inference` · `SAM3ImageSegmenter`, `SAM3OrthoFeatureExtractor` | — | **facebook/sam3** |
+
+```python
+from rapidtools import MuseSparkAssetAnalyzer, QwenVisionAssetAnalyzer
+
+cloud = MuseSparkAssetAnalyzer(api_key='...', prompt='Return JSON with a damage_level key.')
+local = QwenVisionAssetAnalyzer(prompt='Rate the fire damage 0-5.', model_id='Qwen/Qwen3.5-9B', load_in_4bit=True)
+```
+
 ## Project Structure
 
 Designed for flexibility and scale, `rapidtools` utilizes a cleanly decoupled architecture that makes extending workflows and managing complex data pipelines effortless:
 
 * `rapidtools.core`: Domain models representing your data (`PhysicalAsset`, `PhysicalAssetCollection`, `ImageAsset`, `BoundingBox`).
-* `rapidtools.data_sources`: Clients for fetching raw data from external APIs and massive local files (e.g., `MapillaryClient`, `OrthomosaicReader`, `BingAerialImageExtractor`).
-* `rapidtools.models`: Base wrappers and handlers for executing ML models natively or via cloud APIs (`Gemma4Inference`, `SAM3Inference`, `GeminiInference`).
+* `rapidtools.data_sources`: Clients for fetching raw data from external APIs and massive local files (e.g., `MapillaryClient`, `GoogleStreetViewClient`, `OrthomosaicReader`, `BingAerialImageExtractor`, `GoogleAerialImageExtractor`).
+* `rapidtools.models`: Base wrappers and handlers for executing ML models natively or via cloud APIs (`Gemma4Inference`, `SAM3Inference`, `GeminiInference`, `MuseSparkInference`, `QwenInference`, ...). See the table below.
 * `rapidtools.processing`: High-level workflow components (Extractors, Segmenters, Analyzers, and Regularizers) designed to snap together effortlessly into the `Pipeline` engine.
 
 ## Documentation
 
-The official documentation is generated using Sphinx and can be built locally.
+The published documentation lives at [rapid-facility.github.io/rAPIdtools](https://rapid-facility.github.io/rAPIdtools/).
+It is built with Sphinx and the Book theme. Install the docs
+extra once, then build:
 
-Navigate to the docs directory:
 ```bash
+pip install -e ".[docs]"
 cd docs
 make html
 ```
-Open the file `docs/build/html/index.html` in your web browser to view the full API reference and advanced tutorials.
+
+Open `docs/build/html/index.html` in your browser for the user guide, the
+worked examples and the API reference (one page per class, generated from
+the docstrings).
+
+## Citing rAPIdtools
+
+If rAPIdtools contributes to your research, please cite it. GitHub's
+*Cite this repository* button (from `CITATION.cff`) gives APA and BibTeX
+entries; each release is also archived on Zenodo with a DOI.
+
+```bibtex
+@software{rapidtools,
+  author  = {Cetiner, Barbaros and {NSF NHERI RAPID Facility}},
+  title   = {rAPIdtools: AI inference and localization for post-disaster geospatial datasets},
+  year    = {2026},
+  version = {0.2.0},
+  url     = {https://github.com/RAPID-Facility/rAPIdtools}
+}
+```
+
+rAPIdtools is developed at the NSF NHERI RAPID Facility, University of
+Washington, supported by the U.S. National Science Foundation.
 
 ## License
 
