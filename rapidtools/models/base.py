@@ -35,7 +35,23 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-22-2026
+# 09-22-2026
+
+"""
+Universal contracts shared by every rapidtools inference model.
+
+:class:`ModelOutput` is the single return type of all models (cloud APIs and
+local checkpoints alike) and :class:`BaseInferenceModel` defines the
+``run_inference`` / ``run_batch`` interface that pipeline components rely on.
+
+Example:
+    >>> from rapidtools.models.base import ModelOutput
+    >>> out = ModelOutput(text='CHS Level: 3')
+    >>> out.has_text, out.has_masks, out.has_bounding_boxes
+    (True, False, False)
+"""
+
+from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
@@ -47,71 +63,323 @@ from typing import Any
 
 from tqdm import tqdm
 
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class GenerationConfig:
+    """
+    Text-generation options shared by every vision-language wrapper.
+
+    Attributes:
+        temperature: Sampling temperature; ``None`` keeps the model default.
+        max_tokens: Maximum number of generated tokens; ``None`` keeps the
+            model default.
+        json_mode: Ask for a JSON-only answer (native flag on APIs that
+            support it, prompt instruction otherwise).
+        system_instruction: System prompt override for this call.
+
+    Example:
+        >>> from rapidtools.models import GenerationConfig
+        >>> GenerationConfig(temperature=0.0, json_mode=True).json_mode
+        True
+    """
+
+    temperature: float | None = None
+    max_tokens: int | None = None
+    json_mode: bool = False
+    system_instruction: str | None = None
+
+    def merged(self, **overrides: Any) -> GenerationConfig:
+        """
+        Return a copy with the non-``None`` ``overrides`` applied.
+
+        Example:
+            >>> GenerationConfig(temperature=0.4).merged(max_tokens=5).max_tokens
+            5
+        """
+        values = {
+            'temperature': self.temperature,
+            'max_tokens': self.max_tokens,
+            'json_mode': self.json_mode,
+            'system_instruction': self.system_instruction,
+        }
+        for key, value in overrides.items():
+            if key not in values:
+                raise TypeError(f'Unknown generation option {key!r}.')
+            if value is not None:
+                values[key] = value
+        return GenerationConfig(**values)
+
+
+@dataclass
+class SegmentationConfig:
+    """
+    Options for promptable segmentation models such as SAM 3.
+
+    Attributes:
+        threshold: Detection confidence threshold.
+        mask_threshold: Threshold for binarising mask logits.
+
+    Example:
+        >>> from rapidtools.models.base import SegmentationConfig
+        >>> SegmentationConfig(threshold=0.3).mask_threshold
+        0.5
+    """
+
+    threshold: float = 0.5
+    mask_threshold: float = 0.5
+
 
 @dataclass
 class ModelOutput:
     """
     A universal container for multimodal AI model outputs.
-    Belongs strictly to the `models` domain.
+
+    Attributes:
+        text: Generated text (vision-language models).
+        masks: Segmentation masks, e.g. a list of NumPy arrays for SAM 3.
+        bounding_boxes: Detected boxes as ``[x0, y0, x1, y1]`` lists.
+        raw_response: The provider's raw JSON or the raw tensors/metadata of
+            a local model, kept for debugging.
+
+    Example:
+        >>> from rapidtools.models.base import ModelOutput
+        >>> out = ModelOutput(text='  ', bounding_boxes=[[0, 0, 4, 4]])
+        >>> out.has_text
+        False
+        >>> out.has_bounding_boxes
+        True
     """
+
     text: str | None = None
-    masks: Any | None = None          # e.g., numpy arrays for SAM 3
+    masks: Any | None = None
     bounding_boxes: list | None = None
-    raw_response: Any | None = None   # Raw JSON from APIs or raw Tensors from local models
+    raw_response: Any | None = None
 
     @property
     def has_text(self) -> bool:
+        """``True`` when ``text`` contains non-whitespace characters."""
         return self.text is not None and len(self.text.strip()) > 0
 
     @property
     def has_masks(self) -> bool:
+        """``True`` when ``masks`` is set."""
         return self.masks is not None
 
     @property
     def has_bounding_boxes(self) -> bool:
+        """``True`` when at least one bounding box is present."""
         return self.bounding_boxes is not None and len(self.bounding_boxes) > 0
+
+
+_PROMPT_FILE_SUFFIXES = ('.txt', '.md', '.prompt', '.text')
+
+
+def looks_like_prompt_file(prompt: str) -> bool:
+    """
+    Return ``True`` when a prompt string is almost certainly meant as a file path.
+
+    A single line ending in a text-file suffix (``.txt``, ``.md``, ...) with no
+    spaces is treated as a path, so a typo in the path raises instead of being
+    sent to the model as the prompt itself.
+
+    Example:
+        >>> looks_like_prompt_file('prompts/aerial_CHS_prompts.txt')
+        True
+        >>> looks_like_prompt_file('Rate the damage from 0 to 5.')
+        False
+    """
+    stripped = prompt.strip()
+    return (
+        0 < len(stripped) < 260
+        and '\n' not in stripped
+        and ' ' not in stripped
+        and stripped.lower().endswith(_PROMPT_FILE_SUFFIXES)
+    )
+
+
+def resolve_prompt_text(prompt: str | Path) -> str:
+    """
+    Return the prompt text, reading it from disk when ``prompt`` is a file.
+
+    Args:
+        prompt: Prompt text, or a path (``str`` or :class:`pathlib.Path`) to a
+            UTF-8 text file containing it.
+
+    Returns:
+        str: The prompt text (file contents are stripped of surrounding
+        whitespace).
+
+    Raises:
+        FileNotFoundError: If ``prompt`` is a :class:`pathlib.Path`, or a
+            string that looks like a path to a text file, and the file does
+            not exist. Relative paths are resolved against the current
+            working directory, which is included in the message.
+
+    Example:
+        >>> resolve_prompt_text('Describe the roof.')
+        'Describe the roof.'
+        >>> resolve_prompt_text(Path('aerial_CHS_prompts.txt'))[:4]
+        'TASK'
+    """
+    if isinstance(prompt, Path):
+        if not prompt.is_file():
+            raise FileNotFoundError(
+                f'Prompt file not found: {prompt} (resolved against {Path.cwd()}).'
+            )
+        return prompt.read_text(encoding='utf-8').strip()
+
+    prompt_str = str(prompt)
+    try:
+        prompt_path = Path(prompt_str)
+        if prompt_path.is_file():
+            return prompt_path.read_text(encoding='utf-8').strip()
+    except OSError:
+        return prompt_str
+    if looks_like_prompt_file(prompt_str):
+        raise FileNotFoundError(
+            f'Prompt file not found: {prompt_str} (resolved against {Path.cwd()}). '
+            'Pass the prompt text itself, or an existing path.'
+        )
+    return prompt_str
 
 
 class BaseInferenceModel(ABC):
     """
-    The absolute top-level contract for all AI models (API or Local).
+    The top-level contract for all AI models (API or local).
+
+    Subclasses implement :meth:`run_inference`; :meth:`run_batch` provides a
+    threaded default suitable for network-bound API models (local models
+    override it to run sequentially).
+
+    Example:
+        A minimal fake model useful in tests and pipelines:
+
+        >>> from rapidtools.models.base import BaseInferenceModel, ModelOutput
+        >>> class EchoModel(BaseInferenceModel):
+        ...     model_id = 'echo'
+        ...     def run_inference(self, image_inputs, prompt, **kwargs):
+        ...         return ModelOutput(text=f'{len(image_inputs)} image(s): {prompt}')
+        >>> EchoModel().run_inference(['a.jpg'], 'hi').text
+        '1 image(s): hi'
     """
 
     @staticmethod
     def _resolve_prompt(prompt: str | Path) -> str:
-        """Universal helper to resolve a string or file path into text."""
-        prompt_str = str(prompt)
+        """
+        Resolve a prompt given as text or as a path to a text file.
+
+        Args:
+            prompt: The prompt itself, or a path to a UTF-8 file containing it.
+
+        Returns:
+            str: The prompt text (file contents are stripped of whitespace).
+
+        Example:
+            >>> from rapidtools.models.base import BaseInferenceModel
+            >>> BaseInferenceModel._resolve_prompt('Describe the image.')
+            'Describe the image.'
+        """
         try:
-            prompt_path = Path(prompt)
-            if prompt_path.is_file():
-                return prompt_path.read_text(encoding='utf-8').strip()
-        except OSError:
-            pass
-        return prompt_str
+            return resolve_prompt_text(prompt)
+        except FileNotFoundError as exc:
+            # Models stay lenient (the analyzer already validated its prompt),
+            # but a filename sent as the prompt is almost always a mistake.
+            logger.warning(f'{exc} Sending the string itself as the prompt.')
+            return str(prompt)
+
+    def _resolve_generation(
+        self, config: GenerationConfig | None = None, **overrides: Any
+    ) -> GenerationConfig:
+        """
+        Combine instance defaults, a ``GenerationConfig`` and call overrides.
+
+        Precedence (lowest to highest): the wrapper's constructor defaults
+        (``temperature``, ``max_tokens``, ``system_instruction``), ``config``,
+        then explicit keyword overrides that are not ``None``.
+
+        Example:
+            >>> from rapidtools.models import GenerationConfig
+            >>> model.temperature, model.max_tokens = 0.4, 2048
+            >>> cfg = model._resolve_generation(
+            ...     GenerationConfig(max_tokens=64), temperature=0.0
+            ... )
+            >>> cfg.temperature, cfg.max_tokens
+            (0.0, 64)
+        """
+        resolved = GenerationConfig(
+            temperature=getattr(self, 'temperature', None),
+            max_tokens=getattr(self, 'max_tokens', None),
+            json_mode=False,
+            system_instruction=getattr(self, 'system_instruction', None),
+        )
+        if config is not None:
+            resolved = resolved.merged(
+                temperature=config.temperature,
+                max_tokens=config.max_tokens,
+                json_mode=config.json_mode or None,
+                system_instruction=config.system_instruction,
+            )
+        if 'json_mode' in overrides and overrides['json_mode'] is False:
+            overrides['json_mode'] = None  # explicit False never disables a config flag
+        return resolved.merged(**overrides)
 
     @abstractmethod
     def run_inference(
-        self,
-        image_inputs: Any,
-        prompt: str | Path,
-        **kwargs
+        self, image_inputs: Any, prompt: str | Path, **kwargs
     ) -> ModelOutput | None:
-        """Executes a single inference pass and returns a standardized ModelOutput."""
-        pass
+        """
+        Execute a single inference pass.
+
+        Args:
+            image_inputs: One image path/URL or a list of them.
+            prompt: Prompt text or path to a prompt file.
+            **kwargs: Provider-specific options (``temperature``,
+                ``max_tokens``, ``json_mode``, ...).
+
+        Returns:
+            ModelOutput | None: The standardized output, or ``None`` on failure.
+        """
 
     def run_batch(
         self,
         asset_inputs: Iterable[tuple[str, Any]],
         prompt: str | Path,
-        **kwargs
+        **kwargs,
     ) -> Generator[tuple[str, str, ModelOutput | str], None, None]:
         """
-        Universal parallel batch processing.
-        Yields: (asset_id, status, ModelOutput_or_error_msg)
+        Run :meth:`run_inference` over many assets with a thread pool.
+
+        Uses ``min(self.max_workers, 10)`` threads (default 10 when the model
+        defines no ``max_workers``).
+
+        Args:
+            asset_inputs: ``(asset_id, image_inputs)`` pairs.
+            prompt: Prompt text or file shared by every asset.
+            **kwargs: Forwarded to :meth:`run_inference`.
+
+        Yields:
+            tuple[str, str, ModelOutput | str]: ``(asset_id, status, payload)``
+            where ``status`` is ``'ok'`` (payload is a :class:`ModelOutput`)
+            or ``'failed'`` (payload is an error message).
+
+        Example:
+            >>> from rapidtools.models import GeminiInference
+            >>> model = GeminiInference(api_key='AIza...')
+            >>> results = dict(
+            ...     (a, out) for a, status, out in model.run_batch(
+            ...         [('b1', ['b1.jpg']), ('b2', ['b2.jpg'])], 'Rate damage 0-5.'
+            ...     ) if status == 'ok'
+            ... )
+            >>> sorted(results)
+            ['b1', 'b2']
         """
         prompt_str = self._resolve_prompt(prompt)
 
-        def _process(asset_id: str, img_inputs: Any) -> tuple[str, str, ModelOutput | str]:
+        def _process(
+            asset_id: str, img_inputs: Any
+        ) -> tuple[str, str, ModelOutput | str]:
             result = self.run_inference(img_inputs, prompt_str, **kwargs)
             if result:
                 return asset_id, 'ok', result
@@ -119,25 +387,25 @@ class BaseInferenceModel(ABC):
 
         asset_list = list(asset_inputs)
         if not asset_list:
-            logging.warning('No assets provided to run_batch.')
+            logger.warning('No assets provided to run_batch.')
             return
 
-        # Use the child instance's max_workers if available, default to 10
-        effective_workers = min(getattr(self, 'max_workers', 10), 10)
-        logging.info(f'Starting batch of {len(asset_list)} assets using {effective_workers} threads.')
+        effective_workers = max(1, min(getattr(self, 'max_workers', 10), 10))
+        logger.info(
+            f'Starting batch of {len(asset_list)} assets using '
+            f'{effective_workers} threads.'
+        )
 
         with ThreadPoolExecutor(max_workers=effective_workers) as executor:
             future_to_asset = {
-                executor.submit(_process, a_id, imgs): a_id
-                for a_id, imgs in asset_list
+                executor.submit(_process, a_id, imgs): a_id for a_id, imgs in asset_list
             }
-
             with tqdm(total=len(asset_list), unit='asset', desc='Processing') as pbar:
                 for future in as_completed(future_to_asset):
                     asset_id = future_to_asset[future]
                     try:
                         yield future.result()
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001 - reported per asset
                         yield asset_id, 'failed', f'Thread Exception: {str(e)}'
                     finally:
                         pbar.update(1)

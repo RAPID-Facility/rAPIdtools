@@ -35,88 +35,135 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-22-2026
+# 09-22-2026
+
+"""
+Meta Llama vision models (Llama 4 and Llama 3.2 Vision) via Transformers.
+
+Llama 4 Scout/Maverick are natively multimodal mixture-of-experts models
+(``Llama4ForConditionalGeneration``); Llama 3.2 Vision uses the cross-attention
+``Mllama`` architecture. Both are loaded through the Transformers multimodal
+auto class so the same wrapper serves every generation. Downloading the
+weights requires accepting Meta's licence on Hugging Face.
+
+Example:
+    >>> from rapidtools.models import LlamaVisionInference
+    >>> model = LlamaVisionInference(load_in_4bit=True)
+    >>> out = model.run_inference('roof.jpg', 'Describe the roof damage.')
+    >>> print(out.text)
+"""
+
+from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
-# Important: These require `pip install torch transformers accelerate pillow`
-# For load_in_4bit=True, you also need `pip install bitsandbytes`
 import torch
-from transformers import AutoProcessor, MllamaForConditionalGeneration
+from transformers import AutoProcessor
 
-from .base import ModelOutput
+from .base import GenerationConfig, ModelOutput
+from .catalogs import (
+    LLAMA_DEFAULT_MODEL,
+    LLAMA_MODEL_CATALOG,
+    PROVIDERS,
+)
+from .hf_vision import _load_multimodal_model
 from .local_base import BaseLocalInferenceModel
+
+logger = logging.getLogger(__name__)
 
 
 class LlamaVisionInference(BaseLocalInferenceModel):
     """
-    Implementation for Meta's Llama 3.2 Vision models using Hugging Face Transformers.
-    Specifically uses the Mllama architecture designed for cross-attention vision tasks.
+    Local inference with Meta's Llama 4 and Llama 3.2 Vision models.
+
+    Example:
+        >>> from rapidtools.models import LlamaVisionInference
+        >>> LlamaVisionInference.list_available_models()[0]
+        'meta-llama/Llama-4-Scout-17B-16E-Instruct'
+        >>> model = LlamaVisionInference(
+        ...     'meta-llama/Llama-3.2-11B-Vision-Instruct', load_in_4bit=True
+        ... )
+        >>> out = model.run_inference(
+        ...     ['front.jpg', 'side.jpg'], 'Return JSON with a damage_level key.',
+        ...     json_mode=True,
+        ... )
+        >>> out.text
+        '{"damage_level": "severe"}'
     """
+
+    INFO = PROVIDERS['llama']
+
+    MODEL_CATALOG: list[dict[str, str]] = LLAMA_MODEL_CATALOG
 
     def __init__(
         self,
-        model_id: str = 'meta-llama/Llama-3.2-11B-Vision-Instruct',
+        model_id: str = LLAMA_DEFAULT_MODEL,
         device: str = 'auto',
         load_in_4bit: bool = False,
         temperature: float = 0.4,
-        max_tokens: int = 2048
+        max_tokens: int = 2048,
     ):
         """
-        Initializes the Llama Vision model and loads it into GPU/CPU memory.
+        Load the processor and weights into GPU/CPU memory.
 
         Args:
-            model_id: The Hugging Face repo ID.
-            device: e.g., "cuda", "cpu", or "auto" (distributes across available GPUs).
-            load_in_4bit: If True, uses BitsAndBytes to aggressively compress the model
-                          so large models (like 11B) can fit on consumer GPUs (e.g., RTX 3090/4090).
+            model_id: Hugging Face repo ID (Llama 4 or Llama 3.2 Vision).
+            device: ``'cuda'``, ``'cpu'``, or ``'auto'`` (spread across GPUs).
+            load_in_4bit: Quantize with bitsandbytes so large models fit
+                consumer GPUs (e.g. the 11B model on 24 GB).
+            temperature: Sampling temperature (0 disables sampling).
+            max_tokens: Maximum new tokens generated per call.
         """
         super().__init__(device=device, temperature=temperature, max_tokens=max_tokens)
         self.model_id = model_id
+        self.load_in_4bit = load_in_4bit
 
-        logging.info(f'Loading processor and weights for {self.model_id}. This may take a moment...')
+        logger.info(
+            f'Loading processor and weights for {self.model_id}. '
+            'This may take a moment...'
+        )
 
-        # 1. Load the Processor (Handles tokenization and image resizing/normalization)
+        # 1. Load the processor (tokenization + image resizing/normalization)
         self.processor = AutoProcessor.from_pretrained(self.model_id)
 
-        # 2. Configure Model Loading & VRAM Management
-        model_kwargs = {'device_map': self.device}
-
+        # 2. Configure model loading and VRAM management
+        model_kwargs: dict[str, Any] = {'device_map': self.device}
         if load_in_4bit:
             from transformers import BitsAndBytesConfig
+
             model_kwargs['quantization_config'] = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_compute_dtype=torch.float16
+                load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16
             )
         else:
-            # Default to half-precision for massive speed and memory savings over float32
-            model_kwargs['torch_dtype'] = torch.float16
+            # Half precision halves memory relative to float32.
+            model_kwargs['dtype'] = torch.float16
 
-        # 3. Load the specific Mllama Architecture
-        self.model = MllamaForConditionalGeneration.from_pretrained(
-            self.model_id,
-            **model_kwargs
-        )
-        # Ensure model is strictly in inference mode (disables dropout layers, etc.)
+        # 3. Load through the multimodal auto class (Mllama or Llama4).
+        self.model = _load_multimodal_model(self.model_id, **model_kwargs)
         self.model.eval()
-        logging.info(f'Llama model {self.model_id} loaded successfully.')
+        logger.info(f'Llama model {self.model_id} loaded successfully.')
 
-    @staticmethod
-    def list_available_models(auth_key: str | None = None) -> list[str]:
+    @classmethod
+    def list_available_models(cls, auth_key: str | None = None) -> list[str]:
         """
-        Returns a list of supported Hugging Face repository IDs for Llama Vision models.
-        (Note: Downloading these from HF requires accepting Meta's license agreement first).
-        """
-        return sorted([
-            # The 11-Billion parameter models (Great for 24GB VRAM GPUs)
-            'meta-llama/Llama-3.2-11B-Vision-Instruct',
-            'meta-llama/Llama-3.2-11B-Vision',
+        Return the curated Llama vision checkpoints.
 
-            # The massive 90-Billion parameter models (Requires multiple GPUs or heavy quantization)
-            'meta-llama/Llama-3.2-90B-Vision-Instruct',
-            'meta-llama/Llama-3.2-90B-Vision',
-        ])
+        Downloading them from the Hub requires accepting Meta's licence.
+
+        Args:
+            auth_key: Unused; present for signature parity with API wrappers.
+
+        Returns:
+            list[str]: Repository IDs, newest first.
+
+        Example:
+            >>> from rapidtools.models import LlamaVisionInference
+            >>> len(LlamaVisionInference.list_available_models())
+            6
+        """
+        return [entry['model_id'] for entry in cls.MODEL_CATALOG]
 
     def run_inference(
         self,
@@ -125,20 +172,39 @@ class LlamaVisionInference(BaseLocalInferenceModel):
         json_mode: bool = False,
         temperature: float | None = None,
         max_tokens: int | None = None,
-        **kwargs
+        config: GenerationConfig | None = None,
+        **kwargs: Any,
     ) -> ModelOutput | None:
         """
-        Executes a forward pass of the Llama Vision model and returns the universal ModelOutput.
-        """
+        Execute a forward pass and return the generated text.
 
-        # 1. Resolve prompt (using universal helper from BaseInferenceModel)
+        Args:
+            image_inputs: One path/URL or a list of them.
+            prompt: Prompt text or path to a prompt file.
+            json_mode: Append a JSON-only instruction to the prompt (open
+                models have no native JSON mode).
+            temperature: Per-call temperature override.
+            max_tokens: Per-call output-token limit override.
+            config: A :class:`~rapidtools.models.GenerationConfig`; explicit
+                keyword arguments take precedence over it.
+            **kwargs: Ignored; accepted for interface compatibility.
+
+        Returns:
+            ModelOutput | None: Generated text plus raw token IDs, or ``None``
+            when no image loads or generation fails (e.g. out of memory).
+
+        Example:
+            >>> from rapidtools.models import LlamaVisionInference
+            >>> model = LlamaVisionInference(load_in_4bit=True)
+            >>> model.run_inference('house.jpg', 'Is the roof intact?').text
+            'No, part of the roof is missing.'
+        """
         prompt_str = self._resolve_prompt(prompt)
         log_ctx = f"[Prompt snippet: '{prompt_str[:30]}...']"
 
         if not isinstance(image_inputs, list):
             image_inputs = [image_inputs]
 
-        # 2. Load all images as PIL Objects (using helper from BaseLocalInferenceModel)
         loaded_images = []
         for img_input in image_inputs:
             pil_img = self._load_image_as_pil(img_input)
@@ -146,74 +212,61 @@ class LlamaVisionInference(BaseLocalInferenceModel):
                 loaded_images.append(pil_img)
 
         if not loaded_images:
-            logging.error(f'{log_ctx} No valid images could be loaded into PIL.')
+            logger.error(f'{log_ctx} No valid images could be loaded into PIL.')
             return None
 
-        # Hack for open-source models: Since they don't have a strict API 'json_mode' flag,
-        # we enforce it via the prompt instruction if requested.
-        if json_mode:
-            prompt_str += '\n\nYou must respond with only valid JSON and no other conversational text.'
+        gen = self._resolve_generation(
+            config, temperature=temperature, max_tokens=max_tokens, json_mode=json_mode
+        )
+        if gen.json_mode:
+            prompt_str += (
+                '\n\nYou must respond with only valid JSON and no other '
+                'conversational text.'
+            )
 
-        # 3. Format the payload for Llama's specific chat template
-        content_block = [{'type': 'image'} for _ in loaded_images]
+        content_block: list[dict[str, Any]] = [{'type': 'image'} for _ in loaded_images]
         if prompt_str:
             content_block.append({'type': 'text', 'text': prompt_str})
+        messages = [{'role': 'user', 'content': content_block}]
 
-        messages = [
-            {'role': 'user', 'content': content_block}
-        ]
-
-        # 4. Process into PyTorch Tensors
         try:
-            # Apply Llama's specific <|image|> and <|start_header_id|> tags
             text_prompt = self.processor.apply_chat_template(
-                messages,
-                add_generation_prompt=True
+                messages, add_generation_prompt=True
             )
-
             inputs = self.processor(
-                text=text_prompt,
-                images=loaded_images,
-                return_tensors='pt'
+                text=text_prompt, images=loaded_images, return_tensors='pt'
             )
-
-            # Move tensors to the exact device the model weights are currently on
             inputs = inputs.to(self.model.device)
-
-        except Exception as e:
-            logging.error(f'{log_ctx} Failed to process Llama tensors: {e}')
+        except Exception as e:  # noqa: BLE001 - surfaced as a failed asset
+            logger.error(f'{log_ctx} Failed to process Llama tensors: {e}')
             return None
 
-        # 5. Neural Network Generation
-        final_temp = temperature if temperature is not None else self.temperature
-        final_tokens = max_tokens if max_tokens is not None else self.max_tokens
+        final_temp = gen.temperature
+        final_tokens = gen.max_tokens
 
         try:
-            # Context manager disables gradients to save massive amounts of VRAM
             with torch.no_grad():
                 output_ids = self.model.generate(
                     **inputs,
                     max_new_tokens=final_tokens,
                     temperature=final_temp,
-                    do_sample=(final_temp > 0.0) # Greedy decoding if temp == 0
+                    do_sample=(final_temp > 0.0),
                 )
-
-            # 6. Decode the raw ID numbers back into human text
-            # Slice [inputs.input_ids.shape[1]:] to only include the *newly generated* tokens,
-            # effectively stripping the prompt out of the final string.
-            generated_ids = output_ids[0][inputs.input_ids.shape[1]:]
-            extracted_text = self.processor.decode(generated_ids, skip_special_tokens=True).strip()
-
-            # Return the unified ModelOutput!
+            # Keep only the newly generated tokens.
+            generated_ids = output_ids[0][inputs['input_ids'].shape[1] :]
+            extracted_text = self.processor.decode(
+                generated_ids, skip_special_tokens=True
+            ).strip()
             return ModelOutput(
                 text=extracted_text,
-                # Store the raw tensor outputs in case advanced debugging is needed later
-                raw_response={'output_ids': output_ids.cpu().tolist()}
+                raw_response={'output_ids': output_ids.cpu().tolist()},
             )
-
         except torch.OutOfMemoryError:
-            logging.error(f'{log_ctx} GPU OUT OF MEMORY ERROR. Try smaller images or setting load_in_4bit=True.')
+            logger.error(
+                f'{log_ctx} GPU OUT OF MEMORY ERROR. Try smaller images or '
+                'setting load_in_4bit=True.'
+            )
             return None
-        except Exception as e:
-            logging.error(f'{log_ctx} Unexpected tensor generation error: {e}')
+        except Exception as e:  # noqa: BLE001 - surfaced as a failed asset
+            logger.error(f'{log_ctx} Unexpected tensor generation error: {e}')
             return None

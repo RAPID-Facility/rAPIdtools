@@ -35,30 +35,82 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 03-06-2026
+# 09-22-2026
+
+"""
+Google Gemini API wrapper (raw HTTP, ``generateContent``).
+
+Example:
+    >>> from rapidtools.models import GeminiInference
+    >>> model = GeminiInference(api_key='AIza...', model_id='gemini-3.8-flash')
+    >>> out = model.run_inference('roof.jpg', 'Describe the roof damage.')
+    >>> print(out.text)
+"""
+
+from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
+from typing import Any
 
 from requests.exceptions import HTTPError, RetryError
 
-from rapidtools.config import REQUESTS_TIMEOUT_VAL, get_configured_session
+from rapidtools.config import get_configured_session
 
-from .api_base import BaseAPIInferenceModel
-from .base import ModelOutput
+from .api_base import (
+    API_REQUEST_TIMEOUT,
+    BaseAPIInferenceModel,
+    catalog_ids,
+    resolve_api_key,
+)
+from .base import GenerationConfig, ModelOutput
+from .catalogs import (
+    GEMINI_DEFAULT_MODEL,
+    GEMINI_MODEL_CATALOG,
+    PROVIDERS,
+)
+
+logger = logging.getLogger(__name__)
 
 GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
-GEMINI_DEFAULT_MODEL = 'gemini-3.1-flash-image-preview'
 
 
 class GeminiInference(BaseAPIInferenceModel):
-    """Google Gemini API implementation."""
+    """
+    Google Gemini ``generateContent`` client for image + text prompts.
+
+    The key is read from ``api_key`` (string or key-file path) or the
+    ``GOOGLE_API_KEY`` environment variable. Safety filters are set to
+    ``BLOCK_NONE`` because damage imagery is frequently mis-flagged.
+
+    Example:
+        >>> from rapidtools.models import GeminiInference
+        >>> GeminiInference.list_known_models()[0]
+        'gemini-3.8-flash'
+        >>> model = GeminiInference(api_key='AIza...')
+        >>> out = model.run_inference(
+        ...     'house.jpg', 'Return JSON with a chs_level key (0-5).', json_mode=True
+        ... )
+        >>> out.text
+        '{"chs_level": 3}'
+    """
+
+    INFO = PROVIDERS['gemini']
+
+    PROVIDER_NAME = 'Gemini'
+    API_KEY_ENV = ('GOOGLE_API_KEY', 'GEMINI_API_KEY')
+    MODEL_CATALOG = GEMINI_MODEL_CATALOG
 
     MIME_MAP = {
-        '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
-        '.webp': 'image/webp', '.heic': 'image/heic', '.heif': 'image/heif',
-        '.tif': 'image/tiff', '.tiff': 'image/tiff', '.bmp': 'image/bmp',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.webp': 'image/webp',
+        '.heic': 'image/heic',
+        '.heif': 'image/heif',
+        '.tif': 'image/tiff',
+        '.tiff': 'image/tiff',
+        '.bmp': 'image/bmp',
     }
 
     SAFETY_SETTINGS = [
@@ -67,7 +119,7 @@ class GeminiInference(BaseAPIInferenceModel):
             'HARM_CATEGORY_HARASSMENT',
             'HARM_CATEGORY_HATE_SPEECH',
             'HARM_CATEGORY_SEXUALLY_EXPLICIT',
-            'HARM_CATEGORY_DANGEROUS_CONTENT'
+            'HARM_CATEGORY_DANGEROUS_CONTENT',
         ]
     ]
 
@@ -79,12 +131,34 @@ class GeminiInference(BaseAPIInferenceModel):
         max_retries: int = 3,
         system_instruction: str | None = None,
         temperature: float = 0.4,
-        max_tokens: int = 2048
+        max_tokens: int = 2048,
+        timeout: float = API_REQUEST_TIMEOUT,
     ):
-        super().__init__(max_retries=max_retries, max_workers=max_workers)
+        """
+        Initialise the client and validate the chosen model.
+
+        Args:
+            api_key: Key string, key-file path, or ``None`` for
+                ``GOOGLE_API_KEY`` / ``GEMINI_API_KEY``.
+            model_id: Gemini model ID (with or without the ``models/``
+                prefix). Defaults to ``'gemini-3.8-flash'``.
+            max_workers: Threads used by :meth:`run_batch`.
+            max_retries: Retries for transient HTTP failures.
+            system_instruction: Optional system prompt.
+            temperature: Sampling temperature.
+            max_tokens: Maximum output tokens per response.
+            timeout: Seconds to wait for each response (default 60).
+
+        Raises:
+            ValueError: If no API key can be resolved.
+            FileNotFoundError: If ``api_key`` is a ``Path`` that does not exist.
+        """
+        super().__init__(
+            max_retries=max_retries, max_workers=max_workers, timeout=timeout
+        )
 
         self.api_key = self._resolve_api_key(api_key)
-        self.model_id = model_id
+        self.model_id = model_id.replace('models/', '')
         self.system_instruction = system_instruction
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -92,95 +166,96 @@ class GeminiInference(BaseAPIInferenceModel):
         self.session.headers.update({'x-goog-api-key': self.api_key})
         self._validate_model()
 
-    @staticmethod
-    def _resolve_api_key(key_input: str | Path | None) -> str:
-        """
-        Resolves the API key from a direct string, a Path object, a string 
-        representing a file path, or the environment variables.
-        """
-        resolved_key = ''
-
-        # Case 1: The user explicitly passed a pathlib.Path object
-        if isinstance(key_input, Path):
-            if not key_input.is_file():
-                raise FileNotFoundError(f'API key file not found at: {key_input}')
-            resolved_key = key_input.read_text(encoding='utf-8').strip()
-            
-        # Case 2: The user passed a string or None
-        else:
-            raw_key = (key_input or os.environ.get('GOOGLE_API_KEY', '')).strip()
-            if not raw_key:
-                raise ValueError(
-                    'API Key is missing. Provide it as an argument or set the'
-                    ' GOOGLE_API_KEY environment variable.'
-                )
-            
-            # Check if the string provided is actually a file path
-            try:
-                potential_path = Path(raw_key)
-                if potential_path.is_file():
-                    resolved_key = potential_path.read_text(
-                        encoding='utf-8'
-                    ).strip()
-                else:
-                    resolved_key = raw_key
-            except OSError:
-                resolved_key = raw_key
-
-        # Final cleanup to remove accidental quotes or whitespace
-        resolved_key = resolved_key.strip("'\" \n\t")
-        if not resolved_key:
-            raise ValueError('Resolved API key is empty.')
-            
-        return resolved_key
-
     def _validate_model(self) -> None:
+        """Warn (never fail) when the model is not in Google's list."""
         if not self.api_key or not self.model_id:
             return
-        target_model = self.model_id.replace('models/', '')
         try:
             available_models = self.list_available_models(self.api_key)
             available_ids = {m.replace('models/', '') for m in available_models}
-            if target_model not in available_ids and available_ids:
-                logging.warning(f"Model '{self.model_id}' is not in the available models list.")
-        except Exception as e:
-            logging.debug(f'Transient error during model validation: {e}')
+            if available_ids and self.model_id not in available_ids:
+                logger.warning(
+                    f"Model '{self.model_id}' is not in the available models list."
+                )
+        except Exception as e:  # noqa: BLE001 - validation is best effort
+            logger.debug(f'Transient error during model validation: {e}')
 
-    @staticmethod
-    def list_available_models(api_key: str | Path | None = None) -> list[str]:
+    @classmethod
+    def list_available_models(cls, api_key: str | Path | None = None) -> list[str]:
         """
-        List available Gemini models that support content generation.
-        Accepts a string key, a Path object to a key file, or falls back to 
-        ENV vars.
+        List Gemini models that support ``generateContent``.
+
+        Without a key (or when the API cannot be reached) the curated
+        catalogue is returned instead.
+
+        Args:
+            api_key: Key string, key-file path, or ``None`` for the env var.
+
+        Returns:
+            list[str]: Sorted model IDs without the ``models/`` prefix.
+
+        Example:
+            >>> from rapidtools.models import GeminiInference
+            >>> ids = GeminiInference.list_available_models('AIza...')
+            >>> 'gemini-3.8-flash' in ids
+            True
         """
         try:
-            # Use our static helper to safely resolve the key (String, Path, or Env Var)
-            resolved_key = GeminiInference._resolve_api_key(api_key)
+            resolved_key = resolve_api_key(api_key, cls.API_KEY_ENV, cls.PROVIDER_NAME)
         except (ValueError, FileNotFoundError):
-            raise FileNotFoundError(f'API key file not found at: {api_key}')
-            return [] # If no valid key is found, return an empty list
+            return catalog_ids(GEMINI_MODEL_CATALOG)
 
         url = f'{GEMINI_BASE_URL}/models'
         try:
             session = get_configured_session()
             response = session.get(
-                url, 
-                headers={'x-goog-api-key': resolved_key},
-                timeout=10
+                url, headers={'x-goog-api-key': resolved_key}, timeout=10
             )
             if response.status_code != 200:
-                return []
-            
+                return catalog_ids(GEMINI_MODEL_CATALOG)
+
             data = response.json()
-            models =[
+            models = [
                 m['name'].replace('models/', '')
-                for m in data.get('models',[])
-                if 'generateContent' in m.get('supportedGenerationMethods',[])
+                for m in data.get('models', [])
+                if 'generateContent' in m.get('supportedGenerationMethods', [])
             ]
-            return sorted(models)
-            
-        except Exception:
-            return
+            return sorted(models) or catalog_ids(GEMINI_MODEL_CATALOG)
+        except Exception:  # noqa: BLE001 - network failures degrade gracefully
+            return catalog_ids(GEMINI_MODEL_CATALOG)
+
+    def _build_payload(
+        self,
+        contents_parts: list[dict[str, Any]],
+        temperature: float,
+        max_tokens: int,
+        json_mode: bool,
+        system_instruction: str | None = None,
+    ) -> dict[str, Any]:
+        """Construct the ``generateContent`` request body."""
+        payload: dict[str, Any] = {
+            'contents': [{'parts': contents_parts}],
+            'safetySettings': self.SAFETY_SETTINGS,
+            'generationConfig': {
+                'temperature': temperature,
+                'maxOutputTokens': max_tokens,
+                'responseMimeType': 'application/json' if json_mode else 'text/plain',
+            },
+        }
+        system = system_instruction or self.system_instruction
+        if system:
+            payload['systemInstruction'] = {'parts': [{'text': system}]}
+        return payload
+
+    @staticmethod
+    def _extract_text(result_json: dict[str, Any]) -> str | None:
+        """Join the text parts of the first candidate, if any."""
+        try:
+            parts = result_json['candidates'][0]['content']['parts']
+        except (KeyError, IndexError, TypeError):
+            return None
+        texts = [p['text'] for p in parts if isinstance(p, dict) and 'text' in p]
+        return ''.join(texts) if texts else None
 
     def run_inference(
         self,
@@ -189,42 +264,68 @@ class GeminiInference(BaseAPIInferenceModel):
         json_mode: bool = False,
         max_retries: int | None = None,
         temperature: float | None = None,
-        max_tokens: int | None = None
+        max_tokens: int | None = None,
+        config: GenerationConfig | None = None,
     ) -> ModelOutput | None:
+        """
+        Send images and a prompt to ``generateContent``.
 
+        Args:
+            image_inputs: One path/URL or a list of them. Unreadable images
+                are skipped with a logged error; text-only prompts are
+                allowed by passing ``[]``.
+            prompt: Prompt text or path to a prompt file.
+            json_mode: Request ``application/json`` output.
+            max_retries: Per-call override of the session retry count.
+            temperature: Per-call temperature override.
+            max_tokens: Per-call output-token limit override.
+            config: A :class:`~rapidtools.models.GenerationConfig`; explicit
+                keyword arguments take precedence over it.
+
+        Returns:
+            ModelOutput | None: The response text and raw JSON, or ``None``
+            when the request failed, was blocked by safety filters, or
+            nothing could be sent.
+
+        Example:
+            >>> from rapidtools.models import GeminiInference
+            >>> model = GeminiInference(api_key='AIza...')
+            >>> model.run_inference(['a.jpg', 'b.jpg'], 'Which roof is worse?').text
+            'The roof in the second image shows more severe damage.'
+        """
         prompt_str = self._resolve_prompt(prompt)
         log_ctx = f"[Prompt snippet: '{prompt_str[:30]}...']"
 
-        if not isinstance(image_inputs, list):
+        if image_inputs is None:
+            image_inputs = []
+        elif not isinstance(image_inputs, list):
             image_inputs = [image_inputs]
 
-        contents_parts = []
+        contents_parts: list[dict[str, Any]] = []
         for img_input in image_inputs:
             img_data = self._fetch_and_encode_image(img_input)
             if img_data:
                 contents_parts.append({'inline_data': img_data})
 
-        if not contents_parts:
-            logging.error(f'{log_ctx} No valid images were loaded.')
+        if image_inputs and not contents_parts:
+            logger.error(f'{log_ctx} No valid images were loaded.')
+            return None
+        if not prompt_str and not contents_parts:
+            logger.error(f'{log_ctx} No valid text or images were loaded.')
             return None
 
         contents_parts.append({'text': prompt_str})
 
-        final_temp = temperature if temperature is not None else self.temperature
-        final_tokens = max_tokens if max_tokens is not None else self.max_tokens
-
-        payload = {
-            'contents': [{'parts': contents_parts}],
-            'safetySettings': self.SAFETY_SETTINGS,
-            'generationConfig': {
-                'temperature': final_temp,
-                'maxOutputTokens': final_tokens,
-                'responseMimeType': 'application/json' if json_mode else 'text/plain'
-            }
-        }
-
-        if self.system_instruction:
-            payload['systemInstruction'] = {'parts': [{'text': self.system_instruction}]}
+        gen = self._resolve_generation(
+            config, temperature=temperature, max_tokens=max_tokens, json_mode=json_mode
+        )
+        payload = self._build_payload(
+            contents_parts,
+            gen.temperature,
+            gen.max_tokens,
+            gen.json_mode,
+            gen.system_instruction,
+        )
 
         url = f'{GEMINI_BASE_URL}/models/{self.model_id}:generateContent'
         headers = {'x-goog-api-key': self.api_key}
@@ -236,39 +337,43 @@ class GeminiInference(BaseAPIInferenceModel):
             should_close_session = True
 
         try:
-            response = session_to_use.post(url, json=payload, headers=headers, timeout=REQUESTS_TIMEOUT_VAL)
+            response = session_to_use.post(
+                url, json=payload, headers=headers, timeout=self.timeout
+            )
             response.raise_for_status()
             result_json = response.json()
 
-            try:
-                extracted_text = result_json['candidates'][0]['content']['parts'][0]['text']
-                # Return the unified ModelOutput!
-                return ModelOutput(
-                    text=extracted_text,
-                    raw_response=result_json
+            extracted_text = self._extract_text(result_json)
+            if extracted_text is not None:
+                return ModelOutput(text=extracted_text, raw_response=result_json)
+
+            block_reason = result_json.get('promptFeedback', {}).get('blockReason')
+            if block_reason:
+                logger.warning(
+                    f'{log_ctx} Blocked by safety filters. Reason: {block_reason}'
                 )
-            except (KeyError, IndexError):
-                block_reason = result_json.get('promptFeedback', {}).get('blockReason')
-                if block_reason:
-                    logging.warning(f'{log_ctx} Blocked by safety filters. Reason: {block_reason}')
-                    return None
-
-                candidates = result_json.get('candidates', [])
-                if candidates:
-                    finish_reason = candidates[0].get('finishReason')
-                    if finish_reason != 'STOP':
-                        logging.warning(f'{log_ctx} Generation halted unexpectedly. Finish Reason: {finish_reason}')
-                        return None
-
-                logging.error(f'{log_ctx} Unexpected response format: {result_json}')
                 return None
 
+            candidates = result_json.get('candidates', [])
+            if candidates:
+                finish_reason = candidates[0].get('finishReason')
+                if finish_reason != 'STOP':
+                    logger.warning(
+                        f'{log_ctx} Generation halted unexpectedly. '
+                        f'Finish Reason: {finish_reason}'
+                    )
+                    return None
+
+            logger.error(f'{log_ctx} Unexpected response format: {result_json}')
+            return None
+
         except RetryError:
-            logging.error(f'{log_ctx} Max retries exceeded.')
+            logger.error(f'{log_ctx} Max retries exceeded.')
         except HTTPError as e:
-            logging.error(f'{log_ctx} HTTP Error: {e} | Response: {e.response.text}')
-        except Exception as e:
-            logging.error(f'{log_ctx} Unexpected error: {e}')
+            body = e.response.text if e.response is not None else ''
+            logger.error(f'{log_ctx} HTTP Error: {e} | Response: {body}')
+        except Exception as e:  # noqa: BLE001 - surfaced as a failed asset
+            logger.error(f'{log_ctx} Unexpected error: {e}')
         finally:
             if should_close_session:
                 session_to_use.close()

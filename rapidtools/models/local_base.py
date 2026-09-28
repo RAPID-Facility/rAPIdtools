@@ -35,7 +35,27 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 02-22-2026
+# 09-22-2026
+
+"""
+Shared plumbing for local Hugging Face / PyTorch models.
+
+:class:`BaseLocalInferenceModel` loads images into PIL and replaces the
+threaded :meth:`~rapidtools.models.base.BaseInferenceModel.run_batch` with a
+sequential loop so several requests never compete for GPU memory.
+
+Example:
+    >>> from rapidtools.models import Gemma4Inference
+    >>> model = Gemma4Inference()
+    >>> for asset_id, status, out in model.run_batch(
+    ...     [('b1', ['b1.jpg']), ('b2', ['b2.jpg'])], 'Rate damage 0-5.'
+    ... ):
+    ...     print(asset_id, status)
+    b1 ok
+    b2 ok
+"""
+
+from __future__ import annotations
 
 import logging
 from collections.abc import Generator, Iterable
@@ -44,66 +64,116 @@ from pathlib import Path
 from typing import Any
 
 import requests
-
-try:
-    from PIL import Image
-except ImportError:
-    logging.warning('Pillow is not installed. Local models requiring PIL Images will fail.')
-
+from PIL import Image
 from tqdm import tqdm
 
+from rapidtools.auth import ensure_huggingface_login
+
 from .base import BaseInferenceModel, ModelOutput
+
+logger = logging.getLogger(__name__)
 
 
 class BaseLocalInferenceModel(BaseInferenceModel):
     """
     Intermediate base class for local Hugging Face / PyTorch models.
-    Handles VRAM-safe sequential batching and PIL Image loading.
+
+    Attributes:
+        device: Requested device (``'auto'``, ``'cuda'``, ``'cpu'``).
+        temperature: Default sampling temperature.
+        max_tokens: Default maximum number of new tokens.
+
+    Example:
+        >>> from rapidtools.models import HFVisionInference
+        >>> from rapidtools.models.local_base import BaseLocalInferenceModel
+        >>> issubclass(HFVisionInference, BaseLocalInferenceModel)
+        True
     """
 
-    def __init__(self, device: str = 'auto', temperature: float = 0.4, max_tokens: int = 2048):
+    def __init__(
+        self, device: str = 'auto', temperature: float = 0.4, max_tokens: int = 2048
+    ):
+        """
+        Store generation defaults and make sure a Hugging Face token exists.
+
+        Args:
+            device: ``'auto'``, ``'cuda'`` or ``'cpu'``.
+            temperature: Default sampling temperature.
+            max_tokens: Default maximum number of new tokens.
+        """
         self.device = device
         self.temperature = temperature
         self.max_tokens = max_tokens
+        # Gated Hugging Face repositories need a token; log in lazily here
+        # instead of at import time.
+        ensure_huggingface_login()
 
     def _load_image_as_pil(self, image_input: str | Path) -> Any | None:
-        """Universal PIL Image loader for local PyTorch models."""
+        """
+        Load an image from disk or a URL as an RGB PIL image.
+
+        Args:
+            image_input: Local path or ``http(s)://`` URL.
+
+        Returns:
+            PIL.Image.Image | None: The RGB image, or ``None`` when it cannot
+            be read (the error is logged).
+
+        Example:
+            >>> from rapidtools.models import Gemma4Inference
+            >>> model = Gemma4Inference()
+            >>> img = model._load_image_as_pil('roof.jpg')
+            >>> img.mode
+            'RGB'
+        """
         input_str = str(image_input)
         try:
             if input_str.startswith(('http://', 'https://')):
-                logging.info(f'Downloading image to memory: {input_str}')
+                logger.info(f'Downloading image to memory: {input_str}')
                 response = requests.get(input_str, timeout=10)
                 response.raise_for_status()
-                # Open image and ensure it has 3 channels (RGB) to prevent tensor shape errors
+                # Force 3 channels to prevent tensor shape errors downstream.
                 return Image.open(BytesIO(response.content)).convert('RGB')
-            else:
-                path_obj = Path(image_input)
-                if not path_obj.exists():
-                    logging.error(f'File not found: {path_obj}')
-                    return None
-                return Image.open(path_obj).convert('RGB')
-        except Exception as e:
-            logging.error(f'Failed to load image {input_str} for local inference: {e}')
+            path_obj = Path(image_input)
+            if not path_obj.exists():
+                logger.error(f'File not found: {path_obj}')
+                return None
+            return Image.open(path_obj).convert('RGB')
+        except Exception as e:  # noqa: BLE001 - reported and skipped
+            logger.error(f'Failed to load image {input_str} for local inference: {e}')
             return None
 
     def run_batch(
         self,
         asset_inputs: Iterable[tuple[str, Any]],
         prompt: str | Path,
-        **kwargs
+        **kwargs,
     ) -> Generator[tuple[str, str, ModelOutput | str], None, None]:
         """
-        OVERRIDES BaseInferenceModel.run_batch!
-        Local models must process sequentially to avoid GPU Out-Of-Memory (OOM) crashes.
+        Process assets sequentially to avoid GPU out-of-memory crashes.
+
+        Overrides :meth:`BaseInferenceModel.run_batch`.
+
+        Args:
+            asset_inputs: ``(asset_id, image_inputs)`` pairs.
+            prompt: Prompt text or file shared by every asset.
+            **kwargs: Forwarded to :meth:`run_inference`.
+
+        Yields:
+            tuple[str, str, ModelOutput | str]: ``(asset_id, status, payload)``
+            with ``status`` ``'ok'`` or ``'failed'``.
         """
         prompt_str = self._resolve_prompt(prompt)
         asset_list = list(asset_inputs)
 
         if not asset_list:
-            logging.warning('No assets provided to local run_batch.')
+            logger.warning('No assets provided to local run_batch.')
             return
 
-        logging.info(f'Starting local batch of {len(asset_list)} assets sequentially to protect VRAM.')
+        logger.info(
+            f'Starting local batch of {len(asset_list)} assets sequentially '
+            'to protect VRAM.'
+        )
 
         with tqdm(total=len(asset_list), unit='asset', desc='Local Processing') as pbar:
             for asset_id, img_inputs in asset_list:
@@ -113,8 +183,8 @@ class BaseLocalInferenceModel(BaseInferenceModel):
                         yield asset_id, 'ok', result
                     else:
                         yield asset_id, 'failed', 'Inference returned None.'
-                except Exception as e:
-                    logging.error(f'Local inference crash on {asset_id}: {e}')
+                except Exception as e:  # noqa: BLE001 - reported per asset
+                    logger.error(f'Local inference crash on {asset_id}: {e}')
                     yield asset_id, 'failed', f'Local GPU/CPU Exception: {str(e)}'
                 finally:
                     pbar.update(1)
