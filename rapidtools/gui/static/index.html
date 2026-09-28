@@ -1,0 +1,1107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rAPIdtools · Asset Analysis</title>
+<style>
+  :root {
+    --bg: #f3f5f8; --panel: #ffffff; --ink: #1c2430; --muted: #5d6b7c; --line: #e1e6ee;
+    --accent: #2f6fed; --accent-ink: #ffffff; --accent-soft: #e8f0fe; --ok: #1f9d55;
+    --warn: #d97706; --err: #d64545; --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+    --radius: 12px; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink); background: var(--bg); display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  button:disabled { cursor: not-allowed; opacity: .55; }
+  a { color: var(--accent); }
+
+  /* ---- top bar ---- */
+  header {
+    display: flex; align-items: center; gap: 16px; padding: 10px 20px; background: var(--panel);
+    border-bottom: 1px solid var(--line); flex: 0 0 auto;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 15px; letter-spacing: .2px; }
+  .brand .logo { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, #2f6fed, #6fb1ff); display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 13px; }
+  .brand small { color: var(--muted); font-weight: 500; }
+  .stepper { display: flex; gap: 6px; margin-left: 24px; }
+  .step-tab {
+    display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; border: 1px solid transparent;
+    background: transparent; color: var(--muted);
+  }
+  .step-tab .n { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: #e6eaf1; color: var(--muted); font-size: 12px; font-weight: 700; }
+  .step-tab.active { background: var(--accent-soft); color: var(--accent); border-color: #cfdcfb; }
+  .step-tab.active .n { background: var(--accent); color: #fff; }
+  .step-tab.done .n { background: var(--ok); color: #fff; }
+  .step-tab:disabled { opacity: .5; }
+  .spacer { flex: 1; }
+  .status {
+    display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; max-width: 46vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .spinner { width: 16px; height: 16px; border: 2px solid #cfd8e6; border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; display: none; flex: 0 0 auto; }
+  .busy .spinner { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  header .btn-cancel { display: none; }
+  body.busy header .btn-cancel { display: inline-flex; }
+
+  /* ---- main layout ---- */
+  main { flex: 1 1 auto; display: grid; grid-template-columns: 460px 1fr; min-height: 0; }
+  .side { overflow-y: auto; padding: 18px 18px 24px 20px; border-right: 1px solid var(--line); background: var(--bg); }
+  .viewer-wrap { position: relative; min-width: 0; display: flex; flex-direction: column; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .lead { color: var(--muted); margin: 0 0 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; box-shadow: var(--shadow); }
+  .card h2 { font-size: 14px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  .card h2 .tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #fff3e0; color: var(--warn); }
+  .choice-grid { display: grid; gap: 10px; }
+  .choice {
+    display: grid; grid-template-columns: 34px 1fr; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px;
+    background: var(--panel); text-align: left; width: 100%; transition: border-color .15s, box-shadow .15s;
+  }
+  .choice:hover:not(:disabled) { border-color: #b9c8ea; }
+  .choice.selected { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .choice .icon { width: 34px; height: 34px; border-radius: 9px; background: var(--accent-soft); display: grid; place-items: center; font-size: 17px; }
+  .choice .title { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .choice .desc { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .choice-body { padding: 12px 2px 2px; display: none; }
+  .choice-body.open { display: block; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > .grow { flex: 1; min-width: 0; }
+  .field { margin-bottom: 10px; }
+  .field label, .label { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+  .input, textarea, select {
+    width: 100%; padding: 8px 10px; border: 1px solid #cfd6e1; border-radius: 8px; background: #fff; outline: none; transition: border-color .15s, box-shadow .15s;
+  }
+  .input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  textarea { min-height: 150px; resize: vertical; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; border: 1px solid #cfd6e1; background: #fff; font-weight: 600; white-space: nowrap;
+  }
+  .btn:hover:not(:disabled) { background: #f6f8fb; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn.primary:hover:not(:disabled) { background: #275fd0; }
+  .btn.danger { color: var(--err); border-color: #f0c2c2; }
+  .btn.sm { padding: 6px 10px; font-weight: 500; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+  .seg { display: inline-flex; border: 1px solid #cfd6e1; border-radius: 8px; overflow: hidden; background: #fff; }
+  .seg button { border: 0; background: transparent; padding: 7px 12px; font-weight: 600; color: var(--muted); }
+  .seg button.on { background: var(--accent); color: #fff; }
+  details.adv { border-top: 1px dashed var(--line); margin-top: 10px; padding-top: 8px; }
+  details.adv summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 13px; list-style: none; display: flex; align-items: center; gap: 6px; }
+  details.adv summary::-webkit-details-marker { display: none; }
+  details.adv summary::before { content: '▸'; transition: transform .15s; }
+  details.adv[open] summary::before { transform: rotate(90deg); }
+  details.adv .body { padding-top: 10px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .range-row { display: flex; align-items: center; gap: 10px; }
+  .range-row input[type=range] { flex: 1; }
+  .range-row output { font-family: var(--mono); font-size: 12px; min-width: 36px; text-align: right; }
+  .check { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+  .check input { width: 16px; height: 16px; }
+  .radio-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .radio-cards .radio-card.local b::after { content: 'local'; font-size: 10px; font-weight: 700; margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: #e3f6ea; color: var(--ok); vertical-align: middle; }
+  .radio-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; text-align: left; background: #fff; }
+  .radio-card.selected { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .radio-card b { display: block; }
+  .radio-card span { color: var(--muted); font-size: 12px; }
+  .footer-nav { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: #eef1f6; color: var(--muted); }
+  .pill.ok { background: #e3f6ea; color: var(--ok); }
+  .pill.warn { background: #fff3e0; color: var(--warn); }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+  .tile { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .tile .v { font-size: 22px; font-weight: 700; }
+  .tile .k { color: var(--muted); font-size: 12px; }
+  .table-wrap { max-height: 320px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+  th { position: sticky; top: 0; background: #f7f9fc; font-weight: 600; color: var(--muted); }
+  tr:hover td { background: #f6f9ff; }
+  .files a { display: flex; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; text-decoration: none; margin-bottom: 6px; color: var(--ink); background: #fff; }
+  .files a:hover { border-color: #b9c8ea; }
+  .files a small { color: var(--muted); }
+
+  /* ---- viewer ---- */
+  .viewer-toolbar {
+    display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap;
+  }
+  .viewer-toolbar .label { margin: 0; }
+  .viewer-toolbar select { width: auto; padding: 5px 8px; }
+  .viewer { position: relative; flex: 1; min-height: 0; background: #0f141b; overflow: hidden; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+  canvas.dragging { cursor: grabbing; }
+  .empty {
+    position: absolute; inset: 0; display: grid; place-items: center; color: #9fb0c6; text-align: center; padding: 30px; pointer-events: none;
+  }
+  .empty .big { font-size: 42px; margin-bottom: 8px; }
+  .tooltip {
+    position: absolute; pointer-events: none; background: rgba(20,26,34,.94); color: #fff; padding: 8px 10px; border-radius: 8px; font-size: 12px; max-width: 320px; display: none; box-shadow: 0 6px 20px rgba(0,0,0,.35);
+  }
+  .tooltip b { color: #9ec1ff; }
+  .tooltip .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin-top: 4px; }
+  .legend {
+    position: absolute; left: 12px; bottom: 12px; background: rgba(255,255,255,.94); border-radius: 10px; padding: 8px 10px; font-size: 12px; box-shadow: var(--shadow); display: none; max-height: 40%; overflow: auto;
+  }
+  .legend .li { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+  .legend .sw { width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(0,0,0,.2); }
+  .tile-badge { position: absolute; right: 12px; top: 44px; background: rgba(255,255,255,.94); border-radius: 999px; padding: 3px 10px; font-size: 11px; color: var(--muted); box-shadow: var(--shadow); display: none; }
+  .details {
+    position: absolute; right: 12px; top: 12px; bottom: 12px; width: min(380px, 42%); background: rgba(255,255,255,.97); border-radius: 12px; box-shadow: var(--shadow); display: none; flex-direction: column; overflow: hidden; z-index: 5;
+  }
+  .details.open { display: flex; }
+  .details-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .details-head b { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .details-body { overflow: auto; padding: 10px 12px; font-size: 12.5px; }
+  .details-body img { width: 100%; border-radius: 8px; border: 1px solid var(--line); display: block; margin: 6px 0 2px; cursor: zoom-in; background: #000; }
+  .details-body .kv { display: grid; grid-template-columns: minmax(90px, auto) 1fr; gap: 3px 10px; margin-top: 8px; }
+  .details-body .kv span:nth-child(odd) { color: var(--muted); font-weight: 600; }
+  .details-body .kv span:nth-child(even) { word-break: break-word; }
+  .viewer-badge { position: absolute; right: 12px; top: 12px; background: rgba(255,255,255,.94); border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 600; box-shadow: var(--shadow); }
+
+  /* ---- log drawer ---- */
+  .drawer { border-top: 1px solid var(--line); background: var(--panel); flex: 0 0 auto; }
+  .drawer-head { display: flex; align-items: center; gap: 10px; padding: 6px 14px; cursor: pointer; user-select: none; }
+  .drawer-head b { font-size: 12.5px; color: var(--muted); }
+  .drawer-head .last { flex: 1; color: var(--muted); font-family: var(--mono); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .drawer-body { display: none; height: 200px; overflow: auto; padding: 6px 14px 10px; font-family: var(--mono); font-size: 12px; background: #0f141b; color: #d6e0ec; }
+  .drawer.open .drawer-body { display: block; }
+  .drawer-body .progress { color: #8fb3ff; }
+  .drawer-body .error { color: #ff8c8c; }
+
+  /* ---- modal ---- */
+  .modal-bg { position: fixed; inset: 0; background: rgba(16,24,40,.45); display: none; place-items: center; z-index: 50; }
+  .modal-bg.open { display: grid; }
+  .modal { width: min(760px, 92vw); max-height: 84vh; background: #fff; border-radius: 14px; box-shadow: 0 30px 80px rgba(0,0,0,.35); display: flex; flex-direction: column; overflow: hidden; }
+  .modal-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .modal-head h3 { margin: 0; font-size: 15px; flex: 1; }
+  .modal-path { display: flex; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: #f7f9fc; }
+  .modal-list { flex: 1; overflow: auto; padding: 6px 8px; }
+  .fs-item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; cursor: pointer; }
+  .fs-item:hover { background: #f1f5fd; }
+  .fs-item.selected { background: var(--accent-soft); }
+  .fs-item .ic { width: 20px; text-align: center; }
+  .fs-item .sz { margin-left: auto; color: var(--muted); font-size: 12px; }
+  .modal-foot { display: flex; gap: 8px; justify-content: flex-end; padding: 10px 16px; border-top: 1px solid var(--line); }
+
+  .toast-wrap { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 60; }
+  .toast { background: #1c2430; color: #fff; padding: 10px 14px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.3); max-width: 420px; font-size: 13px; animation: fade .2s ease-out; }
+  .toast.error { background: var(--err); }
+  .toast.ok { background: var(--ok); }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px);} to { opacity: 1; transform: none; } }
+
+  @media (max-width: 980px) {
+    main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    .side { border-right: 0; border-bottom: 1px solid var(--line); max-height: 50vh; }
+    .status { display: none; }
+  }
+</style>
+</head>
+<body>
+<header id="header">
+  <div class="brand"><div class="logo">R</div><div>rAPIdtools <small>· Asset Analysis</small></div></div>
+  <nav class="stepper">
+    <button class="step-tab active" data-step="1"><span class="n">1</span>Imagery</button>
+    <button class="step-tab" data-step="2" disabled><span class="n">2</span>Detect &amp; analyze</button>
+    <button class="step-tab" data-step="3" disabled><span class="n">3</span>Results</button>
+  </nav>
+  <div class="spacer"></div>
+  <div class="status"><span class="spinner"></span><span id="status-text">Ready.</span></div>
+  <button class="btn sm danger btn-cancel" id="btn-cancel">Cancel</button>
+</header>
+
+<main>
+  <aside class="side">
+    <!-- ========================= STEP 1 ========================= -->
+    <section class="panel active" id="panel-1">
+      <h1>Where is your aerial image?</h1>
+      <p class="lead">Choose how to bring in the post-disaster orthomosaic. A preview will appear on the right once it is loaded.</p>
+
+      <div class="card">
+        <div class="choice-grid">
+          <button class="choice selected" data-source="local">
+            <div class="icon">💻</div>
+            <div><div class="title">Load from this computer</div><div class="desc">Pick a GeoTIFF that is already on this machine.</div></div>
+          </button>
+          <div class="choice-body open" id="body-local">
+            <div class="field">
+              <label>GeoTIFF path</label>
+              <div class="row">
+                <input class="input grow" id="raster-path" placeholder="/path/to/orthomosaic.tiff">
+                <button class="btn" data-browse="raster-path" data-kind="raster">Browse…</button>
+              </div>
+            </div>
+            <button class="btn primary" id="btn-load-local">Load image</button>
+          </div>
+
+          <button class="choice" data-source="tacc" disabled>
+            <div class="icon">🏛️</div>
+            <div><div class="title">Get from TACC <span class="pill warn">Coming soon</span></div><div class="desc">Browse UW RAPID datasets hosted on the DesignSafe / TACC data depot.</div></div>
+          </button>
+
+          <button class="choice" data-source="sample">
+            <div class="icon">⬇️</div>
+            <div><div class="title">Download a UW RAPID sample</div><div class="desc">Post-event imagery from the 2025 Eaton Fire in Altadena, CA.</div></div>
+          </button>
+          <div class="choice-body" id="body-sample">
+            <div class="field">
+              <label>Sample dataset</label>
+              <div class="row">
+                <select id="sample-name" class="grow"></select>
+                <button class="btn primary" id="btn-download-sample">Download</button>
+              </div>
+              <div class="hint">Files are about 1–2 GB and are saved to the working folder below.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Working folder</h2>
+        <div class="row">
+          <input class="input grow" id="output-dir">
+          <button class="btn" data-browse="output-dir" data-kind="dir">Browse…</button>
+        </div>
+        <div class="hint">Downloads, image crops and GeoJSON results are written here.</div>
+      </div>
+
+      <div class="footer-nav">
+        <span></span>
+        <button class="btn primary" id="next-1" disabled>Continue →</button>
+      </div>
+    </section>
+
+    <!-- ========================= STEP 2 ========================= -->
+    <section class="panel" id="panel-2">
+      <h1>What should we look for?</h1>
+      <p class="lead">Tell us which assets to extract from the image, then choose the model and the prompt used to analyze each one.</p>
+
+      <div class="card">
+        <h2>Assets</h2>
+        <div class="seg" id="asset-mode">
+          <button class="on" data-mode="detect">Detect assets in the image</button>
+          <button data-mode="load">I already have asset locations</button>
+        </div>
+
+        <div id="asset-detect" style="margin-top:12px">
+          <div class="field">
+            <label>Assets to detect</label>
+            <input class="input" id="assets" value="building" placeholder="building, tree, swimming pool">
+            <div class="hint">Free-form text. Separate several assets with commas.</div>
+          </div>
+          <details class="adv">
+            <summary>Advanced options</summary>
+            <div class="body">
+              <div class="field">
+                <label>Approximate asset size (meters)</label>
+                <input class="input" type="number" id="asset-size" value="50" min="1" max="1000" step="5">
+              </div>
+              <div class="field">
+                <label>Detect assets in</label>
+                <div class="check"><input type="radio" name="source" id="src-bing" value="bing" checked><label for="src-bing" style="margin:0;font-weight:500;color:var(--ink)">Bing basemap over the image extent (pre-disaster appearance)</label></div>
+                <div class="check"><input type="radio" name="source" id="src-recon" value="recon"><label for="src-recon" style="margin:0;font-weight:500;color:var(--ink)">The post-disaster image itself</label></div>
+              </div>
+              <div class="grid2">
+                <div class="field">
+                  <label>Confidence threshold</label>
+                  <div class="range-row"><input type="range" id="threshold" min="0.05" max="0.95" step="0.05" value="0.5"><output id="threshold-out">0.50</output></div>
+                </div>
+                <div class="field">
+                  <label>Mask threshold</label>
+                  <div class="range-row"><input type="range" id="mask-threshold" min="0.05" max="0.95" step="0.05" value="0.4"><output id="mask-threshold-out">0.40</output></div>
+                </div>
+              </div>
+              <div class="check"><input type="checkbox" id="regularize" checked><label for="regularize" style="margin:0;font-weight:500;color:var(--ink)">Regularize geometries (buildings and roads)</label></div>
+            </div>
+          </details>
+        </div>
+
+        <div id="asset-load" style="margin-top:12px; display:none">
+          <div class="field">
+            <label>Asset locations (GeoJSON)</label>
+            <div class="row">
+              <input class="input grow" id="geojson-path" placeholder="/path/to/assets.geojson">
+              <button class="btn" data-browse="geojson-path" data-kind="geojson">Browse…</button>
+            </div>
+          </div>
+          <button class="btn" id="btn-load-geojson">Load assets</button>
+          <span class="pill" id="loaded-pill" style="margin-left:8px; display:none"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Analysis model</h2>
+        <div class="radio-cards" id="backend"></div>
+        <div class="field" id="field-api-key" style="margin-top:10px">
+          <label id="api-key-label">API key</label>
+          <div class="row">
+            <input class="input grow" type="password" id="api-key" placeholder="Paste your key" autocomplete="off">
+            <button class="btn" data-textfile="api-key" data-kind="text">From file…</button>
+          </div>
+          <div class="hint" id="api-key-hint"></div>
+        </div>
+        <div class="field">
+          <label>Model ID</label>
+          <div class="row">
+            <input class="input grow" id="model-id" list="model-list">
+            <button class="btn" id="btn-fetch-models" title="List the models available to this backend">Fetch models</button>
+          </div>
+          <datalist id="model-list"></datalist>
+          <div class="hint" id="model-hint"></div>
+        </div>
+        <details class="adv">
+          <summary>Advanced options</summary>
+          <div class="body">
+            <div class="grid2">
+              <div class="field" id="field-workers"><label>Parallel API requests</label><input class="input" type="number" id="max-workers" value="5" min="1" max="32"></div>
+              <div class="field" id="field-batch"><label>Local batch size</label><input class="input" type="number" id="batch-size" value="4" min="1" max="64"></div>
+            </div>
+            <div class="check" id="field-4bit"><input type="checkbox" id="load-4bit" checked><label for="load-4bit" style="margin:0;font-weight:500;color:var(--ink)">Load the local model in 4-bit (fits consumer GPUs)</label></div>
+            <div class="check"><input type="checkbox" id="overlay-outline" checked><label for="overlay-outline" style="margin:0;font-weight:500;color:var(--ink)">Draw the asset outline on each image before inference</label></div>
+            <div class="grid2" id="outline-opts">
+              <div class="field"><label>Outline shape</label><select class="input" id="outline-shape"><option value="geometry">Asset geometry</option><option value="bbox">Bounding box</option><option value="rotated_bbox">Rotated bounding box</option><option value="convex_hull">Convex hull</option><option value="corners">Corner brackets</option></select></div>
+              <div class="field"><label>Outline buffer</label><input class="input" type="text" id="outline-buffer" value="0" placeholder="e.g. 2 m, 10 ft, 10%, 12 px"></div>
+              <div class="field"><label>Outline width</label><input class="input" type="text" id="outline-width" value="6" placeholder="pixels or % of image"></div>
+              <div class="field"><label>Outline colour</label><input class="input" type="text" id="outline-color" value="red" placeholder="red, #00ffff, ..."></div>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <div class="card">
+        <h2>Prompt <span class="hint" style="margin:0;font-weight:500">applied to every asset</span></h2>
+        <textarea id="prompt"></textarea>
+        <div class="actions">
+          <button class="btn sm" data-textfile="prompt" data-kind="text">Load from file…</button>
+          <button class="btn sm" id="btn-sample-prompt">Use sample CHS damage prompt</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="actions">
+          <button class="btn primary" id="btn-run-all">Detect + run inference</button>
+          <button class="btn" id="btn-detect">Detect only</button>
+          <button class="btn" id="btn-infer">Run inference</button>
+        </div>
+        <div class="hint" id="run-hint" style="margin-top:8px"></div>
+      </div>
+
+      <div class="footer-nav">
+        <button class="btn" data-goto="1">← Back</button>
+        <button class="btn" id="next-2" disabled>View results →</button>
+      </div>
+    </section>
+
+    <!-- ========================= STEP 3 ========================= -->
+    <section class="panel" id="panel-3">
+      <h1>Results</h1>
+      <p class="lead">Hover over an asset to see its attributes, click it to open the images the model analyzed, or colour the overlay by any attribute using the menu above the image.</p>
+      <div class="tiles">
+        <div class="tile"><div class="v" id="tile-count">–</div><div class="k">assets</div></div>
+        <div class="tile"><div class="v" id="tile-analyzed">–</div><div class="k">with inference results</div></div>
+        <div class="tile"><div class="v" id="tile-source" style="font-size:14px;margin-top:6px">–</div><div class="k">source</div></div>
+      </div>
+      <div class="card">
+        <h2>Attributes</h2>
+        <div class="table-wrap"><table id="table"><thead></thead><tbody></tbody></table></div>
+        <div class="hint" id="table-hint"></div>
+      </div>
+      <div class="card">
+        <h2>Files</h2>
+        <div class="files" id="files"></div>
+      </div>
+      <div class="footer-nav">
+        <button class="btn" data-goto="2">← Back</button>
+        <button class="btn danger" id="btn-reset">Start over</button>
+      </div>
+    </section>
+  </aside>
+
+  <!-- ========================= VIEWER ========================= -->
+  <section class="viewer-wrap">
+    <div class="viewer-toolbar">
+      <span class="label">Image</span>
+      <div class="seg" id="preview-seg">
+        <button class="on" data-preview="raster">Post-disaster</button>
+        <button data-preview="basemap" disabled title="Available after detection on the Bing basemap">Bing basemap</button>
+      </div>
+      <span class="label" style="margin-left:8px">Colour by</span>
+      <select id="color-by"><option value="">Outline only</option></select>
+      <label class="check" style="margin:0 0 0 8px"><input type="checkbox" id="show-overlay" checked> Show assets</label>
+      <label class="check" style="margin:0"><input type="checkbox" id="show-labels"> Labels</label>
+      <label class="check" style="margin:0 0 0 8px" title="Stream the original pixels when zoomed in"><input type="checkbox" id="full-res" checked> Full resolution</label>
+      <span class="spacer"></span>
+      <button class="btn sm" id="btn-fit">Fit</button>
+    </div>
+    <div class="viewer" id="viewer">
+      <canvas id="canvas"></canvas>
+      <div class="empty" id="empty"><div><div class="big">🛰️</div>Load an aerial image to see it here.<br><small>Detections and inference results will be drawn on top as they arrive.</small></div></div>
+      <div class="tooltip" id="tooltip"></div>
+      <div class="legend" id="legend"></div>
+      <div class="viewer-badge" id="viewer-badge" style="display:none"></div>
+      <div class="tile-badge" id="tile-badge"></div>
+      <div class="details" id="details">
+        <div class="details-head"><b id="details-title"></b><button class="btn sm" id="details-close">✕</button></div>
+        <div class="details-body" id="details-body"></div>
+      </div>
+    </div>
+    <div class="drawer" id="drawer">
+      <div class="drawer-head" id="drawer-head"><b>Log</b><span class="last" id="log-last"></span><span class="hint" id="drawer-toggle">show</span></div>
+      <div class="drawer-body" id="log"></div>
+    </div>
+  </section>
+</main>
+
+<!-- file browser modal -->
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <div class="modal-head"><h3 id="modal-title">Select a file</h3><button class="btn sm" id="modal-close">✕</button></div>
+    <div class="modal-path">
+      <button class="btn sm" id="fs-up" title="Parent folder">↑</button>
+      <input class="input" id="fs-path">
+      <button class="btn sm" id="fs-go">Go</button>
+      <button class="btn sm" id="fs-home">Home</button>
+    </div>
+    <div class="modal-list" id="fs-list"></div>
+    <div class="modal-foot">
+      <span class="hint" id="fs-selected" style="flex:1; align-self:center"></span>
+      <button class="btn" id="fs-cancel">Cancel</button>
+      <button class="btn primary" id="fs-select" disabled>Select</button>
+    </div>
+  </div>
+</div>
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const DETECTION_KEYS = new Set(['asset_type', 'source_model', 'extraction_scale']);
+  const PALETTE = ['#ff5d5d','#ffb347','#ffe74c','#5ee08a','#4cc9f0','#7b8cff','#d67bff','#ff7ab6','#9ee37d','#f4a261','#8ecae6','#ffafcc'];
+  const DEFAULT_PROMPT = `You are an expert in post-disaster damage assessment. The primary asset is outlined in red. Describe its condition and assign a damage level.
+
+REQUIRED OUTPUT FORMAT:
+Damage Level: [None, Minor, Major, Destroyed]
+Justification: [2-3 sentences citing visual evidence]`;
+
+  // ------------------------------------------------------------ state
+  const S = {
+    step: 1, state: null, lastJob: null, logSeq: 0,
+    previewKey: 'raster', previewVersions: {}, image: null, imageKey: null,
+    overlay: null, overlayVersion: -1, overlayPreviewVersion: -1, colorBy: '',
+    view: { scale: 1, ox: 0, oy: 0 }, drag: null, hover: null, maxStepUnlocked: 1,
+    analyzedCount: 0,
+  };
+
+  // ------------------------------------------------------------ utils
+  async function api(path, body, method) {
+    const opts = { method: method || (body ? 'POST' : 'GET'), headers: {} };
+    if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+    const res = await fetch(path, opts);
+    if (res.status === 401) { location.reload(); throw new Error('Sign in required.'); }
+    let data = {};
+    try { data = await res.json(); } catch (e) { /* ignore */ }
+    if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
+    return data;
+  }
+  function toast(msg, kind) {
+    const el = document.createElement('div');
+    el.className = 'toast ' + (kind || '');
+    el.textContent = msg;
+    $('toasts').appendChild(el);
+    setTimeout(() => el.remove(), kind === 'error' ? 8000 : 4500);
+  }
+  function fmtBytes(n) { if (n < 1024) return n + ' B'; if (n < 1048576) return (n/1024).toFixed(0) + ' KB'; if (n < 1073741824) return (n/1048576).toFixed(1) + ' MB'; return (n/1073741824).toFixed(2) + ' GB'; }
+  const num = (id) => parseFloat($(id).value);
+
+  // ------------------------------------------------------------ steps
+  function goto(step) {
+    if (step > S.maxStepUnlocked) return;
+    S.step = step;
+    document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + step));
+    document.querySelectorAll('.step-tab').forEach(t => {
+      const n = +t.dataset.step;
+      t.classList.toggle('active', n === step);
+      t.classList.toggle('done', n < step);
+    });
+    if (step === 3) refreshTable();
+  }
+  function unlock(step) {
+    S.maxStepUnlocked = Math.max(S.maxStepUnlocked, step);
+    document.querySelectorAll('.step-tab').forEach(t => { t.disabled = +t.dataset.step > S.maxStepUnlocked; });
+  }
+  document.querySelectorAll('.step-tab').forEach(t => t.addEventListener('click', () => goto(+t.dataset.step)));
+  document.querySelectorAll('[data-goto]').forEach(b => b.addEventListener('click', () => goto(+b.dataset.goto)));
+  $('next-1').addEventListener('click', () => { unlock(2); goto(2); });
+  $('next-2').addEventListener('click', () => { unlock(3); goto(3); });
+
+  // ------------------------------------------------------------ step 1
+  document.querySelectorAll('.choice[data-source]').forEach(c => c.addEventListener('click', () => {
+    if (c.disabled) return;
+    document.querySelectorAll('.choice').forEach(x => x.classList.toggle('selected', x === c));
+    document.querySelectorAll('.choice-body').forEach(b => b.classList.toggle('open', b.id === 'body-' + c.dataset.source));
+  }));
+  $('btn-load-local').addEventListener('click', () => run(() => api('/api/imagery/local', { path: $('raster-path').value })));
+  $('btn-download-sample').addEventListener('click', () => run(() => api('/api/imagery/sample', { name: $('sample-name').value })));
+  $('output-dir').addEventListener('change', () => run(() => api('/api/output_dir', { path: $('output-dir').value })));
+
+  // ------------------------------------------------------------ step 2
+  let assetMode = 'detect';
+  $('asset-mode').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    assetMode = b.dataset.mode;
+    $('asset-mode').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    $('asset-detect').style.display = assetMode === 'detect' ? '' : 'none';
+    $('asset-load').style.display = assetMode === 'load' ? '' : 'none';
+    updateRunButtons();
+  }));
+  ['threshold', 'mask-threshold'].forEach(id => {
+    const upd = () => { $(id + '-out').value = num(id).toFixed(2); };
+    $(id).addEventListener('input', upd); upd();
+  });
+  let backend = 'gemini';
+  const modelLists = {};   // backend -> models fetched from the provider
+  function backendSpec(b) { return S.state && S.state.options.backends ? S.state.options.backends[b] : null; }
+  function buildBackendCards() {
+    const specs = S.state.options.backends || {};
+    $('backend').innerHTML = Object.entries(specs).map(([key, sp]) =>
+      `<button class="radio-card ${sp.kind}" data-backend="${key}"><b>${esc(sp.label)}</b><span>${esc(sp.description)}</span></button>`).join('');
+    document.querySelectorAll('.radio-card').forEach(c => c.addEventListener('click', () => setBackend(c.dataset.backend)));
+  }
+  function setBackend(b) {
+    const sp = backendSpec(b);
+    if (!sp) return;
+    backend = b;
+    document.querySelectorAll('.radio-card').forEach(c => c.classList.toggle('selected', c.dataset.backend === b));
+    const isApi = sp.kind === 'api';
+    $('field-api-key').style.display = isApi ? '' : 'none';
+    $('api-key-label').textContent = sp.key_label || 'API key';
+    $('api-key-hint').textContent = isApi ? `Or set the ${sp.key_env} environment variable before launching the app.` : '';
+    $('field-workers').style.display = isApi ? '' : 'none';
+    $('field-batch').style.display = sp.supports_batch ? '' : 'none';
+    $('field-4bit').style.display = sp.supports_4bit ? '' : 'none';
+    $('btn-fetch-models').textContent = isApi ? 'Fetch models' : 'Show models';
+    const list = modelLists[b] || sp.models;
+    $('model-list').innerHTML = list.map(m => `<option value="${esc(m)}">`).join('');
+    if (!list.includes($('model-id').value)) $('model-id').value = sp.default_model;
+    $('model-hint').textContent = isApi ? `Default: ${sp.default_model}. Fetch models lists what your key can access.` : `Hugging Face repository. Default: ${sp.default_model}.`;
+    saveForm();
+  }
+  $('btn-fetch-models').addEventListener('click', () => run(async () => {
+    const sp = backendSpec(backend);
+    const r = await api('/api/models', { backend, api_key: $('api-key').value });
+    modelLists[backend] = r.models;
+    $('model-list').innerHTML = r.models.map(m => `<option value="${esc(m)}">`).join('');
+    $('model-hint').textContent = `${r.models.length} model(s) available for ${sp.label}. Start typing in the field to pick one.`;
+    if (sp.kind === 'api' && !$('api-key').value.trim()) toast('No API key given, showing the built-in list only.');
+    else toast(`${r.models.length} models listed.`, 'ok');
+    $('model-id').focus();
+  }));
+  $('prompt').value = DEFAULT_PROMPT;
+  $('btn-sample-prompt').addEventListener('click', () => run(async () => {
+    const r = await api('/api/prompt/sample', {});
+    $('prompt').value = r.text; toast('Sample CHS prompt loaded.', 'ok');
+  }));
+  $('btn-load-geojson').addEventListener('click', () => run(async () => {
+    const r = await api('/api/assets/load', { path: $('geojson-path').value });
+    toast(`Loaded ${r.count} assets.`, 'ok');
+  }));
+
+  function detectPayload() {
+    return {
+      assets: $('assets').value, asset_size_m: num('asset-size'),
+      source: document.querySelector('input[name=source]:checked').value,
+      threshold: num('threshold'), mask_threshold: num('mask-threshold'), regularize: $('regularize').checked,
+    };
+  }
+  function inferPayload() {
+    return {
+      prompt: $('prompt').value, backend, api_key: $('api-key').value, model_id: $('model-id').value,
+      max_workers: num('max-workers'), batch_size: num('batch-size'), load_in_4bit: $('load-4bit').checked,
+      overlay_outline: $('overlay-outline').checked,
+      outline_shape: $('outline-shape').value, outline_buffer: $('outline-buffer').value,
+      outline_width: $('outline-width').value, outline_color: $('outline-color').value,
+    };
+  }
+  $('btn-detect').addEventListener('click', () => run(() => api('/api/detect', detectPayload())));
+  $('btn-infer').addEventListener('click', () => run(() => api('/api/infer', inferPayload())));
+  $('btn-run-all').addEventListener('click', () => run(() => api('/api/run_all', { detect: detectPayload(), infer: inferPayload() })));
+  $('btn-cancel').addEventListener('click', () => run(() => api('/api/cancel', {})));
+  $('btn-reset').addEventListener('click', async () => {
+    if (!confirm('Clear the loaded image, assets and results?')) return;
+    await run(() => api('/api/reset', {}));
+    S.image = null; S.imageKey = null; S.overlay = null; S.previewVersions = {}; S.maxStepUnlocked = 1;
+    unlock(1); goto(1); draw();
+  });
+  async function run(fn) { try { await fn(); await poll(); } catch (e) { toast(e.message, 'error'); } }
+
+  function updateRunButtons() {
+    const st = S.state; if (!st) return;
+    const busy = st.busy, hasRaster = !!st.raster, hasAssets = !!(st.collection && st.collection.count);
+    $('btn-run-all').disabled = busy || !hasRaster || assetMode !== 'detect';
+    $('btn-detect').disabled = busy || !hasRaster || assetMode !== 'detect';
+    $('btn-infer').disabled = busy || !hasRaster || !hasAssets;
+    $('btn-load-geojson').disabled = busy;
+    $('btn-load-local').disabled = busy; $('btn-download-sample').disabled = busy; $('btn-sample-prompt').disabled = busy;
+    $('next-1').disabled = !hasRaster;
+    $('next-2').disabled = !hasAssets;
+    $('run-hint').textContent = !hasRaster ? 'Load an image in step 1 first.' :
+      assetMode === 'load' && !hasAssets ? 'Load an asset file above, then run inference.' :
+      hasAssets ? `${st.collection.count} assets ready (${st.collection.source}).` : '';
+  }
+
+  // ------------------------------------------------------------ form persistence
+  const PERSISTED = ['assets', 'asset-size', 'threshold', 'mask-threshold', 'regularize', 'model-id', 'max-workers', 'batch-size', 'load-4bit', 'overlay-outline', 'outline-shape', 'outline-buffer', 'outline-width', 'outline-color', 'prompt', 'raster-path', 'geojson-path'];
+  function saveForm() {
+    try {
+      const data = { backend, assetMode, source: document.querySelector('input[name=source]:checked').value };
+      for (const id of PERSISTED) { const el = $(id); data[id] = el.type === 'checkbox' ? el.checked : el.value; }
+      localStorage.setItem('rapidtools-gui-form', JSON.stringify(data));
+    } catch (e) { /* storage unavailable */ }
+  }
+  function restoreForm() {
+    let data; try { data = JSON.parse(localStorage.getItem('rapidtools-gui-form') || 'null'); } catch (e) { data = null; }
+    if (!data) return;
+    for (const id of PERSISTED) { if (!(id in data)) continue; const el = $(id); if (el.type === 'checkbox') el.checked = !!data[id]; else el.value = data[id]; }
+    if (data.source) { const r = document.querySelector(`input[name=source][value=${data.source}]`); if (r) r.checked = true; }
+    if (data.backend && backendSpec(data.backend)) backend = data.backend;
+    if (data.assetMode) { const b = $('asset-mode').querySelector(`[data-mode=${data.assetMode}]`); if (b) b.click(); }
+    ['threshold', 'mask-threshold'].forEach(id => { $(id + '-out').value = num(id).toFixed(2); });
+  }
+  document.querySelector('.side').addEventListener('change', saveForm);
+  document.querySelector('.side').addEventListener('input', (e) => { if (e.target.id === 'prompt' || e.target.id === 'assets') saveForm(); });
+
+  // ------------------------------------------------------------ polling
+  async function poll() {
+    let st;
+    try { st = await api('/api/state'); } catch (e) { $('status-text').textContent = 'Server unreachable…'; return; }
+    const prev = S.state; S.state = st;
+    document.body.classList.toggle('busy', st.busy);
+    $('status-text').textContent = st.status;
+    $('output-dir').value = document.activeElement === $('output-dir') ? $('output-dir').value : st.output_dir;
+    if (!prev) {
+      $('sample-name').innerHTML = st.options.sample_rasters.map(s => `<option>${s}</option>`).join('');
+      buildBackendCards();
+      restoreForm();
+      if (st.options.shared) document.querySelector('.brand small').textContent = '· Asset Analysis · shared server';
+      if (st.options.data_root) document.querySelector('#body-local .hint, #panel-1 .hint').textContent = `Files are limited to ${st.options.data_root}.`;
+      setBackend(backend);
+      // Resume where the server left off (e.g. after a page reload).
+      if (st.raster) { unlock(2); if (st.collection && st.collection.count) unlock(3); goto(2); }
+    }
+    // unlock steps based on state
+    if (st.raster) unlock(2);
+    if (st.collection && st.collection.count) unlock(3);
+
+    // job transitions
+    const job = st.job;
+    if (S.lastJob && S.lastJob.status === 'running' && job.status !== 'running') {
+      if (job.status === 'done') {
+        toast(job.message, 'ok');
+        if (job.name === 'Inference' || job.name === 'Detection + inference') { unlock(3); goto(3); }
+        else if (job.name === 'Detection') { unlock(3); }
+        else if (job.name === 'Load imagery' || job.name.startsWith('Download')) { if (S.step === 1) { unlock(2); goto(2); } }
+      } else if (job.status === 'error') toast(job.message, 'error');
+      else toast(job.message);
+    }
+    S.lastJob = job;
+
+    // previews
+    const raster = st.raster, basemap = st.basemap;
+    const seg = $('preview-seg');
+    seg.querySelector('[data-preview=basemap]').disabled = !basemap;
+    if (!basemap && S.previewKey === 'basemap') setPreview('raster');
+    const active = S.previewKey === 'basemap' ? basemap : raster;
+    if (active && (S.previewVersions[S.previewKey] !== active.version || S.imageKey !== S.previewKey)) loadImage(S.previewKey, active);
+    if (!raster) { S.image = null; $('empty').style.display = ''; draw(); }
+
+    // overlay (refreshed on every collection change, and every few seconds
+    // while a job runs so inference results appear progressively)
+    const cv = st.collection ? st.collection.version : 0;
+    const live = st.busy && st.collection && (Date.now() - (S.lastOverlayAt || 0) > 4000);
+    if (st.collection && (cv !== S.overlayVersion || live || (active && S.overlayPreviewVersion !== active.version + ':' + S.previewKey))) refreshOverlay();
+    if (!st.collection && S.overlay) { S.overlay = null; S.overlayVersion = cv; updateColorMenu(); draw(); }
+    if (!st.collection) S.overlayVersion = cv;
+
+    updateRunButtons();
+    if (S.step === 3 && st.collection && prev && prev.collection && prev.collection.version !== cv) refreshTable();
+    renderFiles(st.results);
+    pollLog();
+  }
+  async function pollLog() {
+    try {
+      const r = await api(`/api/log?since=${S.logSeq}`);
+      if (!r.entries.length) return;
+      const box = $('log');
+      for (const e of r.entries) {
+        let el = box.querySelector('[data-progress]');
+        if (e.kind === 'progress') {
+          if (!el) { el = document.createElement('div'); el.dataset.progress = '1'; el.className = 'progress'; box.appendChild(el); }
+          el.textContent = e.text;
+        } else {
+          if (el) { el.removeAttribute('data-progress'); el.className = ''; }
+          const d = document.createElement('div'); d.textContent = e.text;
+          if (/ERROR|failed|Traceback/.test(e.text)) d.className = 'error';
+          box.appendChild(d);
+        }
+        $('log-last').textContent = e.text;
+      }
+      S.logSeq = r.seq;
+      box.scrollTop = box.scrollHeight;
+    } catch (e) { /* ignore */ }
+  }
+  $('drawer-head').addEventListener('click', () => { const d = $('drawer'); d.classList.toggle('open'); $('drawer-toggle').textContent = d.classList.contains('open') ? 'hide' : 'show'; });
+
+  // ------------------------------------------------------------ results
+  async function refreshTable() {
+    const st = S.state; if (!st || !st.collection) return;
+    const r = await api('/api/table?limit=500');
+    const cols = r.columns.filter(c => !['image_assets'].includes(c));
+    $('table').querySelector('thead').innerHTML = '<tr><th>ID</th>' + cols.map(c => `<th>${esc(c)}</th>`).join('') + '</tr>';
+    $('table').querySelector('tbody').innerHTML = r.rows.map(row => '<tr><td>' + esc(row.id) + '</td>' + cols.map(c => `<td title="${esc(String(row.attributes[c] ?? ''))}">${esc(String(row.attributes[c] ?? ''))}</td>`).join('') + '</tr>').join('');
+    $('table-hint').textContent = r.total > r.rows.length ? `Showing the first ${r.rows.length} of ${r.total} assets. Download the GeoJSON for the full table.` : `${r.total} assets.`;
+    $('tile-count').textContent = r.total;
+    $('tile-source').textContent = st.collection.source;
+    const analyzed = r.rows.filter(row => Object.keys(row.attributes).some(k => !DETECTION_KEYS.has(k))).length;
+    $('tile-analyzed').textContent = r.total > r.rows.length ? `${analyzed}+` : analyzed;
+  }
+  function renderFiles(results) {
+    const box = $('files');
+    const html = results.map(r => `<a href="/api/download?path=${encodeURIComponent(r.path)}" download><span>${esc(r.label)}</span><small>${esc(r.name)}</small></a>`).join('');
+    if (box.dataset.html !== html) { box.innerHTML = html || '<div class="hint">No files yet.</div>'; box.dataset.html = html; }
+  }
+  const esc = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  // ------------------------------------------------------------ viewer
+  const canvas = $('canvas'), ctx = canvas.getContext('2d');
+  function setPreview(key) {
+    S.previewKey = key;
+    $('preview-seg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.preview === key));
+    poll();
+  }
+  $('preview-seg').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { if (!b.disabled) setPreview(b.dataset.preview); }));
+  function loadImage(key, info) {
+    const img = new Image();
+    const first = !S.image;
+    img.onload = () => {
+      S.image = img; S.imageKey = key; S.previewVersions[key] = info.version; S.imageInfo = info;
+      $('empty').style.display = 'none';
+      if (first) fit(); draw();
+    };
+    img.src = `/api/preview/${key}.png?v=${info.version}`;
+  }
+
+  // Full-resolution tiles: fetched on demand once the preview is stretched
+  // beyond its own pixels, drawn on top of it, and cached per image version.
+  const TILE = 512;
+  const tiles = new Map();   // key -> {img, loaded}
+  let tilesPending = 0;
+  function tileKey(k, v, d, tx, ty) { return `${k}:${v}:${d}:${tx}:${ty}`; }
+  function drawTiles() {
+    const info = S.imageInfo; if (!info || !$('full-res').checked) { $('tile-badge').style.display = 'none'; return; }
+    const { scale, ox, oy } = S.view;
+    const previewScale = info.preview_width / info.width;          // preview px per native px
+    const screenPerNative = scale * previewScale;                    // screen px per native px
+    if (screenPerNative <= previewScale * 1.15) { $('tile-badge').style.display = 'none'; return; } // preview is sharp enough
+    let d = 1;
+    while (d * 2 * screenPerNative <= 1 && d < 64) d *= 2;           // native px per screen px, rounded down to a power of 2
+    const W = canvas.width, H = canvas.height;
+    const nx0 = Math.max(0, (0 - ox) / scale / previewScale), ny0 = Math.max(0, (0 - oy) / scale / previewScale);
+    const nx1 = Math.min(info.width, (W - ox) / scale / previewScale), ny1 = Math.min(info.height, (H - oy) / scale / previewScale);
+    if (nx1 <= nx0 || ny1 <= ny0) return;
+    const span = TILE * d;
+    const tx0 = Math.floor(nx0 / span), tx1 = Math.floor((nx1 - 1) / span), ty0 = Math.floor(ny0 / span), ty1 = Math.floor((ny1 - 1) / span);
+    if ((tx1 - tx0 + 1) * (ty1 - ty0 + 1) > 120) return;              // safety: too many tiles for this zoom
+    let missing = 0;
+    for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
+      const key = tileKey(S.imageKey, info.version, d, tx, ty);
+      let t = tiles.get(key);
+      if (!t) {
+        t = { img: new Image(), loaded: false };
+        tiles.set(key, t); tilesPending++;
+        t.img.onload = () => { t.loaded = true; tilesPending--; draw(); };
+        t.img.onerror = () => { t.failed = true; tilesPending--; updateTileBadge(); };
+        t.img.src = `/api/tile/${S.imageKey}/${d}/${tx}/${ty}.jpg?v=${info.version}`;
+        if (tiles.size > 900) { const oldest = tiles.keys().next().value; tiles.delete(oldest); }
+      }
+      if (t.loaded) {
+        const sx = ox + tx * span * previewScale * scale, sy = oy + ty * span * previewScale * scale;
+        const w = t.img.width * d * previewScale * scale, h = t.img.height * d * previewScale * scale;
+        ctx.drawImage(t.img, sx, sy, w + 0.5, h + 0.5);
+      } else if (!t.failed) missing++;
+    }
+    updateTileBadge(missing, d);
+  }
+  function updateTileBadge(missing, d) {
+    const b = $('tile-badge');
+    if (missing) { b.style.display = 'block'; b.textContent = `Loading ${missing} full-resolution tile${missing > 1 ? 's' : ''}…`; }
+    else if (d) { b.style.display = 'block'; b.textContent = d === 1 ? 'Full resolution' : `1/${d} resolution`; }
+    else b.style.display = 'none';
+  }
+  $('full-res').addEventListener('change', draw);
+
+  // Asset details panel (opened by clicking an asset).
+  async function openDetails(f) {
+    const panel = $('details'), body = $('details-body');
+    panel.classList.add('open');
+    $('details-title').textContent = f.id;
+    body.innerHTML = '<div class="hint">Loading…</div>';
+    try {
+      const d = await api(`/api/asset?id=${encodeURIComponent(f.id)}`);
+      const imgs = d.images.filter(i => i.exists);
+      const kv = Object.entries(d.attributes).map(([k, v]) => `<span>${esc(k)}</span><span>${esc(v)}</span>`).join('');
+      body.innerHTML = (imgs.length ? `<div class="label">${imgs.length} image${imgs.length > 1 ? 's' : ''} attached (click to open full size)</div>` +
+        imgs.map(i => `<a href="${i.url}" target="_blank" rel="noopener"><img src="${i.url}" alt="${esc(i.name)}" loading="lazy"></a><div class="hint">${esc(i.name)}</div>`).join('')
+        : '<div class="hint">No images attached to this asset yet. Run inference to crop and analyze it.</div>') +
+        `<div class="label" style="margin-top:10px">Attributes</div><div class="kv">${kv}</div>`;
+    } catch (e) { body.innerHTML = `<div class="hint">${esc(e.message)}</div>`; }
+  }
+  $('details-close').addEventListener('click', () => $('details').classList.remove('open'));
+  async function refreshOverlay() {
+    const st = S.state; if (!st || !st.collection) return;
+    const active = S.previewKey === 'basemap' ? st.basemap : st.raster; if (!active) return;
+    try {
+      const data = await api(`/api/overlay?preview=${S.previewKey}`);
+      S.overlay = data; S.overlayVersion = data.collection_version; S.overlayPreviewVersion = active.version + ':' + S.previewKey; S.lastOverlayAt = Date.now();
+      catCache = { key: null, version: null, map: null };
+      updateColorMenu(); draw();
+    } catch (e) { toast('Could not load overlay: ' + e.message, 'error'); }
+  }
+  function updateColorMenu() {
+    const sel = $('color-by');
+    const keys = S.overlay ? S.overlay.attribute_keys : [];
+    const wanted = S.colorBy && keys.includes(S.colorBy) ? S.colorBy : pickDefaultColorKey(keys);
+    sel.innerHTML = '<option value="">Outline only</option>' + keys.map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join('');
+    sel.value = wanted; S.colorBy = wanted;
+    const badge = $('viewer-badge');
+    if (S.overlay && S.overlay.count) { badge.style.display = ''; badge.textContent = `${S.overlay.count} assets`; } else badge.style.display = 'none';
+  }
+  function pickDefaultColorKey(keys) {
+    // Prefer a categorical inferred attribute (2-20 distinct values) whose name
+    // sounds like a classification; fall back to asset_type when mixed.
+    if (!S.overlay) return '';
+    const distinct = (k) => new Set(S.overlay.features.map(f => f.attributes[k]).filter(v => v !== undefined && v !== null && v !== '')).size;
+    const score = (k) => {
+      const n = distinct(k);
+      if (n < 2 || n > 20) return -1;
+      return (/level|class|damage|status|category|label|grade|condition|state|type/i.test(k) ? 10 : 0) + (DETECTION_KEYS.has(k) ? -5 : 0);
+    };
+    let best = '', bestScore = -1;
+    for (const k of keys) { const sc = score(k); if (sc > bestScore) { best = k; bestScore = sc; } }
+    return bestScore >= 0 ? best : '';
+  }
+  $('color-by').addEventListener('change', () => { S.colorBy = $('color-by').value; draw(); });
+  $('show-overlay').addEventListener('change', draw);
+  $('show-labels').addEventListener('change', draw);
+  $('btn-fit').addEventListener('click', () => { fit(); draw(); });
+
+  function resize() {
+    const r = canvas.parentElement.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(r.width * dpr); canvas.height = Math.round(r.height * dpr);
+    draw();
+  }
+  window.addEventListener('resize', resize);
+  function fit() {
+    if (!S.image) return;
+    const W = canvas.width, H = canvas.height, s = Math.min(W / S.image.width, H / S.image.height) * 0.96;
+    S.view = { scale: s, ox: (W - S.image.width * s) / 2, oy: (H - S.image.height * s) / 2 };
+  }
+  function colorFor(f) {
+    if (!S.colorBy) return null;
+    const v = f.attributes[S.colorBy];
+    if (v === undefined || v === null || v === '') return '#9aa4b2';
+    const cats = colorCategories();
+    return cats.get(String(v));
+  }
+  let catCache = { key: null, version: null, map: null };
+  function colorCategories() {
+    if (catCache.key === S.colorBy && catCache.version === S.overlayVersion && catCache.map) return catCache.map;
+    const values = [];
+    for (const f of S.overlay.features) { const v = f.attributes[S.colorBy]; if (v !== undefined && v !== null && v !== '' && !values.includes(String(v))) values.push(String(v)); }
+    const numeric = values.length && values.every(v => !isNaN(parseFloat(v)));
+    values.sort(numeric ? (a, b) => parseFloat(a) - parseFloat(b) : undefined);
+    const map = new Map(values.map((v, i) => [v, PALETTE[i % PALETTE.length]]));
+    catCache = { key: S.colorBy, version: S.overlayVersion, map };
+    return map;
+  }
+  function draw() {
+    const W = canvas.width, H = canvas.height;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#0f141b'; ctx.fillRect(0, 0, W, H);
+    const legend = $('legend');
+    if (!S.image) { legend.style.display = 'none'; return; }
+    const { scale, ox, oy } = S.view;
+    ctx.imageSmoothingEnabled = scale < 2;
+    ctx.drawImage(S.image, ox, oy, S.image.width * scale, S.image.height * scale);
+    if (S.imageKey === $('preview-seg').querySelector('.on').dataset.preview) drawTiles();
+
+    if (S.overlay && $('show-overlay').checked) {
+      const dpr = window.devicePixelRatio || 1;
+      const showLabels = $('show-labels').checked;
+      ctx.lineJoin = 'round';
+      for (const f of S.overlay.features) {
+        const fill = colorFor(f);
+        const hovered = S.hover === f;
+        ctx.lineWidth = (hovered ? 3 : 1.6) * dpr;
+        ctx.strokeStyle = hovered ? '#ffffff' : (fill || '#37e6ff');
+        for (const ring of f.rings) {
+          if (!ring.length) continue;
+          ctx.beginPath();
+          if (f.kind === 'point') {
+            ctx.arc(ox + ring[0][0] * scale, oy + ring[0][1] * scale, 5 * dpr, 0, Math.PI * 2);
+          } else {
+            ring.forEach((p, i) => { const x = ox + p[0] * scale, y = oy + p[1] * scale; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+            if (f.kind === 'polygon') ctx.closePath();
+          }
+          if (fill && f.kind !== 'line') { ctx.fillStyle = hexToRgba(fill, hovered ? 0.55 : 0.35); ctx.fill(); }
+          ctx.stroke();
+        }
+        if (showLabels && S.colorBy) {
+          const v = f.attributes[S.colorBy];
+          if (v !== undefined && v !== null && v !== '') {
+            const c = centroid(f.rings[0]);
+            ctx.font = `${11 * dpr}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            const text = String(v); const w = ctx.measureText(text).width + 8 * dpr;
+            ctx.fillStyle = 'rgba(0,0,0,.65)'; ctx.fillRect(ox + c[0] * scale - w / 2, oy + c[1] * scale - 8 * dpr, w, 16 * dpr);
+            ctx.fillStyle = '#fff'; ctx.fillText(text, ox + c[0] * scale, oy + c[1] * scale);
+          }
+        }
+      }
+      // legend
+      if (S.colorBy) {
+        const cats = colorCategories();
+        legend.style.display = 'block';
+        legend.innerHTML = `<b>${esc(S.colorBy)}</b>` + [...cats.entries()].map(([v, c]) => `<div class="li"><span class="sw" style="background:${c}"></span>${esc(v)}</div>`).join('') + '<div class="li"><span class="sw" style="background:#9aa4b2"></span>no value</div>';
+      } else legend.style.display = 'none';
+    } else legend.style.display = 'none';
+  }
+  function hexToRgba(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; }
+  function centroid(ring) { let x = 0, y = 0; for (const p of ring) { x += p[0]; y += p[1]; } return [x / ring.length, y / ring.length]; }
+  function pointInRing(x, y, ring) {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  function featureAt(px, py) {
+    if (!S.overlay) return null;
+    const { scale, ox, oy } = S.view, x = (px - ox) / scale, y = (py - oy) / scale;
+    for (let i = S.overlay.features.length - 1; i >= 0; i--) {
+      const f = S.overlay.features[i];
+      if (f.kind === 'polygon' && f.rings.some(r => pointInRing(x, y, r))) return f;
+      if (f.kind === 'point' && f.rings.some(r => Math.hypot(r[0][0] - x, r[0][1] - y) * scale < 8)) return f;
+    }
+    return null;
+  }
+  // pan / zoom / hover
+  canvas.addEventListener('wheel', (e) => {
+    if (!S.image) return; e.preventDefault();
+    const dpr = window.devicePixelRatio || 1, r = canvas.getBoundingClientRect();
+    const mx = (e.clientX - r.left) * dpr, my = (e.clientY - r.top) * dpr;
+    const factor = Math.exp(-e.deltaY * 0.0015);
+    const ns = Math.min(Math.max(S.view.scale * factor, 0.05), 40);
+    S.view.ox = mx - (mx - S.view.ox) * (ns / S.view.scale);
+    S.view.oy = my - (my - S.view.oy) * (ns / S.view.scale);
+    S.view.scale = ns; draw();
+  }, { passive: false });
+  canvas.addEventListener('mousedown', (e) => { S.drag = { x: e.clientX, y: e.clientY, ox: S.view.ox, oy: S.view.oy, moved: false }; canvas.classList.add('dragging'); });
+  window.addEventListener('mouseup', () => { S.drag = null; canvas.classList.remove('dragging'); });
+  canvas.addEventListener('click', (e) => {
+    if (S.dragMoved) { S.dragMoved = false; return; }
+    const dpr = window.devicePixelRatio || 1, r = canvas.getBoundingClientRect();
+    const f = featureAt((e.clientX - r.left) * dpr, (e.clientY - r.top) * dpr);
+    if (f) openDetails(f);
+  });
+  canvas.addEventListener('mousemove', (e) => {
+    const dpr = window.devicePixelRatio || 1;
+    if (S.drag) {
+      if (Math.abs(e.clientX - S.drag.x) + Math.abs(e.clientY - S.drag.y) > 3) S.dragMoved = true;
+      S.view.ox = S.drag.ox + (e.clientX - S.drag.x) * dpr; S.view.oy = S.drag.oy + (e.clientY - S.drag.y) * dpr; draw(); return;
+    }
+    const r = canvas.getBoundingClientRect();
+    const f = featureAt((e.clientX - r.left) * dpr, (e.clientY - r.top) * dpr);
+    const tip = $('tooltip');
+    if (f !== S.hover) { S.hover = f; draw(); }
+    if (f) {
+      const rows = Object.entries(f.attributes).filter(([k]) => k !== 'image_assets').map(([k, v]) => `<span>${esc(k)}</span><span>${esc(typeof v === 'object' ? JSON.stringify(v) : v)}</span>`).join('');
+      tip.innerHTML = `<b>${esc(f.id)}</b><div class="kv">${rows}</div>`;
+      tip.style.display = 'block';
+      const vr = $('viewer').getBoundingClientRect();
+      let left = e.clientX - vr.left + 14, top = e.clientY - vr.top + 14;
+      if (left + tip.offsetWidth > vr.width - 8) left = e.clientX - vr.left - tip.offsetWidth - 14;
+      if (top + tip.offsetHeight > vr.height - 8) top = e.clientY - vr.top - tip.offsetHeight - 14;
+      tip.style.left = left + 'px'; tip.style.top = top + 'px';
+    } else tip.style.display = 'none';
+  });
+  canvas.addEventListener('mouseleave', () => { $('tooltip').style.display = 'none'; if (S.hover) { S.hover = null; draw(); } });
+  canvas.addEventListener('dblclick', () => { fit(); draw(); });
+
+  // ------------------------------------------------------------ file browser
+  const fs = { target: null, kind: 'raster', path: null, selected: null };
+  document.querySelectorAll('[data-browse]').forEach(b => b.addEventListener('click', () => openBrowser(b.dataset.browse, b.dataset.kind, 'path')));
+  document.querySelectorAll('[data-textfile]').forEach(b => b.addEventListener('click', () => openBrowser(b.dataset.textfile, b.dataset.kind, 'text')));
+  function openBrowser(targetId, kind, mode) {
+    fs.target = targetId; fs.kind = kind; fs.mode = mode; fs.selected = null;
+    $('modal-title').textContent = kind === 'dir' ? 'Select a folder' : kind === 'raster' ? 'Select a GeoTIFF' : kind === 'geojson' ? 'Select a GeoJSON file' : 'Select a text file';
+    $('modal').classList.add('open');
+    const current = $(targetId).value;
+    listDir(current && mode === 'path' ? current : (fs.path || (S.state ? S.state.options.cwd : '')));
+  }
+  async function listDir(path) {
+    try {
+      const r = await api(`/api/fs?kind=${fs.kind}&path=${encodeURIComponent(path || '')}`);
+      fs.path = r.path; fs.parent = r.parent; fs.selected = fs.kind === 'dir' ? r.path : null;
+      $('fs-path').value = r.path;
+      $('fs-list').innerHTML = r.dirs.map(d => `<div class="fs-item" data-dir="${esc(d.path)}"><span class="ic">📁</span>${esc(d.name)}</div>`).join('') +
+        r.files.map(f => `<div class="fs-item" data-file="${esc(f.path)}"><span class="ic">📄</span>${esc(f.name)}<span class="sz">${fmtBytes(f.size)}</span></div>`).join('') || '<div class="hint" style="padding:10px">Nothing to show here.</div>';
+      updateFsFooter();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+  function updateFsFooter() {
+    $('fs-selected').textContent = fs.selected ? fs.selected : (fs.kind === 'dir' ? '' : 'Select a file');
+    $('fs-select').disabled = !fs.selected;
+  }
+  $('fs-list').addEventListener('click', (e) => {
+    const item = e.target.closest('.fs-item'); if (!item) return;
+    if (item.dataset.dir) { listDir(item.dataset.dir); return; }
+    $('fs-list').querySelectorAll('.fs-item').forEach(x => x.classList.toggle('selected', x === item));
+    fs.selected = item.dataset.file; updateFsFooter();
+  });
+  $('fs-list').addEventListener('dblclick', (e) => { const item = e.target.closest('.fs-item'); if (item && item.dataset.file) { fs.selected = item.dataset.file; chooseFs(); } });
+  $('fs-up').addEventListener('click', () => { if (fs.parent) listDir(fs.parent); });
+  $('fs-go').addEventListener('click', () => listDir($('fs-path').value));
+  $('fs-path').addEventListener('keydown', (e) => { if (e.key === 'Enter') listDir($('fs-path').value); });
+  $('fs-home').addEventListener('click', () => listDir(S.state ? S.state.options.home : ''));
+  $('fs-cancel').addEventListener('click', closeFs); $('modal-close').addEventListener('click', closeFs);
+  $('modal').addEventListener('click', (e) => { if (e.target === $('modal')) closeFs(); });
+  function closeFs() { $('modal').classList.remove('open'); }
+  async function chooseFs() {
+    if (!fs.selected) return;
+    if (fs.mode === 'text') {
+      try { const r = await api(`/api/textfile?path=${encodeURIComponent(fs.selected)}`); $(fs.target).value = r.text; } catch (e) { toast(e.message, 'error'); return; }
+    } else {
+      $(fs.target).value = fs.selected;
+      if (fs.target === 'output-dir') run(() => api('/api/output_dir', { path: fs.selected }));
+    }
+    closeFs();
+  }
+  $('fs-select').addEventListener('click', chooseFs);
+
+  // ------------------------------------------------------------ boot
+  window.__rapidtools = { state: S, featureAt, draw, fit };  // debugging handle
+  resize();
+  poll();
+  setInterval(poll, 1000);
+})();
+</script>
+</body>
+</html>
