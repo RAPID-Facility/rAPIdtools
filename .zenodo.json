@@ -1,0 +1,49 @@
+{
+  "title": "rAPIdtools: AI inference and localization for post-disaster geospatial datasets",
+  "description": "<p>rAPIdtools is a Python toolkit that connects post-disaster orthomosaics, basemaps and street-level imagery with vision-language models. It crops imagery around every building, road or pole in an inventory, runs the crops through hosted or local models, discovers and regularizes asset geometries with SAM 3, and writes the results back to GeoJSON or Shapefile.</p><p>Documentation: <a href=\"https://rapid-facility.github.io/rAPIdtools/\">rapid-facility.github.io/rAPIdtools</a></p>",
+  "upload_type": "software",
+  "access_right": "open",
+  "license": "BSD-3-Clause",
+  "creators": [
+    {
+      "name": "Cetiner, Barbaros",
+      "affiliation": "NSF NHERI RAPID Facility, University of Washington",
+      "orcid": "0000-0002-9726-8120"
+    }
+  ],
+  "contributors": [
+    {
+      "name": "NSF NHERI RAPID Facility",
+      "type": "HostingInstitution",
+      "affiliation": "University of Washington"
+    }
+  ],
+  "keywords": [
+    "natural hazards",
+    "damage assessment",
+    "post-disaster reconnaissance",
+    "remote sensing",
+    "aerial imagery",
+    "street-level imagery",
+    "vision-language models",
+    "computer vision",
+    "GIS"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/RAPID-Facility/rAPIdtools",
+      "relation": "isSupplementTo",
+      "resource_type": "software",
+      "scheme": "url"
+    },
+    {
+      "identifier": "https://pypi.org/project/rapidtools/",
+      "relation": "isIdenticalTo",
+      "resource_type": "software",
+      "scheme": "url"
+    }
+  ],
+  "grants": [
+    { "id": "10.13039/100000001::1611820" }
+  ]
+}
