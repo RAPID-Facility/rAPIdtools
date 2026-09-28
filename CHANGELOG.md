@@ -9,13 +9,13 @@ minor releases may change public APIs.
 
 ### Added
 
-- **One factory, one analyzer.** `rapidtools.models.load(provider, ...)` builds
-  any model wrapper from its registry key, and `AssetAnalyzer(model, prompt, ...)`
-  replaces the provider-specific analyzer classes. `list_providers()`,
-  `catalog()` and the `PROVIDERS` registry describe every backend without
-  importing PyTorch. `GenerationConfig` carries per-call options such as
-  `json_mode` and `temperature`; `RateLimitPolicy` gives hosted models a shared
-  cooldown and retry passes so rate limits do not leave holes in the results.
+- **Loading models and running analysis.** Use `rapidtools.models.load(provider, ...)`
+  to get a model wrapper by its registry key, then hand it to `AssetAnalyzer(model, prompt, ...)`.
+  This replaces the old per-provider analyzer classes. To see what's available without 
+  importing PyTorch, call `list_providers()` or `catalog()` , or look at the `PROVIDERS` registry directly.
+  `GenerationConfig` carries per-call options such as `json_mode` and `temperature`; 
+  `RateLimitPolicy` gives hosted models a shared cooldown and retry passes so
+  rate limits do not leave holes in the results.
 - **New model backends:** OpenAI, Meta Muse Spark and Alibaba Qwen APIs; Meta
   Muse Glimmer, Qwen VL and any Hugging Face vision-language checkpoint
   (`HFVisionInference`) locally, with optional 4-bit loading. Every wrapper
@@ -91,7 +91,6 @@ minor releases may change public APIs.
 
 - `rapidtools.models` and `rapidtools.processing` are reachable as attributes
   of the top-level package, as the README examples show.
-- Two docstrings that did not render in Sphinx.
 
 ## [0.1.2] - 2026-08-12
 

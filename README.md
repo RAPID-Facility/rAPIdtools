@@ -1,21 +1,16 @@
 # rAPIdtools
 
-<!-- Row 1: getting the package -->
 [![PyPI version](https://img.shields.io/pypi/v/rapidtools.svg)](https://pypi.org/project/rapidtools/)
 [![Python](https://img.shields.io/pypi/pyversions/rapidtools.svg)](https://pypi.org/project/rapidtools/)
 [![Downloads](https://static.pepy.tech/badge/rapidtools/month)](https://pepy.tech/project/rapidtools)
 [![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
 
-<!-- Row 2: project health -->
 [![Tests](https://github.com/RAPID-Facility/rAPIdtools/actions/workflows/ci.yml/badge.svg)](https://github.com/RAPID-Facility/rAPIdtools/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/bacetiner/c890ae687368838a74c5e442b9ff5b94/raw/coverage.json)](https://github.com/RAPID-Facility/rAPIdtools/actions/workflows/ci.yml)
 [![Docs](https://github.com/RAPID-Facility/rAPIdtools/actions/workflows/docs.yml/badge.svg?branch=main)](https://rapid-facility.github.io/rAPIdtools/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Typing](https://img.shields.io/pypi/types/rapidtools)](https://pypi.org/project/rapidtools/)
-
-<!-- Row 3: citing. After the first Zenodo archive, replace XXXXXXX with the
-     concept record ID and uncomment the line below. -->
-<!-- [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX) -->
 
 A high-performance toolkit for performing large-scale AI inference and localization on post-disaster geospatial datasets.
 
