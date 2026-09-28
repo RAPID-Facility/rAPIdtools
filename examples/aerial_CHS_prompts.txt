@@ -1,0 +1,76 @@
+TASK: Analyze each provided image and assign a CHS Level (0, 1, 2, 3, 4) to the primary building structure, based on the CHS Combustion Index provided. Do not focus your attention on non-combustible materials. Act as an expert in forensic engineering, wildfire damage assessment, and combustible materials. 
+
+ANALYSIS STEPS:
+1. Locate the primary building footprint roughly marked with a red outline
+2. Apply appropriate CHS indicators and combustion descriptions
+3. Assign CHS Level with brief justification
+
+ANALYSIS EDGE CASES:
+Alternative assigned classifications for each image include “No Data”, as outlined in the CHS COMBUSTION INDEX section, and “No Data-Footprint Unclear.” Assign a CHS Level of “No Data-Footprint Unclear” if the provided image does not appear to have a singular mostly complete building footprint. Look specifically for the presence of multiple complete or near-complete footprints.
+
+REQUIRED OUTPUT FORMAT:
+CHS Level: [0, 1, 2, 3, 4, No Data, or No Data-Footprint]
+Justification: [2-3 sentences explaining key visual evidence]
+
+CHS COMBUSTION INDEX:
+
+CHS Level 0: Unaffected / No Direct Combustion
+
+Combustion Description: The structure was not directly ignited and did not participate in combustion. It serves as a baseline for the pre-fire state.
+
+Inferred Burn Characteristics: The fire did not reach the structure, or thermal exposure was below the ignition threshold of building materials.
+
+Key indicators:
+- Roof is fully intact with uniform color and texture.
+- Building footprint is crisp and unbroken.
+- No visible fire-related debris on the roof or property.
+
+CHS Level 1: Superficial Combustion & Radiant Heat Damage
+Combustion Description: The fire subjected the structure to intense radiant heat and/or brief, direct flame contact, causing ignition and combustion of only the most vulnerable exterior surfaces and materials (e.g., paint, plastic siding, small decorative elements).
+
+Inferred Burn Characteristics: Incomplete, surface-level combustion of exterior materials. This stage is often associated with the release of toxic compounds from melting plastics (e.g., dioxins, furans) without significant structural compromise.
+
+Key indicators:
+- Visible soot staining or discoloration on the roof surface.
+- Damage to plastic roof features like vents or skylight domes.
+- The primary roof structure is not breached.
+
+CHS Level 2: Partial Structural Combustion
+Combustion Description: The fire has breached the building's exterior envelope (e.g., through a window, vent, or roof) and caused sustained combustion of a limited portion of the internal structural components.
+
+Inferred Burn Characteristics: Localized, sustained combustion that has transitioned from the exterior to the interior. Represents a mix of flaming and smoldering fire dynamics within a contained area of the structure.
+
+Key indicators:
+- A clear, distinct breach or hole in the roof, exposing the attic or interior below.
+- A limited section of the roof is missing or has collapsed inward.
+- The overall building footprint remains intact.
+
+CHS Level 3: Major Structural Combustion/Incomplete Reduction
+
+Combustion Description: The fire has propagated through most of the structure, consuming most of the combustible mass. However, the fire's intensity or duration was insufficient to fully reduce large structural timbers to ash, leaving behind a significant volume of charred, skeletal remains.
+
+Inferred Burn Characteristics: High-intensity, often ventilation-controlled fire that has consumed most fine fuels and roof materials. Leaves behind a large mass of charcoal and pyrolyzed wood, representing incomplete combustion of the largest fuel loads.
+
+Key indicators:
+- The roof is almost entirely gone.
+- The skeletal "floor plan" is visible: The charred tops of standing combustible interior and exterior walls can be seen from above.
+- A large debris pile is contained within the remaining skeletal walls.
+
+CHS Level 4: Complete Combustion / Full Reduction to Ash
+
+Combustion Description: The fire was of sufficient duration and intensity to reduce virtually all combustible structural mass (both fine and heavy fuels) to ash, leaving behind no recognizable skeletal structure.
+
+Inferred Burn Characteristics: Complete, high-temperature, and/or long-duration combustion. This process mineralizes the organic fuel, potentially concentrating heavy metals and other inorganic compounds in the remaining ash.
+
+Key indicators:
+-The skeletal structure is gone.
+-The entire foundation footprint is filled with a relatively homogenous pile of ash and debris.
+-Remaining walls are foundation walls underneath the ground level or non-combustible walls such as brick wall, masonry wall, and stucco.
+-Non-combustible items (e.g., chimney stacks, vehicle chassis) may be visible protruding from the ash.
+
+CHS Level No Data: Combustion level cannot be assessed
+Description: Building data has been tampered with to an extent such that it can not be analyzed properly for its initial damage state.
+
+Key Indicators:
+-Excess of dirt, indicating a bulldozed/demolished plot
+-Construction/demolition vehicles are present on site

@@ -1,0 +1,64 @@
+Instructions: 
+Based on the context provided, the CHS rules and definitions provided, assume the role of fire damage assessor with expertise in fire combustion and impacts on residential infrastructure to categorize the building depicted in the attached photograph as a CHS Level 0, 1, 2, 3, 4 or No Data. 
+
+Target Identification: Each image represents a single primary residential property. Before applying the CHS index, you must correctly isolate the primary target structure or its structural remains.The target structure is located centrally in the frame, typically situated at the end of the main driveway or walkway.
+Note on Severe Damage: Do not assume the target structure will cover the majority of the image. Highly combusted buildings may be reduced to a lone chimney, foundation walls, or a pile of ash, occupying only a small central area of the frame. Ignore foreground barriers such as fences, gates, and retaining walls. Strictly ignore any neighboring structures, foundations, or debris piles visible in the background or the far left/right periphery of the image.
+
+Assess the appropriate CHS key indicators to assign a CHS score. Provide both a concise justification for the assigned CHS level and a number ranging from 1-3 (1 = uncertain/not confident, 2 = somewhat confident 3 = absolutely confident that you are correct)  that is associated with your level of confidence in the accuracy of your damage assessment.
+
+Required Output Format:
+CHS Level: [0, 1, 2, 3, 4, No Data]
+Justification: [2-3 sentences explaining key visual evidence] 
+
+Context and background: 
+Traditional post-wildfire damage assessments, often conducted via aerial or satellite imagery, categorize structures into broad, discrete categories (e.g., unaffected, minor, major, destroyed). These classifications, while useful for rapid response, fail to capture the granular spectrum of combustion. The chemical composition of smoke, ash, and subsequent environmental contamination is not uniform; it is intrinsically linked to what burned and at what temperature and completeness.
+
+Accordingly, we are trying to move from a binary "burned/unburned" classification (i.e., the current state of the practice) to a nuanced "level of combustion." For this purpose, we developed the Combustion Hierarchy Scale (CHS), which allows one to assign CHS levels based on Street View imagery (SVI).
+
+CHS rules, guidelines, and definitions:
+CHS Level 0: Unaffected / No Direct Combustion
+Combustion Description: The structure was not directly ignited and did not participate in combustion. It serves as a baseline for the pre-fire state.
+Inferred Burn Characteristics: The fire did not reach the structure, or thermal exposure was below the ignition threshold of building materials.
+Key street view indicators:
+- Exterior walls, windows, and doors are intact and show no signs of soot, melting, or charring.
+- Paint is not scorched; plastic trim is not warped.
+
+CHS Level 1: Superficial Combustion & Radiant Heat Damage
+Combustion Description: The fire subjected the structure to intense radiant heat and/or brief, direct flame contact, causing ignition and combustion of only the most vulnerable exterior surfaces and materials (e.g., paint, plastic siding, small decorative elements).
+Inferred Burn Characteristics: Incomplete, surface-level combustion of exterior materials. This stage is often associated with the release of toxic compounds from melting plastics (e.g., dioxins, furans) without significant structural compromise.
+Key street view indicators:
+- Melted vinyl siding, fascia, or gutters.
+- Scorched paint and soot staining on exterior walls, especially above windows.
+- Cracked window glass but with frames largely intact.
+
+CHS Level 2: Partial Structural Combustion
+Combustion Description: The fire has breached the building's exterior envelope (e.g., through a window, vent, or roof) and caused sustained combustion of a limited portion of the internal structural components.
+Inferred Burn Characteristics: Localized, sustained combustion that has transitioned from the exterior to the interior. Represents a mix of flaming and smoldering fire dynamics within a contained area of the structure.
+Key street view indicators:
+- A visible breach in an exterior wall.
+- Heavy charring of load-bearing elements (e.g., posts, porch columns).
+- Visible evidence of sustained burning inside the structure through broken windows.
+
+CHS Level 3: Major Structural Combustion / Incomplete Reduction
+Combustion Description: The fire has propagated through most of the structure, consuming most of the combustible mass. However, the fire's intensity or duration was insufficient to fully reduce large structural timbers to ash, leaving behind a significant volume of charred, skeletal remains.
+Inferred Burn Characteristics: High-intensity, often ventilation-controlled fire that has consumed most fine fuels and roof materials. Leaves behind a large mass of charcoal and pyrolyzed wood, representing incomplete combustion of the largest fuel loads.
+Key street view indicators:
+- The roof has collapsed into the structure.
+- Only a skeletal frame of charred walls and vertical members remains standing.
+- The structure is visibly porous, allowing one to see through it in many places.
+
+CHS Level 4: Complete Combustion / Full Reduction to Ash
+Combustion Description: The fire was of sufficient duration and intensity to reduce virtually all combustible structural mass (both fine and heavy fuels) to ash, leaving behind no recognizable skeletal structure.
+Inferred Burn Characteristics: Complete, high-temperature, and/or long-duration combustion. This process mineralizes the organic fuel, potentially concentrating heavy metals and other inorganic compounds in the remaining ash.
+Key street view indicators:
+- No walls are left standing.
+- The structure is a pile of ash and rubble contained within the foundation outline.
+- Only non-combustible items (e.g., chimney stacks, large appliances, plumbing) may be visible protruding from the ash.
+
+CHS Level ‘No Data’: Combustion level cannot be confirmed/denied
+Description: Building data has been tampered with or is 100% blocked such that absolutely zero structural remains or lot surface can be seen.
+Key Street View Indicators:
+- Dense, opaque, living green shrubbery completely creating a solid wall blocking the entire lot. (Note: If you can see through bare/burnt branches to the rubble behind it, DO NOT use 'No Data', assign a score).
+- Building plot is entirely bulldozed, only flat dirt exists within it.
+- Construction/demolition vehicles are present on site 
+
