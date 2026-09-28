@@ -60,6 +60,7 @@ from rapidtools.config import (
 # 1. Constants Verification
 # ==========================================
 
+
 def test_log_formats():
     """Ensure logging formats are strings and contain expected placeholders."""
     assert isinstance(LOG_FORMAT, str)
@@ -69,6 +70,7 @@ def test_log_formats():
 
     assert isinstance(DATE_FORMAT, str)
     assert '%Y-%m-%d' in DATE_FORMAT
+
 
 def test_request_headers_structure():
     """Ensure standard headers are present and correct."""
@@ -81,6 +83,7 @@ def test_request_headers_structure():
     assert 'Accept-Encoding' in REQUESTS_HEADERS
     assert 'Connection' in REQUESTS_HEADERS
     assert REQUESTS_HEADERS['Connection'] == 'keep-alive'
+
 
 def test_request_settings_constants():
     """Verify default setting constants."""
@@ -96,14 +99,17 @@ def test_request_settings_constants():
     assert 'GET' in DEFAULT_ALLOWED_METHODS
     assert 'POST' in DEFAULT_ALLOWED_METHODS
 
+
 def test_default_colormaps():
     """Ensure default colormaps are valid matplotlib strings."""
     assert DEFAULT_SEMANTIC_CMAP == 'tab20'
     assert DEFAULT_INSTANCE_CMAP == 'nipy_spectral'
 
+
 # ==========================================
 # 2. Enum Verification (MaskType)
 # ==========================================
+
 
 def test_mask_type_enum():
     """Test MaskType behavior as a StrEnum."""
@@ -122,14 +128,17 @@ def test_mask_type_enum():
     assert 'instance' in values
     assert len(values) == 2
 
+
 def test_mask_type_comparison():
     """Ensure direct string comparison works."""
     assert MaskType.SEMANTIC == 'semantic'
     assert MaskType.INSTANCE != 'semantic'
 
+
 # ==========================================
 # 3. Helper Function Verification
 # ==========================================
+
 
 def test_get_configured_session_defaults():
     """
@@ -157,6 +166,7 @@ def test_get_configured_session_defaults():
     assert http_adapter.max_retries.total == DEFAULT_RETRY_TOTAL
     assert http_adapter.max_retries.backoff_factor == DEFAULT_BACKOFF
     assert http_adapter.max_retries.status_forcelist == DEFAULT_STATUS_FORCELIST
+
 
 def test_get_configured_session_custom_args():
     """

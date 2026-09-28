@@ -47,6 +47,7 @@ from rapidtools.core import OperationCancelled, is_cancelled, raise_if_cancelled
 # 1. OperationCancelled
 # ==========================================
 
+
 def test_operation_cancelled_is_runtime_error():
     """OperationCancelled can be caught as a RuntimeError."""
     assert issubclass(OperationCancelled, RuntimeError)
@@ -57,6 +58,7 @@ def test_operation_cancelled_is_runtime_error():
 # ==========================================
 # 2. raise_if_cancelled
 # ==========================================
+
 
 def test_raise_if_cancelled_noop_when_unset_or_none():
     """Nothing happens without an event or with an unset event."""
@@ -77,6 +79,7 @@ def test_raise_if_cancelled_raises_with_context():
 # ==========================================
 # 3. is_cancelled
 # ==========================================
+
 
 def test_is_cancelled():
     """is_cancelled mirrors the event state and is False for None."""

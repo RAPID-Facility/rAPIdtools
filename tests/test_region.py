@@ -70,7 +70,6 @@ class ConcreteRegion(Region):
 
 # 2. Test Suite
 class TestRegionABC:
-
     @pytest.fixture
     def square_geom(self):
         """Returns a 10x10 square polygon starting at 0,0."""
@@ -209,9 +208,10 @@ class TestRegionABC:
         """
         # Create a geometry with a long WKT string:
         from shapely.geometry import LineString
-        long_geom = LineString([
-            (1000, 1000), (2000, 2000), (3000, 3000), (4000, 4000), (500, 500)
-        ])
+
+        long_geom = LineString(
+            [(1000, 1000), (2000, 2000), (3000, 3000), (4000, 4000), (500, 500)]
+        )
 
         # Verify this setup is correct:
         assert len(long_geom.wkt) > 55

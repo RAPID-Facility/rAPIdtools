@@ -54,6 +54,7 @@ from rapidtools.core import BoundingBox, ImageAsset, ImageCollection
 
 # --- Fixtures ---
 
+
 @pytest.fixture
 def temp_image_file(tmp_path):
     """Creates a real temporary JPEG file (100x100 red)."""
@@ -61,6 +62,7 @@ def temp_image_file(tmp_path):
     img = Image.new('RGB', (100, 100), color='red')
     img.save(p)
     return p
+
 
 @pytest.fixture
 def temp_mask_file(tmp_path):
@@ -72,14 +74,17 @@ def temp_mask_file(tmp_path):
     Image.fromarray(data).save(p)
     return p
 
+
 @pytest.fixture
 def asset(temp_image_file):
     """Returns a standard ImageAsset pointing to a real file."""
     return ImageAsset(id='img1', path=temp_image_file)
 
+
 # ==========================================
 # 1. Initialization & Properties
 # ==========================================
+
 
 def test_init_success(temp_image_file):
     asset = ImageAsset(id='custom_id', path=temp_image_file)
@@ -87,9 +92,11 @@ def test_init_success(temp_image_file):
     assert asset.path == temp_image_file.resolve()
     assert asset.is_downloaded is True
 
+
 def test_init_missing_file_error():
     with pytest.raises(ValueError, match='Image file does not exist'):
         ImageAsset(path='ghost.jpg', allow_missing_file=False)
+
 
 def test_init_missing_file_allowed():
     asset = ImageAsset(path='ghost.jpg', allow_missing_file=True)
@@ -97,14 +104,17 @@ def test_init_missing_file_allowed():
     # Check ID defaults to filename stem
     assert asset.id == 'ghost'
 
+
 def test_properties(asset):
     assert asset.directory == asset.path.parent
     assert asset.filename == 'test_image.jpg'
     assert asset.stem == 'test_image'
 
+
 def test_repr(asset):
     r = repr(asset)
     assert "<ImageAsset id='img1' filename='test_image.jpg'>" in r
+
 
 def test_get_property_polymorphic(asset):
     asset.properties = {'iso': 100, 'shutter': 50}
@@ -117,9 +127,11 @@ def test_get_property_polymorphic(asset):
     res = asset.get_property(['iso', 'missing'])
     assert res == {'iso': 100, 'missing': None}
 
+
 # ==========================================
 # 2. Network Operations (Download & Load URL)
 # ==========================================
+
 
 def test_download_skips_existing(asset, caplog):
     """Test that download returns early if file exists."""
@@ -127,11 +139,13 @@ def test_download_skips_existing(asset, caplog):
         asset.download()
     assert 'Skipping download' in caplog.text
 
+
 def test_download_missing_url_keys():
     """Test ValueError if no URL is provided and property missing."""
     asset = ImageAsset(path='new.jpg', allow_missing_file=True)
     with pytest.raises(ValueError, match='Cannot download'):
         asset.download()
+
 
 def test_download_success(tmp_path, requests_mock):
     """Test full download flow with atomic write."""
@@ -143,7 +157,7 @@ def test_download_success(tmp_path, requests_mock):
     asset = ImageAsset(
         path=target_path,
         allow_missing_file=True,
-        properties={'thumb_original_url': url}
+        properties={'thumb_original_url': url},
     )
 
     asset.download()
@@ -152,6 +166,7 @@ def test_download_success(tmp_path, requests_mock):
     assert target_path.read_bytes() == b'fake_image_bytes'
     # Ensure tmp file is gone
     assert not Path(str(target_path) + '.tmp').exists()
+
 
 def test_download_failure_cleanup(tmp_path, requests_mock, caplog):
     """Test that .tmp files are cleaned up on network failure."""
@@ -168,6 +183,7 @@ def test_download_failure_cleanup(tmp_path, requests_mock, caplog):
     assert not target_path.exists()
     assert 'Download failed' in caplog.text
 
+
 def test_load_image_from_url_success(requests_mock):
     """Test loading image into memory from URL."""
     # Create valid JPEG bytes
@@ -182,14 +198,13 @@ def test_load_image_from_url_success(requests_mock):
 
     # Test loading with conversion and EXIF flag (though mock has no EXIF)
     img = asset.load_image_from_url(
-        url=url,
-        convert_mode='L',
-        apply_exif_orientation=True
+        url=url, convert_mode='L', apply_exif_orientation=True
     )
 
     assert isinstance(img, Image.Image)
     assert img.mode == 'L'
     assert asset._pil_image is not None
+
 
 def test_load_image_from_url_cached(asset):
     """Test early exit if image is already in memory."""
@@ -213,6 +228,7 @@ def test_load_image_from_url_cached(asset):
         # Verify that no network request was even attempted
         mock_get.assert_not_called()
 
+
 def test_load_image_from_url_failure(asset, caplog):
     """Test exception handling in load_url."""
     # We simulate a specific network error rather than a generic Exception
@@ -227,9 +243,11 @@ def test_load_image_from_url_failure(asset, caplog):
 
     assert 'Failed to load image from URL' in caplog.text
 
+
 # ==========================================
 # 3. Disk Loading & Saving
 # ==========================================
+
 
 def test_load_image_from_disk(asset):
     img = asset.load_image_from_disk()
@@ -237,14 +255,17 @@ def test_load_image_from_disk(asset):
     assert img.size == (100, 100)
     assert asset._pil_image is not None
 
+
 def test_load_image_from_disk_convert(asset):
     img = asset.load_image_from_disk(convert_mode='L', force_reload=True)
     assert img.mode == 'L'
+
 
 def test_load_image_from_disk_missing():
     asset = ImageAsset(path='ghost.jpg', allow_missing_file=True)
     with pytest.raises(FileNotFoundError):
         asset.load_image_from_disk()
+
 
 def test_save_image_success(asset, tmp_path):
     # Load first
@@ -257,15 +278,18 @@ def test_save_image_success(asset, tmp_path):
     with Image.open(out) as i:
         assert i.format == 'PNG'
 
+
 def test_save_image_no_memory_error(asset):
     # Ensure no image loaded
     asset._pil_image = None
     with pytest.raises(ValueError, match='No image loaded'):
         asset.save_image()
 
+
 # ==========================================
 # 4. Mask Operations
 # ==========================================
+
 
 def test_get_mask_path(asset):
     # Standard
@@ -276,18 +300,21 @@ def test_get_mask_path(asset):
     p2 = asset.get_mask_path(MaskType.INSTANCE, override_path='custom.png')
     assert str(p2) == 'custom.png'
 
+
 def test_get_mask_path_invalid_enum(asset):
     with pytest.raises(ValueError, match='Invalid mask_type'):
         asset.get_mask_path('invalid_type')
 
+
 def test_set_mask_validation(asset):
     # Invalid Data
     with pytest.raises(TypeError):
-        asset.set_mask([1,2], MaskType.SEMANTIC)
+        asset.set_mask([1, 2], MaskType.SEMANTIC)
 
     # Invalid Enum
     with pytest.raises(ValueError):
-        asset.set_mask(np.zeros((1,1)), 'bad_enum')
+        asset.set_mask(np.zeros((1, 1)), 'bad_enum')
+
 
 def test_set_mask_and_load(asset):
     # Manually set a mask
@@ -304,12 +331,14 @@ def test_set_mask_and_load(asset):
     loaded = asset.load_mask(MaskType.SEMANTIC)
     assert loaded is data
 
+
 def test_load_mask_from_disk(asset, temp_mask_file):
     # temp_mask_file matches the naming convention for asset
     mask = asset.load_mask(MaskType.SEMANTIC)
     assert isinstance(mask, np.ndarray)
     assert mask.shape == (100, 100)
     assert mask[50, 50] == 1
+
 
 def test_save_mask(asset, tmp_path):
     data = np.zeros((20, 20), dtype=np.uint8)
@@ -320,13 +349,16 @@ def test_save_mask(asset, tmp_path):
 
     assert out_path.exists()
 
+
 def test_save_mask_error_no_data(asset):
     with pytest.raises(ValueError, match='No data found'):
         asset.save_mask(MaskType.SEMANTIC)
 
+
 # ==========================================
 # 5. Merge Logic
 # ==========================================
+
 
 def test_merge_success():
     a1 = ImageAsset(id='1', path='a.jpg', allow_missing_file=True, properties={'a': 1})
@@ -338,6 +370,7 @@ def test_merge_success():
     assert a1.path.name == 'b.jpg'
     assert a1.properties == {'a': 1, 'b': 2}
 
+
 def test_merge_id_mismatch():
     a1 = ImageAsset(id='1', path='a.jpg', allow_missing_file=True)
     a2 = ImageAsset(id='2', path='b.jpg', allow_missing_file=True)
@@ -345,13 +378,16 @@ def test_merge_id_mismatch():
     with pytest.raises(ValueError, match='IDs do not match'):
         a1.merge(a2)
 
+
 def test_merge_invalid_type(asset):
     with pytest.raises(TypeError):
         asset.merge('not an asset')
 
+
 # ==========================================
 # 6. Visualization & HTML
 # ==========================================
+
 
 @patch('PIL.Image.Image.show')
 def test_show_raw(mock_show, asset):
@@ -359,9 +395,11 @@ def test_show_raw(mock_show, asset):
     asset.show(output_type='image')
     mock_show.assert_called_once()
 
+
 def test_show_invalid_input(asset, caplog):
     asset.show(output_type='bad_type')
     assert 'not supported' in caplog.text
+
 
 @patch('PIL.Image.Image.show')
 def test_show_semantic(mock_show, asset, temp_mask_file):
@@ -369,11 +407,13 @@ def test_show_semantic(mock_show, asset, temp_mask_file):
     asset.show(output_type=MaskType.SEMANTIC)
     mock_show.assert_called_once()
 
+
 @patch('PIL.Image.Image.show')
 def test_show_overlay(mock_show, asset, temp_mask_file):
     """Test show('overlay_semantic')."""
     asset.show(output_type=f'overlay_{MaskType.SEMANTIC}')
     mock_show.assert_called_once()
+
 
 def test_save_interactive_html(asset, temp_mask_file, tmp_path):
     """Test HTML generation logic."""
@@ -384,7 +424,7 @@ def test_save_interactive_html(asset, temp_mask_file, tmp_path):
     asset.save_interactive_html(
         output_path=out_file,
         mask_type=MaskType.SEMANTIC,
-        min_area=0 # Ensure small shapes are included
+        min_area=0,  # Ensure small shapes are included
     )
 
     assert out_file.exists()
@@ -394,15 +434,18 @@ def test_save_interactive_html(asset, temp_mask_file, tmp_path):
     assert 'data:image/jpeg;base64' in content
     assert 'TargetClass' in content
 
+
 def test_save_interactive_html_missing_files(asset, caplog):
     """Test handling of missing files for HTML gen."""
     # Point to non-existent mask type
     asset.save_interactive_html(mask_type=MaskType.INSTANCE)
     assert 'Cannot generate HTML' in caplog.text
 
+
 # ==========================================
 # 7. Summary
 # ==========================================
+
 
 def test_summary_branches(asset, capsys, tmp_path):
     """Test summary method formatting and logic branches."""
@@ -411,7 +454,7 @@ def test_summary_branches(asset, capsys, tmp_path):
     asset.summary()
     out = capsys.readouterr().out
     assert 'On Disk' in out
-    assert 'bytes' in out # Small file
+    assert 'bytes' in out  # Small file
 
     # 2. Loaded in Memory
     asset.load_image_from_disk()
@@ -422,16 +465,18 @@ def test_summary_branches(asset, capsys, tmp_path):
     # 3. Create large dummy file for MB formatting
     large_p = tmp_path / 'large.bin'
     with open(large_p, 'wb') as f:
-        f.seek(1024*1024 + 100)
+        f.seek(1024 * 1024 + 100)
         f.write(b'\0')
 
     large_asset = ImageAsset(path=large_p)
     large_asset.summary()
     assert 'MB' in capsys.readouterr().out
 
+
 # ==========================================
 # 8. Expanded Coverage (Targeted Lines)
 # ==========================================
+
 
 def test_download_hint_in_error(tmp_path):
     """
@@ -450,6 +495,7 @@ def test_download_hint_in_error(tmp_path):
     msg = str(excinfo.value)
     assert 'Did you mean one of these?' in msg
     assert 'my_custom_url' in msg
+
 
 def test_download_cleanup_oserror(tmp_path, requests_mock, caplog):
     """
@@ -479,6 +525,7 @@ def test_download_cleanup_oserror(tmp_path, requests_mock, caplog):
     # Ensure the code logged the error but didn't crash during the cleanup phase
     assert 'Download failed' in caplog.text
 
+
 def test_get_mask_path_invalid_enum_explicit(asset):
     """
     Covers lines 825-826: Explicit ValueError in get_mask_path.
@@ -486,6 +533,7 @@ def test_get_mask_path_invalid_enum_explicit(asset):
     with pytest.raises(ValueError, match='Invalid mask_type'):
         # Passing an invalid string that cannot be cast to MaskType
         asset.get_mask_path('not_a_mask_type')
+
 
 @patch('PIL.ImageOps.exif_transpose')
 def test_load_image_exif_rotation(mock_transpose, asset, temp_image_file):
@@ -501,6 +549,7 @@ def test_load_image_exif_rotation(mock_transpose, asset, temp_image_file):
     # Ensure it is NOT called when flag is False
     asset.load_image_from_disk(apply_exif_orientation=False, force_reload=True)
     mock_transpose.assert_not_called()
+
 
 def test_load_image_corrupted_file(tmp_path, caplog):
     """
@@ -518,6 +567,7 @@ def test_load_image_corrupted_file(tmp_path, caplog):
     assert 'Failed to load image file' in caplog.text
     assert asset._pil_image is None
 
+
 def test_load_url_advanced_options(requests_mock, caplog):
     """
     Covers:
@@ -534,10 +584,7 @@ def test_load_url_advanced_options(requests_mock, caplog):
     requests_mock.get(url, content=valid_jpeg_bytes)
 
     asset = ImageAsset(
-        id='test',
-        path='v.jpg',
-        allow_missing_file=True,
-        properties={'valid_url': url}
+        id='test', path='v.jpg', allow_missing_file=True, properties={'valid_url': url}
     )
 
     # 1. Test Hinting
@@ -561,12 +608,13 @@ def test_load_url_advanced_options(requests_mock, caplog):
     # We purposefully set invalid content here to trigger a failure,
     # proving that the method used our mock session (and its data)
 
+
 def test_load_mask_caching(asset):
     """
     Covers lines 1176-1177: Returning cached mask values.
     """
     # 1. Pre-load cache manually
-    fake_mask = np.ones((10,10), dtype=np.uint8)
+    fake_mask = np.ones((10, 10), dtype=np.uint8)
     asset._semantic_mask = fake_mask
 
     # 2. Call load_mask. If caching works, it will not try to find the file
@@ -574,6 +622,7 @@ def test_load_mask_caching(asset):
     result = asset.load_mask(MaskType.SEMANTIC)
 
     assert result is fake_mask
+
 
 def test_merge_deep_logic():
     """
@@ -594,16 +643,16 @@ def test_merge_deep_logic():
 
     # Setup Asset B (Target)
     b = ImageAsset(id='1', path='b.jpg', allow_missing_file=True)
-    b.semantic_map = {2: 'Car'} # Existing map
+    b.semantic_map = {2: 'Car'}  # Existing map
 
     # 1. Test overwrite_properties=False
     b.merge(a, overwrite_properties=False)
-    assert b.semantic_map == {2: 'Car'} # Should NOT change
+    assert b.semantic_map == {2: 'Car'}  # Should NOT change
 
     # 2. Test overwrite_properties=True
     b.merge(a, overwrite_properties=True)
-    assert b.semantic_map == {1: 'Tree'} # Should be replaced
-    assert b.instance_map == {1: {'meta': 'data'}} # Should be added
+    assert b.semantic_map == {1: 'Tree'}  # Should be replaced
+    assert b.instance_map == {1: {'meta': 'data'}}  # Should be added
 
     # 3. Test overwrite_path=True (Cache adoption)
     assert b._pil_image is None
@@ -611,6 +660,7 @@ def test_merge_deep_logic():
     assert b.path.name == 'a.jpg'
     assert b._pil_image is img_a
     assert b._semantic_mask is mask_a
+
 
 def test_save_interactive_html_instance_fallback(asset, tmp_path):
     """
@@ -629,6 +679,7 @@ def test_save_interactive_html_instance_fallback(asset, tmp_path):
     # Should fallback to "Object 5"
     assert 'Object 5' in content
 
+
 def test_save_mask_not_found(asset):
     """
     Covers lines 1711-1712: Saving a mask that doesn't exist anywhere.
@@ -644,6 +695,7 @@ def test_save_mask_not_found(asset):
     with pytest.raises(ValueError, match='No data found'):
         asset.save_mask('semantic')
 
+
 def test_set_mask_invalid_inputs(asset):
     """
     Covers:
@@ -654,7 +706,8 @@ def test_set_mask_invalid_inputs(asset):
         asset.set_mask([1, 2, 3], MaskType.SEMANTIC)
 
     with pytest.raises(ValueError, match='Unknown mask type'):
-        asset.set_mask(np.zeros((1,1)), 'invalid_type')
+        asset.set_mask(np.zeros((1, 1)), 'invalid_type')
+
 
 def test_show_edges(asset, caplog):
     """
@@ -671,6 +724,7 @@ def test_show_edges(asset, caplog):
     bad_asset = ImageAsset(path='phantom.jpg', allow_missing_file=True)
     bad_asset.show(output_type='image')
     assert 'Could not load/show base image' in caplog.text
+
 
 @patch('PIL.Image.Image.show')
 def test_show_visualization_logic(mock_show, asset, caplog):
@@ -700,15 +754,14 @@ def test_show_visualization_logic(mock_show, asset, caplog):
     # 3. Overlay failure (fallback to mask only)
     # Mask is present (high_mask), but we ensure base image load fails
     with patch.object(
-            ImageAsset,
-            'load_image_from_disk',
-            side_effect=Exception('No Base')
-        ):
+        ImageAsset, 'load_image_from_disk', side_effect=Exception('No Base')
+    ):
         asset.show(output_type='overlay_instance')
 
     assert 'Could not load base image for overlay' in caplog.text
     # Should still show the mask despite base failure
     mock_show.assert_called()
+
 
 def test_load_mask_invalid_type_exception(asset):
     """
@@ -724,6 +777,7 @@ def test_load_mask_invalid_type_exception(asset):
     # Verify the error message format from the code snippet
     assert f"Invalid mask_type '{invalid_type}'" in msg
     assert 'Expected one of:' in msg
+
 
 def test_load_mask_oserror_logging(asset, tmp_path, caplog):
     """
@@ -746,6 +800,7 @@ def test_load_mask_oserror_logging(asset, tmp_path, caplog):
 
     assert expected_log_fragment in caplog.text
 
+
 def test_merge_properties_no_overwrite(asset):
     """
     Covers the 'else' block in merge() where properties are added using
@@ -761,10 +816,7 @@ def test_merge_properties_no_overwrite(asset):
         id=asset.id,
         path='other.jpg',
         allow_missing_file=True,
-        properties={
-            'preserved': 'new_value',
-            'new_prop': 123
-        }
+        properties={'preserved': 'new_value', 'new_prop': 123},
     )
 
     # 3. Merge with overwrite_properties=False
@@ -776,6 +828,7 @@ def test_merge_properties_no_overwrite(asset):
     assert asset.properties['preserved'] == 'original_value'
     # The new key SHOULD be added
     assert asset.properties['new_prop'] == 123
+
 
 def test_save_interactive_html_invalid_type(asset):
     """
@@ -789,6 +842,7 @@ def test_save_interactive_html_invalid_type(asset):
 
     # Check that the specific message defined in the code is raised
     assert f"Invalid mask_type '{invalid_type}'" in str(excinfo.value)
+
 
 def test_save_html_min_area_filtering(asset, tmp_path):
     """
@@ -815,6 +869,7 @@ def test_save_html_min_area_filtering(asset, tmp_path):
     # 4. Verify that NO polygon tags were generated for the tiny object
     assert '<polygon' not in content
 
+
 def test_save_html_default_path(asset):
     """
     Covers lines:
@@ -839,6 +894,7 @@ def test_save_html_default_path(asset):
     assert expected_path.exists()
     os.remove(expected_path)
 
+
 def test_save_mask_invalid_type_error(asset):
     """
     Covers the ValueError block in save_mask:
@@ -851,6 +907,7 @@ def test_save_mask_invalid_type_error(asset):
     msg = str(excinfo.value)
     # Check for the specific phrasing used in save_mask
     assert 'Expected one of:' in msg
+
 
 def test_show_missing_mask_warning(asset, caplog):
     """
@@ -870,6 +927,7 @@ def test_show_missing_mask_warning(asset, caplog):
     # 3. Verify the warning log
     assert 'No semantic mask found to show' in caplog.text
 
+
 def test_summary_missing_branches(capsys, tmp_path):
     """
     Covers specific branches in summary():
@@ -881,9 +939,7 @@ def test_summary_missing_branches(capsys, tmp_path):
     # 1. Cover: elif self.allow_missing_file: status = 'Missing (Virtual)'
     # We need an asset that points to a non-existent file but is allowed to be missing.
     virtual_asset = ImageAsset(
-        id='virt',
-        path='ghost_file.jpg',
-        allow_missing_file=True
+        id='virt', path='ghost_file.jpg', allow_missing_file=True
     )
     virtual_asset.summary()
     out = capsys.readouterr().out
@@ -908,6 +964,7 @@ def test_summary_missing_branches(capsys, tmp_path):
     # Verify the JSON output is present
     assert '"camera": "Canon"' in out
     assert '"f_stop": 1.8' in out
+
 
 def test_summary_status_missing_error(asset, capsys):
     """
@@ -969,9 +1026,7 @@ def test_image_collection_container_protocol():
 def test_image_collection_add_deduplicates_and_overwrites(caplog):
     """add() appends new IDs, skips duplicates unless overwrite=True, keeps None IDs."""
     collection = ImageCollection([_pending('a')])
-    replacement = ImageAsset(
-        id='a', path='/virtual/a_v2.jpg', allow_missing_file=True
-    )
+    replacement = ImageAsset(id='a', path='/virtual/a_v2.jpg', allow_missing_file=True)
     with caplog.at_level(logging.INFO):
         collection.add([replacement, _pending('b'), _pending('b')])
     assert 'Skipping duplicate asset with ID: a' in caplog.text
@@ -1084,8 +1139,9 @@ def test_image_collection_download_all(monkeypatch, caplog):
     """download_all() downloads every asset with a shared session, logging errors."""
     calls = []
 
-    def fake_download(self, url=None, url_key='thumb_original_url', overwrite=False,
-                      session=None):
+    def fake_download(
+        self, url=None, url_key='thumb_original_url', overwrite=False, session=None
+    ):
         calls.append((self.id, overwrite, session is not None))
         if self.id == 'img_03':
             raise RuntimeError('boom')

@@ -124,6 +124,7 @@ def wgs84_preview(tmp_path):
 # 1. render_preview
 # ==========================================
 
+
 def test_render_preview_single_band_uses_nodata_mask(single_band_raster):
     """A one-band raster is expanded to RGB and nodata pixels become transparent."""
     preview = render_preview(single_band_raster, max_px=SIZE)
@@ -157,6 +158,7 @@ def test_render_preview_downscales_long_side(tmp_path):
 # ==========================================
 # 2. project_collection
 # ==========================================
+
 
 def test_project_collection_without_crs_uses_raw_coordinates(crs_less_raster):
     """With no raster CRS, geometries are pushed straight through the transform."""
@@ -237,6 +239,7 @@ def test_json_safe_primitives():
 # ==========================================
 # 3. RasterTiler
 # ==========================================
+
 
 def test_raster_tiler_single_band_and_bounds(single_band_raster):
     """Single-band tiles are expanded to RGB; invalid addresses return None."""

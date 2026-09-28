@@ -180,9 +180,7 @@ def test_successful_streamed_download(tmp_path, requests_mock):
 
 def test_case_whitespace_normalisation_and_dedupe(tmp_path, monkeypatch):
     """Names are normalised and duplicates collapse into one download."""
-    calls = _install_fake_get(
-        monkeypatch, lambda url: _FakeResponse([b'tok', b'en'])
-    )
+    calls = _install_fake_get(monkeypatch, lambda url: _FakeResponse([b'tok', b'en']))
     paths = download_dataset(
         ['  HF_Token ', 'hf_token', 'Mapillary_Token'], output_dir=tmp_path
     )
@@ -254,9 +252,7 @@ def test_mid_stream_network_error_cleans_up_tmp(tmp_path, monkeypatch, caplog):
     exc = requests.exceptions.ChunkedEncodingError('connection dropped')
     _install_fake_get(
         monkeypatch,
-        lambda url: _FakeResponse([b'part1', b'part2'], fail_after=1).with_failure(
-            exc
-        ),
+        lambda url: _FakeResponse([b'part1', b'part2'], fail_after=1).with_failure(exc),
     )
     with caplog.at_level(logging.DEBUG, logger='rapidtools.datasets'):
         paths = download_dataset('hf_token', tmp_path)
