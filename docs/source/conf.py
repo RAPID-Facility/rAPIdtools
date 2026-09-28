@@ -56,7 +56,8 @@ html_theme = 'sphinx_book_theme'
 html_title = 'rapidtools'
 html_static_path = ['_static']
 html_css_files = ['custom.css']
-html_favicon = '_static/rAPIdtoolsLogo.webp'
+# Square icon cut from the wordmark's red "r" (ICO carries 16-64 px sizes):
+html_favicon = '_static/favicon.ico'
 
 # The primary sidebar: two linked logos replace the default title, followed by
 # the theme's icon links, search box and navigation tree.
