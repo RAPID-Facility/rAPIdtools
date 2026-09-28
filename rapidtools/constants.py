@@ -34,6 +34,8 @@
 # Contributors:
 # Barbaros Cetiner
 #
+# Last updated:
+# 09-28-2026
 
 """
 Definitions for global constants used throughout the rapidtools package.
