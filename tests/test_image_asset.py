@@ -37,6 +37,8 @@
 # Last updated:
 # 02-03-2026
 
+import json
+import logging
 import os
 from io import BytesIO
 from pathlib import Path
@@ -48,7 +50,7 @@ import requests
 from PIL import Image
 
 from rapidtools.config import MaskType
-from rapidtools.core import ImageAsset
+from rapidtools.core import BoundingBox, ImageAsset, ImageCollection
 
 # --- Fixtures ---
 
@@ -934,3 +936,191 @@ def test_summary_status_missing_error(asset, capsys):
     # 4. Verify output
     out = capsys.readouterr().out
     assert 'Missing (Error)' in out
+
+
+# --- ImageCollection ---
+
+
+def _pending(asset_id, **properties):
+    """Create a not-yet-downloaded ImageAsset with the given ID and properties."""
+    return ImageAsset(
+        id=asset_id,
+        path=f'/virtual/{asset_id}.jpg',
+        properties=properties,
+        allow_missing_file=True,
+    )
+
+
+def test_image_collection_container_protocol():
+    """__contains__, __getitem__, __iter__, __len__ and __repr__ behave like a list."""
+    a, b = _pending('a'), _pending('b')
+    collection = ImageCollection([a, b])
+    assert len(collection) == 2
+    assert collection[0] is a and collection[-1] is b
+    assert [asset.id for asset in collection] == ['a', 'b']
+    assert 'a' in collection
+    assert _pending('b') in collection  # matched by ID, not identity
+    assert 'zzz' not in collection
+    assert 42 not in collection  # neither a string nor an object with an ID
+    assert repr(collection) == '<ImageCollection containing 2 image assets>'
+    assert len(ImageCollection()) == 0 and len(ImageCollection(None)) == 0
+
+
+def test_image_collection_add_deduplicates_and_overwrites(caplog):
+    """add() appends new IDs, skips duplicates unless overwrite=True, keeps None IDs."""
+    collection = ImageCollection([_pending('a')])
+    replacement = ImageAsset(
+        id='a', path='/virtual/a_v2.jpg', allow_missing_file=True
+    )
+    with caplog.at_level(logging.INFO):
+        collection.add([replacement, _pending('b'), _pending('b')])
+    assert 'Skipping duplicate asset with ID: a' in caplog.text
+    assert collection.get_ids() == ['a', 'b']
+    assert collection[0].filename == 'a.jpg'
+
+    collection.add(replacement, overwrite=True)
+    assert collection.get_ids() == ['a', 'b']
+    assert collection[0].filename == 'a_v2.jpg'
+
+    anonymous = _pending('anon')
+    anonymous.id = None
+    collection.add(anonymous)
+    collection.add(anonymous)  # None IDs are never treated as duplicates
+    assert len(collection) == 4
+    assert collection.get_ids() == ['a', 'b']
+    assert collection.get_ids(ignore_none=False) == ['a', 'b', None, None]
+
+
+def test_image_collection_merge_counts(caplog):
+    """merge() updates matching IDs, adds new ones only with add_new=True."""
+    base = ImageCollection([_pending('a', source='old'), _pending('b')])
+    incoming = ImageCollection([_pending('a', source='new', extra=1), _pending('c')])
+
+    with caplog.at_level(logging.INFO):
+        base.merge(incoming)
+    assert 'Merge complete: 1 merged, 0 added, 1 skipped.' in caplog.text
+    assert base.get_ids() == ['a', 'b']
+    assert base[0].properties == {'source': 'new', 'extra': 1}
+
+    caplog.clear()
+    with caplog.at_level(logging.INFO):
+        base.merge(incoming, add_new=True, overwrite_properties=False)
+    assert 'Merge complete: 1 merged, 1 added, 0 skipped.' in caplog.text
+    assert base.get_ids() == ['a', 'b', 'c']
+
+    # Assets without an ID can only ever be added, never merged:
+    anonymous = _pending('anon')
+    anonymous.id = None
+    base.merge(ImageCollection([anonymous, anonymous]), add_new=True)
+    assert len(base) == 5
+
+
+def test_image_collection_filters(tmp_path):
+    """filter, filter_by_property, filter_downloaded and filter_by_bbox subset."""
+    on_disk = tmp_path / 'real.jpg'
+    Image.new('RGB', (4, 4)).save(on_disk)
+    downloaded = ImageAsset(id='real', path=on_disk, properties={'event': 'eaton'})
+    collection = ImageCollection(
+        [
+            downloaded,
+            _pending('inside', event='eaton', latitude=34.15, longitude=-118.15),
+            _pending('outside', event='palisades', latitude=40.0, longitude=-74.0),
+            _pending('no_coords', event='eaton'),
+        ]
+    )
+    assert collection.filter(lambda a: a.id.startswith('no')).get_ids() == ['no_coords']
+    assert collection.filter_by_property('event', 'eaton').get_ids() == [
+        'real',
+        'inside',
+        'no_coords',
+    ]
+    assert collection.filter_by_property('event', 'nothing').get_ids() == []
+    assert collection.filter_downloaded().get_ids() == ['real']
+    bbox = BoundingBox(-118.2, 34.1, -118.1, 34.2)
+    assert collection.filter_by_bbox(bbox).get_ids() == ['inside']
+    # Filtering never mutates the source collection:
+    assert len(collection) == 4
+
+
+def test_image_collection_subset():
+    """subset() picks assets by index and propagates IndexError."""
+    collection = ImageCollection([_pending('a'), _pending('b'), _pending('c')])
+    assert collection.subset([2, 0]).get_ids() == ['c', 'a']
+    assert collection.subset([]).get_ids() == []
+    with pytest.raises(IndexError):
+        collection.subset([5])
+
+
+def test_image_collection_remove(caplog):
+    """remove() accepts IDs, objects or a mixed list and warns when nothing matches."""
+    a, b, c, d = _pending('a'), _pending('b'), _pending('c'), _pending('d')
+    collection = ImageCollection([a, b, c, d])
+    with caplog.at_level(logging.INFO):
+        collection.remove('a')
+    assert 'Removed 1 asset from the collection.' in caplog.text
+    collection.remove(b)
+    assert collection.get_ids() == ['c', 'd']
+
+    caplog.clear()
+    with caplog.at_level(logging.INFO):
+        collection.remove(['c', d])
+    assert 'Removed 2 assets from the collection.' in caplog.text
+    assert len(collection) == 0
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        collection.remove('ghost')
+    assert 'No matching assets found to remove.' in caplog.text
+
+    # Objects without an ID are removed by identity:
+    anonymous = _pending('anon')
+    anonymous.id = None
+    collection.add([anonymous, _pending('keep')])
+    collection.remove(anonymous)
+    assert collection.get_ids(ignore_none=False) == ['keep']
+
+
+def test_image_collection_download_all(monkeypatch, caplog):
+    """download_all() downloads every asset with a shared session, logging errors."""
+    calls = []
+
+    def fake_download(self, url=None, url_key='thumb_original_url', overwrite=False,
+                      session=None):
+        calls.append((self.id, overwrite, session is not None))
+        if self.id == 'img_03':
+            raise RuntimeError('boom')
+
+    monkeypatch.setattr(ImageAsset, 'download', fake_download)
+    collection = ImageCollection([_pending(f'img_{i:02d}') for i in range(10)])
+    with caplog.at_level(logging.INFO):
+        collection.download_all(max_workers=3, overwrite=True)
+
+    assert 'Starting batch download for 10 images with 3 workers.' in caplog.text
+    assert 'Failed to download img_03: boom' in caplog.text
+    assert 'Progress: 10/10 completed.' in caplog.text
+    assert len(calls) == 10
+    assert all(overwrite and has_session for _, overwrite, has_session in calls)
+    assert sorted(c[0] for c in calls) == sorted(collection.get_ids())
+
+
+def test_image_collection_to_dataframe_and_to_json(tmp_path):
+    """to_dataframe() flattens properties; to_json() round-trips metadata."""
+    collection = ImageCollection(
+        [_pending('a', event='eaton', score=0.5), _pending('b', event='palisades')]
+    )
+    df = collection.to_dataframe()
+    assert list(df.columns) == ['id', 'path', 'is_downloaded', 'event', 'score']
+    assert df['id'].tolist() == ['a', 'b']
+    assert df['is_downloaded'].tolist() == [False, False]
+    assert df['path'].tolist() == ['/virtual/a.jpg', '/virtual/b.jpg']
+
+    out = tmp_path / 'images.json'
+    collection.to_json(out)
+    data = json.loads(out.read_text())
+    assert [d['id'] for d in data] == ['a', 'b']
+    assert data[0] == {
+        'id': 'a',
+        'path': '/virtual/a.jpg',
+        'properties': {'event': 'eaton', 'score': 0.5},
+    }
+    assert len(ImageCollection().to_dataframe()) == 0

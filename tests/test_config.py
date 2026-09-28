@@ -43,15 +43,15 @@ from requests.adapters import HTTPAdapter
 # Import everything relevant from your new config
 from rapidtools.config import (
     DATE_FORMAT,
+    DEFAULT_ALLOWED_METHODS,
+    DEFAULT_BACKOFF,
     DEFAULT_INSTANCE_CMAP,
+    DEFAULT_RETRY_TOTAL,
     DEFAULT_SEMANTIC_CMAP,
+    DEFAULT_STATUS_FORCELIST,
     LOG_FORMAT,
     REQUESTS_HEADERS,
     REQUESTS_TIMEOUT_VAL,
-    DEFAULT_RETRY_TOTAL,
-    DEFAULT_BACKOFF,
-    DEFAULT_STATUS_FORCELIST,
-    DEFAULT_ALLOWED_METHODS,
     MaskType,
     get_configured_session,
 )
@@ -153,7 +153,7 @@ def test_get_configured_session_defaults():
     assert isinstance(https_adapter, HTTPAdapter)
 
     # 4. Check Default Retry Strategy
-    # Since the strategy is now created inside the function, we inspect the adapter object
+    # The strategy is created inside the function, so inspect the adapter object
     assert http_adapter.max_retries.total == DEFAULT_RETRY_TOTAL
     assert http_adapter.max_retries.backoff_factor == DEFAULT_BACKOFF
     assert http_adapter.max_retries.status_forcelist == DEFAULT_STATUS_FORCELIST
@@ -165,11 +165,13 @@ def test_get_configured_session_custom_args():
     """
     custom_retries = 10
     custom_backoff = 2.5
-    
-    session = get_configured_session(retries=custom_retries, backoff_factor=custom_backoff)
+
+    session = get_configured_session(
+        retries=custom_retries, backoff_factor=custom_backoff
+    )
 
     http_adapter = session.adapters['http://']
-    
+
     # Verify the custom values stuck
     assert http_adapter.max_retries.total == custom_retries
     assert http_adapter.max_retries.backoff_factor == custom_backoff

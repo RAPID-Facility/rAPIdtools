@@ -37,10 +37,14 @@
 # Last updated:
 # 01-28-2026
 
+import json
 import logging
 import math
 
+import numpy as np
 import pytest
+import rasterio
+from rasterio.transform import from_origin
 from shapely.geometry import LineString, Polygon
 
 from rapidtools.core.bounding_box import BoundingBox
@@ -247,3 +251,224 @@ def test_tile_rounding_coverage():
     assert math.isclose(combined.area, bbox.area, rel_tol=1e-9)
     # The combined geometry should almost exactly equal the original:
     assert bbox.geometry.difference(combined).area < 1e-9
+
+
+# --- from_geojson ---
+
+
+def _write_geojson(tmp_path, payload, name='data.geojson'):
+    """Serialize ``payload`` to a GeoJSON file in ``tmp_path`` and return it."""
+    path = tmp_path / name
+    path.write_text(json.dumps(payload), encoding='utf-8')
+    return path
+
+
+def _feature(geometry, **extra):
+    """Build a minimal GeoJSON Feature around ``geometry``."""
+    return {'type': 'Feature', 'properties': {}, 'geometry': geometry, **extra}
+
+
+def test_from_geojson_top_level_bbox_2d(tmp_path):
+    """A 4-element top-level bbox is used verbatim without reading geometries."""
+    path = _write_geojson(
+        tmp_path,
+        {'type': 'FeatureCollection', 'bbox': [1, 2, 3, 4], 'features': []},
+    )
+    assert BoundingBox.from_geojson(path).bounds == (1.0, 2.0, 3.0, 4.0)
+
+
+def test_from_geojson_top_level_bbox_3d(tmp_path):
+    """A 6-element (3D) top-level bbox drops the altitude components."""
+    path = _write_geojson(
+        tmp_path,
+        {
+            'type': 'FeatureCollection',
+            'bbox': [1, 2, -10, 3, 4, 50],
+            'features': [],
+        },
+    )
+    assert BoundingBox.from_geojson(str(path)).bounds == (1.0, 2.0, 3.0, 4.0)
+
+
+def test_from_geojson_feature_collection_streams_geometries(tmp_path):
+    """Bounds are accumulated across every feature geometry in a collection."""
+    payload = {
+        'type': 'FeatureCollection',
+        'features': [
+            _feature({'type': 'Point', 'coordinates': [0, 0]}),
+            _feature(
+                {
+                    'type': 'Polygon',
+                    'coordinates': [[[2, 2], [5, 2], [5, 7], [2, 7], [2, 2]]],
+                }
+            ),
+            _feature({'type': 'LineString', 'coordinates': [[-1, 3], [1, 9]]}),
+        ],
+    }
+    bbox = BoundingBox.from_geojson(_write_geojson(tmp_path, payload))
+    assert bbox.bounds == (-1.0, 0.0, 5.0, 9.0)
+
+
+def test_from_geojson_single_feature(tmp_path):
+    """A top-level Feature is handled like a one-element collection."""
+    payload = _feature(
+        {'type': 'Polygon', 'coordinates': [[[1, 1], [4, 1], [4, 3], [1, 1]]]}
+    )
+    bbox = BoundingBox.from_geojson(_write_geojson(tmp_path, payload))
+    assert bbox.bounds == (1.0, 1.0, 4.0, 3.0)
+
+
+def test_from_geojson_bare_geometry(tmp_path):
+    """A bare geometry object (no Feature wrapper) is supported."""
+    payload = {'type': 'MultiPoint', 'coordinates': [[3, 4], [-2, 8]]}
+    bbox = BoundingBox.from_geojson(_write_geojson(tmp_path, payload))
+    assert bbox.bounds == (-2.0, 4.0, 3.0, 8.0)
+
+
+def test_from_geojson_feature_level_bbox_preferred(tmp_path):
+    """Feature-level bbox members (2D or 3D) are used instead of the geometry."""
+    payload = {
+        'type': 'FeatureCollection',
+        'features': [
+            # The bbox deliberately disagrees with the geometry to prove
+            # that the pre-computed bbox wins:
+            _feature({'type': 'Point', 'coordinates': [100, 100]}, bbox=[0, 0, 1, 1]),
+            _feature(
+                {'type': 'Point', 'coordinates': [100, 100]},
+                bbox=[5, 5, 0, 6, 6, 0],
+            ),
+            # A malformed bbox falls back to the geometry:
+            _feature({'type': 'Point', 'coordinates': [-3, 2]}, bbox=[1, 2, 3]),
+        ],
+    }
+    bbox = BoundingBox.from_geojson(_write_geojson(tmp_path, payload))
+    assert bbox.bounds == (-3.0, 0.0, 6.0, 6.0)
+
+
+def test_from_geojson_skips_empty_and_null_geometries(tmp_path):
+    """Empty geometries and null geometries do not corrupt the bounds."""
+    payload = {
+        'type': 'FeatureCollection',
+        'features': [
+            _feature({'type': 'Polygon', 'coordinates': []}),
+            _feature(None),
+            {'type': 'Feature', 'properties': {}},
+            _feature({'type': 'Point', 'coordinates': [1, 2]}),
+        ],
+    }
+    bbox = BoundingBox.from_geojson(_write_geojson(tmp_path, payload))
+    assert bbox.bounds == (1.0, 2.0, 1.0, 2.0)
+
+
+def test_from_geojson_no_valid_geometries_raises(tmp_path):
+    """A collection with only empty/null geometries raises ValueError."""
+    payload = {
+        'type': 'FeatureCollection',
+        'features': [
+            _feature(None),
+            _feature({'type': 'GeometryCollection', 'geometries': []}),
+        ],
+    }
+    with pytest.raises(ValueError, match='No valid or non-empty geometries'):
+        BoundingBox.from_geojson(_write_geojson(tmp_path, payload))
+    with pytest.raises(ValueError, match='No valid or non-empty geometries'):
+        BoundingBox.from_geojson(
+            _write_geojson(tmp_path, {'type': 'FeatureCollection'}, 'empty.geojson')
+        )
+
+
+def test_from_geojson_unsupported_type_raises(tmp_path):
+    """An unknown top-level type raises ValueError."""
+    with pytest.raises(ValueError, match='Unsupported GeoJSON type: Topology'):
+        BoundingBox.from_geojson(_write_geojson(tmp_path, {'type': 'Topology'}))
+    with pytest.raises(ValueError, match='Unsupported GeoJSON type: None'):
+        BoundingBox.from_geojson(_write_geojson(tmp_path, {'bbox': [1, 2]}))
+
+
+def test_from_geojson_legacy_crs_is_reprojected(tmp_path):
+    """A legacy crs member other than EPSG:4326 triggers reprojection to WGS84."""
+    payload = {
+        'type': 'FeatureCollection',
+        'crs': {'type': 'name', 'properties': {'name': 'EPSG:32611'}},
+        'features': [
+            _feature(
+                {
+                    'type': 'Polygon',
+                    'coordinates': [
+                        [
+                            [380000, 3780000],
+                            [381000, 3780000],
+                            [381000, 3781000],
+                            [380000, 3781000],
+                            [380000, 3780000],
+                        ]
+                    ],
+                }
+            )
+        ],
+    }
+    bbox = BoundingBox.from_geojson(_write_geojson(tmp_path, payload))
+    min_x, min_y, max_x, max_y = bbox.bounds
+    assert -119 < min_x < max_x < -116
+    assert 33 < min_y < max_y < 35
+
+
+def test_from_geojson_wgs84_crs_is_not_reprojected(tmp_path):
+    """A crs member naming EPSG:4326 leaves the coordinates untouched."""
+    payload = {
+        'type': 'FeatureCollection',
+        'crs': {
+            'type': 'name',
+            'properties': {'name': 'urn:ogc:def:crs:EPSG::4326'},
+        },
+        'features': [_feature({'type': 'Point', 'coordinates': [-118.1, 34.2]})],
+    }
+    bbox = BoundingBox.from_geojson(_write_geojson(tmp_path, payload))
+    assert bbox.bounds == (-118.1, 34.2, -118.1, 34.2)
+
+
+# --- from_raster ---
+
+
+def _write_raster(path, crs, transform, size=10):
+    """Write a small single-band GeoTIFF with the given CRS and transform."""
+    with rasterio.open(
+        path,
+        'w',
+        driver='GTiff',
+        width=size,
+        height=size,
+        count=1,
+        dtype='uint8',
+        crs=crs,
+        transform=transform,
+    ) as dst:
+        dst.write(np.zeros((1, size, size), dtype=np.uint8))
+    return path
+
+
+def test_from_raster_wgs84_bounds_used_directly(tmp_path):
+    """A raster already in EPSG:4326 yields its native bounds."""
+    path = _write_raster(
+        tmp_path / 'wgs84.tif', 'EPSG:4326', from_origin(-118.1, 34.2, 0.001, 0.001)
+    )
+    bbox = BoundingBox.from_raster(path)
+    assert bbox.bounds == pytest.approx((-118.1, 34.19, -118.09, 34.2))
+
+
+def test_from_raster_projected_raster_is_reprojected(tmp_path):
+    """A UTM raster is reprojected to WGS84 longitude/latitude."""
+    path = _write_raster(
+        tmp_path / 'utm.tif', 'EPSG:32611', from_origin(380000, 3780000, 10, 10)
+    )
+    bbox = BoundingBox.from_raster(str(path))
+    min_x, min_y, max_x, max_y = bbox.bounds
+    assert -119 < min_x < max_x < -116
+    assert 33 < min_y < max_y < 35
+    assert bbox.width < 0.01 and bbox.height < 0.01
+
+
+def test_from_raster_missing_crs_assumed_wgs84(tmp_path):
+    """A raster without a CRS is treated as if it were already in WGS84."""
+    path = _write_raster(tmp_path / 'nocrs.tif', None, from_origin(0, 10, 1, 1))
+    assert BoundingBox.from_raster(path).bounds == (0.0, 0.0, 10.0, 10.0)

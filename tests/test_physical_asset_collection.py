@@ -50,6 +50,7 @@ from rapidtools.core import (
     PhysicalAsset,
     PhysicalAssetCollection,
 )
+from rapidtools.core import physical_asset as physical_asset_module
 
 # --- Fixtures ---
 
@@ -980,3 +981,103 @@ def test_to_shapefile_custom_crs_logging(populated_collection, tmp_path, caplog)
     assert "Skipping .prj generation for custom CRS 'EPSG:3857'" in caplog.text
     # Ensure the .prj file was NOT created:
     assert not shp_path.with_suffix('.prj').exists()
+
+
+# --- Default asset types on import ---
+
+
+def _mixed_type_geojson():
+    """Two point features: one already typed as 'valve', one untyped."""
+    return {
+        'type': 'FeatureCollection',
+        'features': [
+            {
+                'type': 'Feature',
+                'properties': {'id': 'typed', 'asset_type': 'valve'},
+                'geometry': {'type': 'Point', 'coordinates': [0, 0]},
+            },
+            {
+                'type': 'Feature',
+                'properties': {'id': 'untyped'},
+                'geometry': {'type': 'Point', 'coordinates': [1, 1]},
+            },
+        ],
+    }
+
+
+def test_from_geojson_applies_default_asset_type():
+    """asset_type fills untyped features; overwrite_asset_type replaces all."""
+    col = PhysicalAssetCollection.from_geojson(_mixed_type_geojson(), asset_type='pump')
+    assert col['typed'].asset_type == 'valve'
+    assert col['untyped'].asset_type == 'pump'
+
+    col = PhysicalAssetCollection.from_geojson(
+        _mixed_type_geojson(), asset_type='pump', overwrite_asset_type=True
+    )
+    assert col['typed'].asset_type == 'pump'
+    assert col['untyped'].asset_type == 'pump'
+
+    col = PhysicalAssetCollection.from_geojson(_mixed_type_geojson())
+    assert col['untyped'].asset_type is None
+
+
+def test_from_shapefile_applies_default_asset_type(tmp_path):
+    """asset_type is applied to shapefile records, honouring overwrite_asset_type."""
+    shp_path = tmp_path / 'typed.shp'
+    with shapefile.Writer(str(shp_path)) as w:
+        w.field('id', 'C', 50)
+        w.field('asset_type', 'C', 50)
+        w.record(id='typed', asset_type='valve')
+        w.point(10, 10)
+        w.record(id='untyped', asset_type='')
+        w.point(20, 20)
+
+    col = PhysicalAssetCollection.from_shapefile(shp_path, asset_type='road')
+    assert col['typed'].asset_type == 'valve'
+    # pyshp yields '' for the blank field, which set_attribute treats as unset:
+    assert col['untyped'].asset_type in ('road', '')
+
+    col = PhysicalAssetCollection.from_shapefile(
+        shp_path, asset_type='road', overwrite_asset_type=True
+    )
+    assert col['typed'].asset_type == 'road'
+    assert col['untyped'].asset_type == 'road'
+
+
+def test_from_shapefile_skips_records_whose_geometry_cannot_be_built(
+    tmp_path, monkeypatch
+):
+    """A record whose geometry conversion raises is skipped, others are kept."""
+    shp_path = tmp_path / 'broken.shp'
+    with shapefile.Writer(str(shp_path)) as w:
+        w.field('id', 'C', 50)
+        w.record(id='good')
+        w.point(10, 10)
+        w.record(id='bad')
+        w.point(99, 99)
+
+    real_shape = physical_asset_module.shape
+
+    def fragile_shape(geom_dict):
+        if tuple(geom_dict.get('coordinates', ())) == (99.0, 99.0):
+            raise ValueError('cannot build geometry')
+        return real_shape(geom_dict)
+
+    monkeypatch.setattr(physical_asset_module, 'shape', fragile_shape)
+    col = PhysicalAssetCollection.from_shapefile(shp_path)
+    assert len(col) == 1
+    assert 'good' in col and 'bad' not in col
+
+
+def test_set_asset_type_batch(sample_asset_1, sample_asset_2):
+    """set_asset_type assigns the primary key to every asset, respecting overwrite."""
+    sample_asset_1.asset_type = 'existing'
+    col = PhysicalAssetCollection([sample_asset_1, sample_asset_2])
+
+    col.set_asset_type('building', overwrite=False)
+    assert col[sample_asset_1.id].asset_type == 'existing'
+    assert col[sample_asset_2.id].asset_type == 'building'
+
+    col.set_asset_type('building')  # overwrite defaults to True
+    assert all(asset.asset_type == 'building' for asset in col)
+    assert all('asset_type' in asset.attributes for asset in col)

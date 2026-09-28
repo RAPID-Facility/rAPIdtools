@@ -503,3 +503,20 @@ def test_summary_prints_image_repr(capsys):
 
     assert 'Image Assets (1):' in captured
     assert expected_line in captured
+
+
+# --- asset_type setter ---
+
+
+def test_asset_type_setter_writes_primary_key(sample_point):
+    """Assigning asset_type stores the value under the primary 'asset_type' key."""
+    asset = PhysicalAsset(id='setter', geometry=sample_point)
+    assert asset.asset_type is None
+    asset.asset_type = 'bridge'
+    assert asset.asset_type == 'bridge'
+    assert asset.attributes['asset_type'] == 'bridge'
+    assert PhysicalAsset._ASSET_TYPE_KEYS[0] == 'asset_type'
+
+    # Re-assigning overwrites the previous value:
+    asset.asset_type = 'culvert'
+    assert asset.attributes == {'asset_type': 'culvert'}
