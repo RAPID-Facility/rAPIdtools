@@ -40,6 +40,7 @@
 import logging
 import math
 import threading
+from pathlib import Path
 
 import numpy as np
 import pyproj
@@ -112,7 +113,7 @@ class FakeSAM3:
             self.on_call()
         masks = []
         for p in paths:
-            name = p.split('/')[-1]
+            name = Path(p).name  # separator-agnostic: CI also runs on Windows
             masks.append(
                 self.masks_by_name.get(name, np.zeros((1, MASK_SIZE, MASK_SIZE), bool))
             )

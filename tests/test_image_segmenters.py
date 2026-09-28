@@ -39,6 +39,7 @@
 
 import logging
 import threading
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -245,7 +246,7 @@ def test_call_respects_image_filter(fake_sam, collection):
     seg(collection)
     inst = fake_sam['instance']
     assert len(inst.calls) == 1
-    assert [p.split('/')[-1] for p in inst.calls[0]['inputs']] == ['a1_street.jpg']
+    assert [Path(p).name for p in inst.calls[0]['inputs']] == ['a1_street.jpg']
     assert 'sam3_masks' not in collection['a2'].attributes
 
 

@@ -1168,7 +1168,13 @@ def test_image_collection_to_dataframe_and_to_json(tmp_path):
     assert list(df.columns) == ['id', 'path', 'is_downloaded', 'event', 'score']
     assert df['id'].tolist() == ['a', 'b']
     assert df['is_downloaded'].tolist() == [False, False]
-    assert df['path'].tolist() == ['/virtual/a.jpg', '/virtual/b.jpg']
+    # ImageAsset resolves paths, which on Windows adds a drive letter and
+    # flips the separators, so compare the resolved forms:
+    virtual = [
+        str(Path('/virtual/a.jpg').resolve()),
+        str(Path('/virtual/b.jpg').resolve()),
+    ]
+    assert df['path'].tolist() == virtual
 
     out = tmp_path / 'images.json'
     collection.to_json(out)
@@ -1176,7 +1182,7 @@ def test_image_collection_to_dataframe_and_to_json(tmp_path):
     assert [d['id'] for d in data] == ['a', 'b']
     assert data[0] == {
         'id': 'a',
-        'path': '/virtual/a.jpg',
+        'path': virtual[0],
         'properties': {'event': 'eaton', 'score': 0.5},
     }
     assert len(ImageCollection().to_dataframe()) == 0
