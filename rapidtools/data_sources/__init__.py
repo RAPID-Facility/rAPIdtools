@@ -34,15 +34,27 @@
 # Contributors:
 # Barbaros Cetiner
 #
-# Last updated:
-# 05-25-2026
 
 """
-This module provides clients and readers for fetching raw geospatial data 
-and imagery from various external APIs and local files.
+Clients and readers for fetching raw geospatial data and imagery.
+
+This subpackage groups the data-acquisition layer of rapidtools: clients
+for external APIs (Mapillary and Google street-level imagery, Bing and
+Google aerial tiles - the latter without API keys),
+a reader for local orthomosaic GeoTIFFs, and Web Mercator tile helpers.
+
+Example:
+    >>> from rapidtools.data_sources import OrthomosaicReader, TileUtils
+    >>>
+    >>> with OrthomosaicReader('path/to/map.tif') as reader:
+    ...     bbox = reader.get_mosaic_bbox_wgs84()
+    >>> TileUtils.latlon_to_tile(bbox[1], bbox[0], 16)[0] > 0
+    True
 """
 
 from .bing_aerial_image_extractor import BingAerialImageExtractor
+from .google_aerial_image_extractor import GoogleAerialImageExtractor
+from .google_streetview import GoogleStreetViewClient, StreetViewPanorama
 from .mapillary_client import MapillaryClient
 from .mapillary_labels import MapillaryLabels
 from .orthomosaic_reader import OrthomosaicReader
@@ -51,8 +63,11 @@ from .tile_utils import TileUtils
 # Explicitly define the public API of this module.
 __all__ = [
     'BingAerialImageExtractor',
+    'GoogleAerialImageExtractor',
+    'GoogleStreetViewClient',
     'MapillaryClient',
     'MapillaryLabels',
     'OrthomosaicReader',
+    'StreetViewPanorama',
     'TileUtils',
 ]

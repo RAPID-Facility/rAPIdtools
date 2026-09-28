@@ -35,10 +35,49 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-25-2026
+# 09-22-2026
+
+"""
+Canonical Mapillary semantic segmentation label strings.
+
+Mapillary describes every segmented region with a hierarchical, double-dash
+separated string such as ``'object--vehicle--car'``. This module exposes each
+of those strings as a class constant so callers can reference labels without
+risking typos, and so the full vocabulary can be enumerated programmatically
+(for instance by
+:class:`rapidtools.processing.label_mappers.MapillaryLabelMapper`).
+
+Example:
+    >>> from rapidtools.data_sources.mapillary_labels import MapillaryLabels
+    >>>
+    >>> MapillaryLabels.OBJECT_VEHICLE_CAR
+    'object--vehicle--car'
+"""
+
 
 class MapillaryLabels:
-    """Auto-generated Mapillary Segmentation Labels"""
+    """
+    Namespace of official Mapillary segmentation label strings.
+
+    Attribute names are upper-snake-case versions of the label with the
+    ``--`` separators replaced by ``_``. Every attribute value is the exact
+    string Mapillary uses in its ``detections.value`` field.
+
+    Example:
+        Look up a label by constant:
+
+        >>> MapillaryLabels.NATURE_SKY
+        'nature--sky'
+
+        Enumerate the complete vocabulary:
+
+        >>> labels = [
+        ...     v for k, v in vars(MapillaryLabels).items()
+        ...     if not k.startswith('__') and isinstance(v, str)
+        ... ]
+        >>> 'construction--flat--road' in labels
+        True
+    """
 
     CONSTRUCTION_BARRIER_ACOUSTIC = 'construction--barrier--acoustic'
     CONSTRUCTION_BARRIER_AMBIGUOUS = 'construction--barrier--ambiguous'
@@ -82,10 +121,18 @@ class MapillaryLabels:
     MARKING_DISCRETE_ARROW_LEFT = 'marking--discrete--arrow--left'
     MARKING_DISCRETE_ARROW_OTHER = 'marking--discrete--arrow--other'
     MARKING_DISCRETE_ARROW_RIGHT = 'marking--discrete--arrow--right'
-    MARKING_DISCRETE_ARROW_SPLIT_LEFT_OR_RIGHT = 'marking--discrete--arrow--split-left-or-right'
-    MARKING_DISCRETE_ARROW_SPLIT_LEFT_OR_RIGHT_OR_STRAIGHT = 'marking--discrete--arrow--split-left-or-right-or-straight'
-    MARKING_DISCRETE_ARROW_SPLIT_LEFT_OR_STRAIGHT = 'marking--discrete--arrow--split-left-or-straight'
-    MARKING_DISCRETE_ARROW_SPLIT_RIGHT_OR_STRAIGHT = 'marking--discrete--arrow--split-right-or-straight'
+    MARKING_DISCRETE_ARROW_SPLIT_LEFT_OR_RIGHT = (
+        'marking--discrete--arrow--split-left-or-right'
+    )
+    MARKING_DISCRETE_ARROW_SPLIT_LEFT_OR_RIGHT_OR_STRAIGHT = (
+        'marking--discrete--arrow--split-left-or-right-or-straight'
+    )
+    MARKING_DISCRETE_ARROW_SPLIT_LEFT_OR_STRAIGHT = (
+        'marking--discrete--arrow--split-left-or-straight'
+    )
+    MARKING_DISCRETE_ARROW_SPLIT_RIGHT_OR_STRAIGHT = (
+        'marking--discrete--arrow--split-right-or-straight'
+    )
     MARKING_DISCRETE_ARROW_STRAIGHT = 'marking--discrete--arrow--straight'
     MARKING_DISCRETE_ARROW_U_TURN = 'marking--discrete--arrow--u-turn'
     MARKING_DISCRETE_CROSSWALK_ZEBRA = 'marking--discrete--crosswalk-zebra'
@@ -145,15 +192,33 @@ class MapillaryLabels:
     OBJECT_TRAFFIC_LIGHT_CYCLISTS_BACK = 'object--traffic-light--cyclists-back'
     OBJECT_TRAFFIC_LIGHT_CYCLISTS_FRONT = 'object--traffic-light--cyclists-front'
     OBJECT_TRAFFIC_LIGHT_CYCLISTS_SIDE = 'object--traffic-light--cyclists-side'
-    OBJECT_TRAFFIC_LIGHT_GENERAL_HORIZONTAL_BACK = 'object--traffic-light--general-horizontal-back'
-    OBJECT_TRAFFIC_LIGHT_GENERAL_HORIZONTAL_FRONT = 'object--traffic-light--general-horizontal-front'
-    OBJECT_TRAFFIC_LIGHT_GENERAL_HORIZONTAL_SIDE = 'object--traffic-light--general-horizontal-side'
-    OBJECT_TRAFFIC_LIGHT_GENERAL_SINGLE_BACK = 'object--traffic-light--general-single-back'
-    OBJECT_TRAFFIC_LIGHT_GENERAL_SINGLE_FRONT = 'object--traffic-light--general-single-front'
-    OBJECT_TRAFFIC_LIGHT_GENERAL_SINGLE_SIDE = 'object--traffic-light--general-single-side'
-    OBJECT_TRAFFIC_LIGHT_GENERAL_UPRIGHT_BACK = 'object--traffic-light--general-upright-back'
-    OBJECT_TRAFFIC_LIGHT_GENERAL_UPRIGHT_FRONT = 'object--traffic-light--general-upright-front'
-    OBJECT_TRAFFIC_LIGHT_GENERAL_UPRIGHT_SIDE = 'object--traffic-light--general-upright-side'
+    OBJECT_TRAFFIC_LIGHT_GENERAL_HORIZONTAL_BACK = (
+        'object--traffic-light--general-horizontal-back'
+    )
+    OBJECT_TRAFFIC_LIGHT_GENERAL_HORIZONTAL_FRONT = (
+        'object--traffic-light--general-horizontal-front'
+    )
+    OBJECT_TRAFFIC_LIGHT_GENERAL_HORIZONTAL_SIDE = (
+        'object--traffic-light--general-horizontal-side'
+    )
+    OBJECT_TRAFFIC_LIGHT_GENERAL_SINGLE_BACK = (
+        'object--traffic-light--general-single-back'
+    )
+    OBJECT_TRAFFIC_LIGHT_GENERAL_SINGLE_FRONT = (
+        'object--traffic-light--general-single-front'
+    )
+    OBJECT_TRAFFIC_LIGHT_GENERAL_SINGLE_SIDE = (
+        'object--traffic-light--general-single-side'
+    )
+    OBJECT_TRAFFIC_LIGHT_GENERAL_UPRIGHT_BACK = (
+        'object--traffic-light--general-upright-back'
+    )
+    OBJECT_TRAFFIC_LIGHT_GENERAL_UPRIGHT_FRONT = (
+        'object--traffic-light--general-upright-front'
+    )
+    OBJECT_TRAFFIC_LIGHT_GENERAL_UPRIGHT_SIDE = (
+        'object--traffic-light--general-upright-side'
+    )
     OBJECT_TRAFFIC_LIGHT_OTHER = 'object--traffic-light--other'
     OBJECT_TRAFFIC_LIGHT_PEDESTRIANS_BACK = 'object--traffic-light--pedestrians-back'
     OBJECT_TRAFFIC_LIGHT_PEDESTRIANS_FRONT = 'object--traffic-light--pedestrians-front'
@@ -164,7 +229,9 @@ class MapillaryLabels:
     OBJECT_TRAFFIC_SIGN_DIRECTION_BACK = 'object--traffic-sign--direction-back'
     OBJECT_TRAFFIC_SIGN_DIRECTION_FRONT = 'object--traffic-sign--direction-front'
     OBJECT_TRAFFIC_SIGN_FRONT = 'object--traffic-sign--front'
-    OBJECT_TRAFFIC_SIGN_INFORMATION_PARKING = 'object--traffic-sign--information-parking'
+    OBJECT_TRAFFIC_SIGN_INFORMATION_PARKING = (
+        'object--traffic-sign--information-parking'
+    )
     OBJECT_TRAFFIC_SIGN_TEMPORARY_BACK = 'object--traffic-sign--temporary-back'
     OBJECT_TRAFFIC_SIGN_TEMPORARY_FRONT = 'object--traffic-sign--temporary-front'
     OBJECT_TRASH_CAN = 'object--trash-can'

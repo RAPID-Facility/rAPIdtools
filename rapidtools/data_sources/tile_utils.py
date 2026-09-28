@@ -34,29 +34,54 @@
 # Contributors:
 # Barbaros Cetiner
 #
-# Last updated:
-# 12-04-2025
+
+"""
+Web Mercator tile arithmetic helpers.
+
+This module contains :class:`TileUtils`, a collection of static helpers for
+converting between WGS84 coordinates, XYZ tile indices, and Mapbox Vector
+Tile (MVT) local coordinates, plus a small timestamp utility used when
+parsing tile metadata.
+
+Example:
+    >>> from rapidtools.data_sources import TileUtils
+    >>> x, y = TileUtils.latlon_to_tile(34.05, -118.25, 15)
+    >>> int(x), int(y)
+    (5620, 13084)
+"""
 
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .bounding_box import BoundingBox
+    from rapidtools.core.bounding_box import BoundingBox
+
 
 class TileUtils:
     """
     Utility methods for Web Mercator/Mapbox Vector Tile operations.
 
     This class provides static helpers for:
+
     - Converting between WGS84 (lat/lon) and XYZ tile coordinates
     - Converting Mapbox Vector Tile (MVT) local coordinates to WGS84
     - Determining zoom levels and tile coverage for bounding boxes
     - Converting millisecond timestamps to UTC dates
 
     All geographic coordinates are assumed to be:
+
     - Latitude in degrees, in the range [-85.05112878, 85.05112878]
     - Longitude in degrees, in the range [-180, 180]
+
+    Example:
+        >>> from rapidtools.core import BoundingBox
+        >>> from rapidtools.data_sources import TileUtils
+        >>>
+        >>> bbox = BoundingBox(-118.251, 34.050, -118.250, 34.051)
+        >>> tiles = TileUtils.bbox_to_mapbox_tiles(bbox, zoom=16)
+        >>> all(z == 16 for _, _, z in tiles)
+        True
     """
 
     @staticmethod
@@ -64,22 +89,26 @@ class TileUtils:
         """
         Convert latitude/longitude to fractional XYZ tile coordinates.
 
-        Uses the Web Mercator tiling scheme where: at zoom level ``z`` there 
+        Uses the Web Mercator tiling scheme where: at zoom level ``z`` there
         are ``2^z`` tiles in both X and Y.
 
         Args:
             lat: Latitude in degrees.
             lon: Longitude in degrees.
-            z: Zoom level (e.g., 0–22).
+            z: Zoom level (e.g., 0-22).
 
         Returns:
             A tuple ``(xtile, ytile)`` of fractional tile coordinates at
             zoom ``z``. The integer parts ``floor(xtile)`` and
             ``floor(ytile)`` are the tile indices; the fractional parts
             represent the position within that tile.
+
+        Example:
+            >>> TileUtils.latlon_to_tile(0.0, 0.0, 1)
+            (1.0, 1.0)
         """
         lat_rad = math.radians(lat)
-        n = 2.0 ** z
+        n = 2.0**z
         xtile = (lon + 180.0) / 360.0 * n
         ytile = (1.0 - math.asinh(math.tan(lat_rad)) / math.pi) / 2.0 * n
         return xtile, ytile
@@ -114,45 +143,58 @@ class TileUtils:
 
         Returns:
             A tuple ``(lon, lat)`` where:
+
             - ``lon`` is longitude in degrees (WGS84).
             - ``lat`` is latitude in degrees (WGS84).
+
+        Example:
+            >>> lon, lat = TileUtils.mvt_to_wgs84(0, 0, 0, 0, 0)
+            >>> lon, round(lat, 6)
+            (-180.0, 85.051129)
         """
-        n = 2.0 ** tile_z
-        
+        n = 2.0**tile_z
+
         # Calculate global X/Y in Tile Space:
         x_val = tile_x + (shape_x / extent)
         y_val = tile_y + (shape_y / extent)
-        
+
         # Calculate the longitude:
         lon = (x_val / n) * 360.0 - 180.0
-        
+
         # Latitude involves the inverse Mercator projection:
         lat_rad = math.atan(math.sinh(math.pi * (1 - 2 * y_val / n)))
         lat = math.degrees(lat_rad)
-        
+
         return lon, lat
 
     @staticmethod
     def ms_to_date_utc(timestamp_ms: int) -> str:
-        """Convert a millisecond UNIX timestamp to a UTC date string.
-    
+        """
+        Convert a millisecond UNIX timestamp to a UTC date string.
+
         The input timestamp is interpreted as milliseconds since the Unix epoch
         (1970-01-01T00:00:00Z). The function converts it to a UTC date and
         returns an ISO 8601 formatted string (YYYY-MM-DD).
-    
+
         Args:
             timestamp_ms: Timestamp in milliseconds since Unix epoch (UTC).
-    
+
         Returns:
-            A Unicode string representing the UTC date in ISO format 
+            A Unicode string representing the UTC date in ISO format
             (YYYY-MM-DD).
+
+        Example:
+            >>> TileUtils.ms_to_date_utc(0)
+            '1970-01-01'
+            >>> TileUtils.ms_to_date_utc(1_700_000_000_000)
+            '2023-11-14'
         """
         seconds = timestamp_ms / 1000.0
-        dt_object = datetime.fromtimestamp(seconds, tz=timezone.utc)
+        dt_object = datetime.fromtimestamp(seconds, tz=UTC)
         return dt_object.date().isoformat()
 
     @staticmethod
-    def get_enclosing_zoom(bbox: "BoundingBox") -> int:
+    def get_enclosing_zoom(bbox: 'BoundingBox') -> int:
         """
         Find the highest zoom where the bounding box fits inside one tile.
 
@@ -172,6 +214,12 @@ class TileUtils:
             The highest integer zoom level in the range [14, 22] at which
             the bounding box fits into a single tile. Returns 14 if no higher
             zoom level satisfies this condition.
+
+        Example:
+            >>> from rapidtools.core import BoundingBox
+            >>> # A very large box never fits in one tile above zoom 14:
+            >>> TileUtils.get_enclosing_zoom(BoundingBox(-120, 30, -110, 40))
+            14
         """
         min_lon, min_lat, max_lon, max_lat = bbox.bounds
 
@@ -179,22 +227,22 @@ class TileUtils:
         for z in range(22, 13, -1):
             # Calculate tile coords for Top-Left (North-West):
             x1, y1 = TileUtils.latlon_to_tile(max_lat, min_lon, z)
-            
+
             # Calculate tile coords for Bottom-Right (South-East):
             x2, y2 = TileUtils.latlon_to_tile(min_lat, max_lon, z)
-            
+
             # Check if the integer parts are the same, i.e., they are in the
             # same tile:
             if int(x1) == int(x2) and int(y1) == int(y2):
                 return z
-                
-        # If it crosses a tile boundary even at zoom 14, return the lowest 
+
+        # If it crosses a tile boundary even at zoom 14, return the lowest
         # allowed zoom.
         return 14
 
     @staticmethod
     def bbox_to_mapbox_tiles(
-        bbox: "BoundingBox",
+        bbox: 'BoundingBox',
         zoom: int | None = None,
     ) -> list[tuple[int, int, int]]:
         """
@@ -220,6 +268,11 @@ class TileUtils:
             A list of tile coordinates ``(x, y, z)`` covering the bounding box,
             including all integer tiles from ``min_x..max_x`` and
             ``min_y..max_y`` inclusive.
+
+        Example:
+            >>> from rapidtools.core import BoundingBox
+            >>> TileUtils.bbox_to_mapbox_tiles(BoundingBox(-1, -1, 1, 1), zoom=1)
+            [(0, 0, 1), (0, 1, 1), (1, 0, 1), (1, 1, 1)]
         """
         # Extract the WGS84 bounds from the Shapely geometry:
         # min/max longitude (x), min/max latitude (y)
@@ -236,7 +289,7 @@ class TileUtils:
         min_x_float, min_y_float = TileUtils.latlon_to_tile(max_lat, min_lon, zoom)
         max_x_float, max_y_float = TileUtils.latlon_to_tile(min_lat, max_lon, zoom)
 
-        # Take the integer parts to get the tile index range that covers the 
+        # Take the integer parts to get the tile index range that covers the
         # bbox:
         min_x, min_y = int(min_x_float), int(min_y_float)
         max_x, max_y = int(max_x_float), int(max_y_float)
