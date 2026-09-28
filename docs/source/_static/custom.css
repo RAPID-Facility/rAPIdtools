@@ -1,0 +1,44 @@
+/* Sidebar logos ---------------------------------------------------------- */
+.rapid-logos {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.25rem 0.5rem 0.75rem;
+}
+.rapid-logos__link {
+  display: block;
+  line-height: 0;
+}
+.rapid-logos img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+/* The logos carry dark text on a transparent background; give them a light
+   card in dark mode so they stay legible. */
+html[data-theme="dark"] .rapid-logos img {
+  background: #ffffff;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+/* Landing page ----------------------------------------------------------- */
+.hero-tagline {
+  font-size: 1.15rem;
+  color: var(--pst-color-text-muted);
+  margin-bottom: 1.5rem;
+}
+.sd-card {
+  border-radius: 10px;
+}
+.sd-card:hover {
+  border-color: var(--pst-color-primary);
+}
+.sd-card-title {
+  font-weight: 600;
+}
+
+/* Method summary tables in the API reference */
+table.autosummary td:first-child {
+  white-space: nowrap;
+}
