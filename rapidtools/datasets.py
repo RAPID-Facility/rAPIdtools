@@ -35,7 +35,25 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 07-20-2026
+# 09-28-2026
+
+"""
+Registry and downloader for the sample datasets shipped with rapidtools.
+
+The :data:`DATASET_REGISTRY` maps short, descriptive dataset names to one or
+more :class:`RemoteFile` entries hosted on Dropbox. :func:`download_dataset`
+resolves names case-insensitively, validates them up front, and streams each
+file to disk atomically via a temporary ``.tmp`` file so interrupted
+downloads never leave corrupted artifacts behind.
+
+Example:
+    >>> from rapidtools.datasets import DATASET_REGISTRY, download_dataset
+    >>> sorted(DATASET_REGISTRY)[:2]
+    ['aerial_chs_prompts', 'altadena_sample_buildings']
+    >>> paths = download_dataset('altadena_sample_buildings', output_dir='data')
+    >>> paths[0].name
+    'altadena_sample_buildings.geojson'
+"""
 
 import difflib
 import logging
@@ -50,11 +68,27 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RemoteFile:
-    """Represents a single downloadable file within a dataset."""
+    """
+    Represents a single downloadable file within a dataset.
+
+    Attributes:
+        url: Public Dropbox share link for the file.
+        filename: Name to use when saving the file locally.
+
+    Example:
+        >>> remote = RemoteFile(
+        ...     url='https://www.dropbox.com/scl/fi/abc/tokens.txt?dl=0',
+        ...     filename='tokens.txt',
+        ... )
+        >>> remote.filename
+        'tokens.txt'
+    """
+
     url: str
     filename: str
 
-# Dataset registry mapping descriptive dataset names to their respective URLs 
+
+# Dataset registry mapping descriptive dataset names to their respective URLs
 # and target filenames. A dataset can consist of a single file or a list of
 # multiple files:
 DATASET_REGISTRY: dict[str, list[RemoteFile]] = {
@@ -75,7 +109,7 @@ DATASET_REGISTRY: dict[str, list[RemoteFile]] = {
             url='https://www.dropbox.com/scl/fi/nest9dvd0hq8erltjwt3m/street_level_recovery_prompts.txt?rlkey=f1umaoyxkj5osmbzf4f3d76dl&st=y4frb6bq&dl=0',
             filename='street_level_recovery_prompts.txt',
         )
-    ],    
+    ],
     'altadena_sample_buildings': [
         RemoteFile(
             url='https://www.dropbox.com/scl/fi/4mr3r5as4ccebqxuvooaw/altadena_sample_buildings.geojson?rlkey=cpkyamwg7hdos984a552aj8d5&st=7np0z16s&dl=0',
@@ -99,26 +133,25 @@ DATASET_REGISTRY: dict[str, list[RemoteFile]] = {
             url='https://www.dropbox.com/scl/fi/71f88zaczho2legblqkt3/eaton_patch1_bing_buildings.geojson?rlkey=qb2c8o695s531en28sdlhesvv&st=9vu74mk4&dl=0',
             filename='eaton_patch1_bing_buildings.geojson',
         )
-    ],    
+    ],
     'mapillary_token': [
         RemoteFile(
             url='https://www.dropbox.com/scl/fi/wkfxeyjv65rlj4zgsawh2/mapillary_token.txt?rlkey=ns1v51demkr8lm3grmonmw9py&st=vzq95fa9&dl=0',
             filename='mapillary_token.txt',
         )
-    ]
-    ,    
+    ],
     'hf_token': [
         RemoteFile(
             url='https://www.dropbox.com/scl/fi/mcguhhyofca9ozefs7xts/hf_token.txt?rlkey=v2lqqzj6ug102oesdnsz8lnbn&st=ydpbswnj&dl=0',
             filename='hf_token.txt',
         )
-    ],    
+    ],
     'synthetic_landslide_image': [
         RemoteFile(
             url='https://www.dropbox.com/scl/fi/ocrv60lphskqo9uf024nb/HurricaneInducedLandslide.png?rlkey=l2m6el6lfl6s9wc6ombjkhdyy&st=rd8usvyj&dl=0',
             filename='HurricaneInducedLandslide.png',
         )
-    ]
+    ],
 }
 
 
@@ -126,54 +159,68 @@ def download_dataset(
     dataset_names: str | list[str], output_dir: str | Path = '.'
 ) -> list[Path]:
     """
-    Downloads all files associated with one or more datasets from the registry.
+    Download all files associated with one or more datasets from the registry.
 
-    Uses atomic writing (downloading to a temporary file first) to ensure 
-    that interrupted downloads do not result in corrupted files.
+    Uses atomic writing (downloading to a temporary file first) to ensure
+    that interrupted downloads do not result in corrupted files. Files that
+    already exist in ``output_dir`` are not re-downloaded. Network or I/O
+    failures for an individual file are logged and skipped so the remaining
+    files can still be fetched.
 
     Args:
-        dataset_names (str | list[str]): 
-            A single descriptive name of the dataset, or a list of names 
+        dataset_names (str | list[str]):
+            A single descriptive name of the dataset, or a list of names
             (e.g., 'eaton_patch1' OR ['eaton_patch1', 'eaton_patch2']).
             Input is case-insensitive and ignores leading/trailing whitespace.
         output_dir (str | Path, optional): Directory where files should be saved.
             Defaults to the current working directory ('.').
 
     Returns:
-        list[Path]: 
-            A flat list of absolute paths to all successfully downloaded files.
-        
+        list[Path]:
+            A flat list of absolute paths to all successfully downloaded (or
+            already present) files, in registry order.
+
     Raises:
-        ValueError: 
+        ValueError:
             If any of the requested dataset names do not exist in the registry.
+            The message includes a "Did you mean" suggestion when a close
+            match exists.
+
+    Example:
+        >>> from rapidtools.datasets import download_dataset
+        >>> paths = download_dataset(
+        ...     ['Eaton_Patch1', ' mapillary_token '], output_dir='data'
+        ... )
+        >>> [p.name for p in paths]
+        ['eaton_patch_20250214.tiff', 'mapillary_token.txt']
     """
-    # Normalize input into a list so we can process it uniformly
+    # Normalize input into a list so we can process it uniformly:
     if isinstance(dataset_names, str):
         dataset_names = [dataset_names]
 
     available_datasets = list(DATASET_REGISTRY.keys())
     clean_names = []
 
-    # SAFEGUARD 1 & 2: Normalize and validate ALL requested datasets before downloading
+    # Normalize and validate ALL requested datasets before downloading:
     for name in dataset_names:
         clean_name = name.strip().lower()
-        
+
         if clean_name not in DATASET_REGISTRY:
             error_message = f"Dataset '{name}' not found in the registry."
-            
-            # Use difflib to find the closest matching dataset name
+
+            # Use difflib to find the closest matching dataset name:
             suggestions = difflib.get_close_matches(
                 clean_name, available_datasets, n=1, cutoff=0.5
             )
-            
+
             if suggestions:
                 error_message += f" Did you mean '{suggestions[0]}'?"
             else:
-                error_message += f" Available datasets: {available_datasets}"
-                
+                error_message += f' Available datasets: {available_datasets}'
+
             logger.error(error_message)
             raise ValueError(error_message)
-            
+
         clean_names.append(clean_name)
 
     # Deduplicate the list in case the user passed the same dataset twice
@@ -183,15 +230,15 @@ def download_dataset(
     # Resolve output directory and create it if it does not exist:
     out_dir = Path(output_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Aggregate all individual files from the requested datasets
+
+    # Aggregate all individual files from the requested datasets:
     files_to_download: list[RemoteFile] = []
     for clean_name in clean_names:
         files_to_download.extend(DATASET_REGISTRY[clean_name])
 
     logger.info(
-        f"Preparing to download {len(files_to_download)} file(s) "
-        f"across {len(clean_names)} dataset(s)..."
+        f'Preparing to download {len(files_to_download)} file(s) '
+        f'across {len(clean_names)} dataset(s)...'
     )
 
     downloaded_paths: list[Path] = []
@@ -220,18 +267,22 @@ def download_dataset(
             chunk_size = 8192
 
             # Download to a temporary file first:
-            with open(temp_path, 'wb') as file, tqdm(
-                total=total_size,
-                unit='iB',
-                unit_scale=True,
-                desc=f'Downloading {remote_file.filename}',
-            ) as bar:
+            with (
+                open(temp_path, 'wb') as file,
+                tqdm(
+                    total=total_size,
+                    unit='iB',
+                    unit_scale=True,
+                    desc=f'Downloading {remote_file.filename}',
+                ) as bar,
+            ):
                 for chunk in response.iter_content(chunk_size=chunk_size):
                     if chunk:
                         file.write(chunk)
                         bar.update(len(chunk))
 
-            # Rename the temp file to the final filename upon successful completion:
+            # Rename the temp file to the final filename upon successful
+            # completion:
             temp_path.rename(final_path)
             downloaded_paths.append(final_path)
 
@@ -239,22 +290,21 @@ def download_dataset(
             logger.error(
                 f'Network Error while downloading {remote_file.filename}: {req_err}'
             )
-            
+
         except Exception as err:
-            logger.error(
-                f'Unexpected error downloading {remote_file.filename}: {err}'
-            )
-            
+            logger.error(f'Unexpected error downloading {remote_file.filename}: {err}')
+
         finally:
-            # Cleanup: Remove corrupted temporary file if download failed/cancelled:
+            # Cleanup: Remove corrupted temporary file if download
+            # failed/cancelled:
             if temp_path.exists():
                 temp_path.unlink()
                 logger.debug(f'Cleaned up incomplete temporary file: {temp_path}')
 
     if downloaded_paths:
         logger.info(
-            f"Successfully secured {len(downloaded_paths)}/"
-            f"{len(files_to_download)} files."
+            f'Successfully secured {len(downloaded_paths)}/'
+            f'{len(files_to_download)} files.'
         )
-        
+
     return downloaded_paths
