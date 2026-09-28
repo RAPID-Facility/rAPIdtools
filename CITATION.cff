@@ -1,0 +1,41 @@
+# Citation metadata for rAPIdtools. GitHub reads this file to show the
+# "Cite this repository" button; Zenodo reads it when archiving a release.
+# Keep `version` and `date-released` in step with pyproject.toml and CHANGELOG.md.
+cff-version: 1.2.0
+message: "If you use rAPIdtools in your research, please cite it as below."
+type: software
+title: "rAPIdtools: AI inference and localization for post-disaster geospatial datasets"
+abstract: >-
+  rAPIdtools is a Python toolkit that connects post-disaster orthomosaics,
+  basemaps and street-level imagery with vision-language models. It crops
+  imagery around every physical asset visible in imagery, runs the crops
+  through hosted or local models, discovers and regularizes asset geometries
+  with SAM 3, and writes the results back to GeoJSON or Shapefile.
+authors:
+  - family-names: Cetiner
+    given-names: Barbaros
+    orcid: "https://orcid.org/0000-0002-9726-8120"
+    affiliation: "RAPID Facility, University of Washington"
+  - name: "RAPID Facility"
+    website: "https://www.uwrapid.org/"
+version: 0.2.0
+date-released: 2026-09-28
+license: BSD-3-Clause
+repository-code: "https://github.com/RAPID-Facility/rAPIdtools"
+url: "https://rapid-facility.github.io/rAPIdtools/"
+keywords:
+  - natural hazards
+  - damage assessment
+  - post-disaster reconnaissance
+  - remote sensing
+  - aerial imagery
+  - street-level imagery
+  - vision-language models
+  - computer vision
+  - GIS
+# Uncomment and fill in after the first Zenodo archive (use the concept DOI,
+# which always resolves to the latest version):
+# identifiers:
+#   - type: doi
+#     value: 10.5281/zenodo.XXXXXXX
+#     description: "Concept DOI for all versions of rAPIdtools"
