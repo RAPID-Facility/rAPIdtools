@@ -1,0 +1,45 @@
+name: Release
+
+# Pushing a version tag (v0.2.0, v1.0.0, ...) creates the matching GitHub
+# Release. Zenodo watches GitHub Releases, so once the repository is enabled
+# on zenodo.org this is what mints the DOI for each version.
+on:
+  push:
+    tags: [ "v*" ]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that the tag matches the package version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "Tag v$TAG does not match pyproject version $VERSION" >&2
+            exit 1
+          fi
+
+      - name: Extract this version's changelog section
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { keep = 1; next }
+            /^## \[/ && keep { exit }
+            keep { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+          if [ ! -s RELEASE_NOTES.md ]; then
+            echo "No CHANGELOG.md section found for $VERSION" >&2
+            exit 1
+          fi
+
+      - name: Create the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: rAPIdtools ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
