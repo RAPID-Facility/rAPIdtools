@@ -19,14 +19,14 @@ readme = "README.md"
 authors = [
   { name = "UW RAPID", email = "uwrapid@uwrapid.org" },
 ]
-license = { file = "LICENSE" }
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 classifiers = [
     # Full list: https://pypi.org/classifiers/
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: BSD License", 
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",

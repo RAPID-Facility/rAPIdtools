@@ -31,19 +31,10 @@
   ],
   "related_identifiers": [
     {
-      "identifier": "https://github.com/RAPID-Facility/rAPIdtools",
+      "identifier": "https://pypi.org/project/rapidtools/",
       "relation": "isSupplementTo",
       "resource_type": "software",
       "scheme": "url"
-    },
-    {
-      "identifier": "https://pypi.org/project/rapidtools/",
-      "relation": "isIdenticalTo",
-      "resource_type": "software",
-      "scheme": "url"
     }
-  ],
-  "grants": [
-    { "id": "10.13039/100000001::1611820" }
   ]
 }

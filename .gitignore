@@ -34,3 +34,11 @@ dist/
 
 # Temporary files
 tmp/
+
+# Autosummary stubs are regenerated on every docs build
+docs/source/api/generated/
+
+# Credentials used by the examples and test artifacts
+examples/api_key.txt
+examples/*token*.txt
+.coverage
