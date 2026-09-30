@@ -424,26 +424,50 @@ def estimate_ego_mask(
         frames = {obs_list[i].image_id for i in indices}
         if len(frames) < min_frames:
             continue
-        # Bucket boxes by their centre so each box is compared with few others:
-        cell = 0.05
-        buckets: dict[tuple[int, int], list[int]] = defaultdict(list)
-        for i in indices:
-            x0, y0, x1, y1 = obs_list[i].bbox
-            buckets[(int((x0 + x1) / 2 / cell), int((y0 + y1) / 2 / cell))].append(i)
+        # The survey vehicle sits at the same place in every frame, so its
+        # boxes are near-identical. Group boxes that round to the same
+        # position first and compare groups, not sightings: a sequence of
+        # thousands of frames then costs one comparison per distinct box
+        # instead of one per pair, which made city-wide runs quadratic.
+        quantum = 0.01
+        groups: dict[tuple[int, int, int, int], dict] = {}
         for i in indices:
             box = obs_list[i].bbox
-            cx, cy = (
-                int((box[0] + box[2]) / 2 / cell),
-                int((box[1] + box[3]) / 2 / cell),
-            )
-            matching_frames = set()
+            key = tuple(int(round(v / quantum)) for v in box)
+            group = groups.get(key)
+            if group is None:
+                group = groups[key] = {
+                    'box': list(box),
+                    'n': 0,
+                    'frames': set(),
+                    'members': [],
+                }
+            n = group['n']
+            group['box'] = [(group['box'][k] * n + box[k]) / (n + 1) for k in range(4)]
+            group['n'] = n + 1
+            group['frames'].add(obs_list[i].image_id)
+            group['members'].append(i)
+        # Bucket the group boxes by their centre so each is compared with few others:
+        cell = 0.05
+        buckets: dict[tuple[int, int], list[tuple[int, int, int, int]]] = defaultdict(
+            list
+        )
+        for key, group in groups.items():
+            b = group['box']
+            buckets[
+                (int((b[0] + b[2]) / 2 / cell), int((b[1] + b[3]) / 2 / cell))
+            ].append(key)
+        for group in groups.values():
+            b = group['box']
+            cx, cy = int((b[0] + b[2]) / 2 / cell), int((b[1] + b[3]) / 2 / cell)
+            matching_frames: set[str] = set()
             for dx in (-1, 0, 1):
                 for dy in (-1, 0, 1):
-                    for j in buckets.get((cx + dx, cy + dy), ()):
-                        if bbox_iou(box, obs_list[j].bbox) >= iou_threshold:
-                            matching_frames.add(obs_list[j].image_id)
+                    for other in buckets.get((cx + dx, cy + dy), ()):
+                        if bbox_iou(b, groups[other]['box']) >= iou_threshold:
+                            matching_frames |= groups[other]['frames']
             if len(matching_frames) / len(frames) >= min_recurrence:
-                ego.add(i)
+                ego.update(group['members'])
     return ego
 
 

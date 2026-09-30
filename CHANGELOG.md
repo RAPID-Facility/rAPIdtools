@@ -109,6 +109,11 @@ minor releases may change public APIs.
   downloads each source image once, crops every object seen in it and
   releases it instead of caching every image for the whole run. A city-wide
   run previously grew to tens of gigabytes of RAM; memory now stays flat.
+  The ego-vehicle filter groups near-identical boxes before comparing them,
+  so a survey-length sequence is linear instead of quadratic (the Spokane
+  survey's 720,000 sightings now take two minutes to filter, localise and
+  cluster). The example defaults to a neighbourhood of Spokane and shows
+  the whole-survey box in a comment.
 - `DetectionSettings.detect_in_recon_imagery` is kept in sync with the new
   `basemap` field (`'bing'`, `'google'` or `'recon'`); `DetectionResult`
   reports which `basemap` was used.

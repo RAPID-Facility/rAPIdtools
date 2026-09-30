@@ -246,3 +246,39 @@ def test_simplify_polygon_keeps_shape_and_handles_edge_cases():
         (0.25, 0.0),
         (0.75, 0.0),
     ]
+
+
+def test_estimate_ego_mask_scales_to_a_survey_length_sequence():
+    """A day-long sequence (20k frames) must not be quadratic in the ego box."""
+    import random
+    import time
+
+    rng = random.Random(7)
+    ego_box = _box(0.5, 0.9, w=0.2, h=0.2)
+    obs = []
+    ego_expected = set()
+    for i in range(20000):
+        # The survey vehicle, with a pixel of jitter, plus three parked cars
+        # spread over the frame:
+        jitter = rng.uniform(-0.002, 0.002)
+        ego_expected.add(len(obs))
+        obs.append(
+            _obs(
+                f'f{i}',
+                [(x + jitter, y) for x, y in ego_box],
+                sequence_id='day',
+            )
+        )
+        for _ in range(3):
+            obs.append(
+                _obs(
+                    f'f{i}',
+                    _box(rng.uniform(0.1, 0.9), rng.uniform(0.4, 0.8), w=0.06, h=0.05),
+                    sequence_id='day',
+                )
+            )
+    t0 = time.perf_counter()
+    flagged = estimate_ego_mask(obs)
+    elapsed = time.perf_counter() - t0
+    assert flagged == ego_expected
+    assert elapsed < 10, f'ego mask took {elapsed:.1f} s for 80k sightings'

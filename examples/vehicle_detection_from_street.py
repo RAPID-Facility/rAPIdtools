@@ -36,10 +36,15 @@ import rapidtools as rt
 from rapidtools.models import GenerationConfig, load
 
 # --------------------------------------------------------------- Configuration
-# Spokane, WA: the area covered by the UW RAPID street-level survey.
-REGION = rt.BoundingBox(
-    min_x=-117.535812, min_y=47.688456, max_x=-117.442589, max_y=47.737830
-)
+# A neighbourhood of Spokane, WA, inside the UW RAPID street-level survey:
+# about 1 km across, some 4,000 survey frames, a few minutes end to end.
+REGION = rt.BoundingBox(min_x=-117.495, min_y=47.708, max_x=-117.482, max_y=47.717)
+# The whole survey is the box below: 116,000 frames after thinning, which
+# takes about 75 minutes just to read the detections (one Graph API request
+# per frame). Use it once the neighbourhood run looks right.
+#   REGION = rt.BoundingBox(
+#       min_x=-117.535812, min_y=47.688456, max_x=-117.442589, max_y=47.737830
+#   )
 START_DATE = ''  # e.g. '2025-08-01' to restrict to one survey
 END_DATE = ''
 OUTPUT_DIR = Path('output/spokane_vehicles')
