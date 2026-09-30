@@ -756,7 +756,10 @@ def test_sample_prompt_and_text_file_limits(gui, tmp_path, monkeypatch):
         return [prompt_file]
 
     monkeypatch.setattr(rapidtools, 'download_dataset', fake_download)
-    assert client.json('POST', '/api/prompt/sample', {}) == {'text': 'Rate the damage.'}
+    assert client.json('POST', '/api/prompt/sample', {}) == {
+        'name': 'aerial_chs',
+        'text': 'Rate the damage.',
+    }
     assert calls == [(server_module.SAMPLE_PROMPT_DATASET, srv.state.output_dir)]
 
     client.json('GET', f'/api/textfile?path={tmp_path / "missing.txt"}', expect=404)
@@ -1012,7 +1015,11 @@ def test_main_parses_arguments_and_environment(monkeypatch, tmp_path):
     )
     monkeypatch.delenv('RAPIDTOOLS_GUI_TOKEN', raising=False)
     monkeypatch.delenv('RAPIDTOOLS_GUI_NO_BROWSER', raising=False)
+    for var in ('HOST', 'PORT', 'USER', 'PASSWORD', 'FROM', 'SSL'):
+        monkeypatch.delenv(f'RAPIDTOOLS_SMTP_{var}', raising=False)
+    monkeypatch.delenv('RAPIDTOOLS_PUBLIC_URL', raising=False)
     assert server_module.main([]) == 0
+    notification = calls[-1].pop('notification')
     assert calls[-1] == {
         'host': '127.0.0.1',
         'port': 8765,
@@ -1021,6 +1028,7 @@ def test_main_parses_arguments_and_environment(monkeypatch, tmp_path):
         'data_root': None,
         'open_browser': True,
     }
+    assert notification.smtp_host == '' and notification.smtp_port == 587
 
     argv = [
         '--host',
@@ -1034,8 +1042,17 @@ def test_main_parses_arguments_and_environment(monkeypatch, tmp_path):
         '--data-root',
         str(tmp_path),
         '--no-browser',
+        '--smtp-host',
+        'mail.example.org',
+        '--smtp-user',
+        'me@example.org',
+        '--smtp-ssl',
+        '--public-url',
+        'https://gui.example.org/',
     ]
+    monkeypatch.setenv('RAPIDTOOLS_SMTP_PASSWORD', 'pw')
     assert server_module.main(argv) == 0
+    notification = calls[-1].pop('notification')
     assert calls[-1] == {
         'host': '0.0.0.0',
         'port': 9000,
@@ -1044,6 +1061,11 @@ def test_main_parses_arguments_and_environment(monkeypatch, tmp_path):
         'data_root': str(tmp_path),
         'open_browser': False,
     }
+    assert notification.smtp_host == 'mail.example.org'
+    assert notification.smtp_user == 'me@example.org'
+    assert notification.smtp_password == 'pw'
+    assert notification.smtp_ssl is True and notification.smtp_port == 465
+    assert notification.public_url == 'https://gui.example.org/'
 
     monkeypatch.setenv('RAPIDTOOLS_GUI_TOKEN', 'from-env')
     monkeypatch.setenv('RAPIDTOOLS_GUI_NO_BROWSER', '1')
@@ -1068,3 +1090,970 @@ def test_gui_package_launch_forwards_kwargs(monkeypatch):
     )
     rapidtools.gui.launch_asset_analysis_app(port=1, open_browser=False)
     assert calls == [{'port': 1, 'open_browser': False}]
+
+
+# ------------------------------------------------------- new API endpoints
+def test_state_exposes_new_options_and_prompt_library(gui, monkeypatch, tmp_path):
+    client, srv = gui
+    state = client.json('GET', '/api/state')
+    options = state['options']
+    assert set(options['sample_prompts']) == {
+        'aerial_chs',
+        'street_chs',
+        'street_recovery',
+    }
+    assert set(options['imagery_sources']) >= {
+        'aerial',
+        'google_streetview',
+        'mapillary',
+    }
+    assert set(options['basemaps']) == {'bing', 'google'}
+    assert 'vehicles' in options['street_classes']
+    assert 'draft' in options['assist_actions']
+    assert state['assistant']['status'] == 'idle'
+
+    prompt_file = tmp_path / 'p.txt'
+    prompt_file.write_text('Street prompt')
+    calls = []
+
+    def fake_download(name, output_dir='.'):
+        calls.append(name)
+        return [prompt_file]
+
+    monkeypatch.setattr(rapidtools, 'download_dataset', fake_download)
+    assert client.json('POST', '/api/prompt/sample', {'name': 'street_chs'}) == {
+        'name': 'street_chs',
+        'text': 'Street prompt',
+    }
+    client.json('POST', '/api/prompt/sample', {'name': 'nope'}, expect=400)
+    prompt_file.write_text('MLY|token\n')
+    assert client.json('POST', '/api/mapillary_token', {}) == {'token': 'MLY|token'}
+    assert calls == ['street_chs_prompts', 'mapillary_token']
+
+
+def test_prompt_assemble_and_example(gui):
+    client, _ = gui
+    example = client.json('POST', '/api/prompt/example', {})['spec']
+    assert example['rubric_title'] == 'CHS COMBUSTION INDEX'
+
+    r = client.json(
+        'POST',
+        '/api/prompt/assemble',
+        {
+            'spec': {
+                'asset': 'vehicle',
+                'fields': [{'name': 'Condition', 'options': ['intact', 'debris']}],
+            },
+            'outline': {'shape': 'corners', 'color': 'cyan', 'overlay': True},
+            'backend': 'gemma4',
+        },
+    )
+    assert r['marking'] == 'marked with cyan corner brackets'
+    assert 'Locate the primary vehicle marked with cyan corner brackets' in r['text']
+    assert r['attributes'] == ['gemma4_condition']
+    assert r['spec']['asset'] == 'vehicle'
+    # An explicit marking wins and an unknown backend falls back to 'vlm':
+    r = client.json(
+        'POST',
+        '/api/prompt/assemble',
+        {'spec': {'marking': 'in the centre', 'fields': [{'name': 'Grade'}]}},
+    )
+    assert r['marking'] == 'in the centre' and r['attributes'] == ['vlm_grade']
+    client.json('POST', '/api/prompt/assemble', {'spec': ['bad']}, expect=400)
+    client.json(
+        'POST',
+        '/api/prompt/assemble',
+        {'spec': {'fields': [{'name': 'X', 'kind': 'weird'}]}},
+        expect=400,
+    )
+
+
+def test_prompt_assist_runs_as_a_job(gui):
+    client, srv = gui
+    answers = {'spec': {'asset': 'pole', 'fields': [{'name': 'State'}]}}
+
+    def fake_assist(settings):
+        assert settings.action == 'draft' and settings.backend == 'gemma4'
+        assert settings.context == {'asset': 'pole'}
+        return answers
+
+    srv.state.workflow.assist = fake_assist
+    r = client.json(
+        'POST',
+        '/api/prompt/assist',
+        {
+            'action': 'draft',
+            'backend': 'gemma4',
+            'brief': 'poles',
+            'context': {'asset': 'pole'},
+        },
+    )
+    assert r == {'ok': True, 'seq': 1}
+    state = client.wait_idle()
+    assert state['job']['status'] == 'done'
+    assert state['assistant']['status'] == 'done'
+    assert state['assistant']['result'] == answers
+    assert state['assistant']['model'].startswith('Gemma-4 ·')
+
+    def failing(settings):
+        raise ValueError('no JSON')
+
+    srv.state.workflow.assist = failing
+    assert (
+        client.json(
+            'POST',
+            '/api/prompt/assist',
+            {'action': 'review', 'backend': 'gemma4', 'prompt_text': 'x'},
+        )['seq']
+        == 2
+    )
+    state = client.wait_idle()
+    assert state['job']['status'] == 'error'
+    assert state['assistant'] == {
+        'seq': 2,
+        'status': 'error',
+        'action': 'review',
+        'model': state['assistant']['model'],
+        'result': None,
+        'error': 'no JSON',
+    }
+
+    # Validation errors are reported synchronously:
+    client.json(
+        'POST',
+        '/api/prompt/assist',
+        {'action': 'nope', 'backend': 'gemma4'},
+        expect=400,
+    )
+    status, _, raw = client.request(
+        'POST',
+        '/api/prompt/assist',
+        {'action': 'draft', 'backend': 'gemini', 'brief': 'x'},
+    )
+    assert status == 400 and b'Gemini API key is required' in raw
+
+    # A busy server rejects the request and marks the assistant as failed:
+    srv.state.workflow.block.clear()
+    srv.state.workflow.assist = lambda settings: answers
+    srv.state.start_job('Busy', lambda: srv.state.workflow.block.wait(timeout=5))
+    client.json(
+        'POST',
+        '/api/prompt/assist',
+        {'action': 'draft', 'backend': 'gemma4', 'brief': 'x'},
+        expect=409,
+    )
+    assert srv.state.assistant['status'] == 'error'
+    srv.state.workflow.block.set()
+    client.wait_idle()
+
+
+def test_region_imagery_download(gui, raster_path, tmp_path):
+    client, srv = gui
+    calls = []
+
+    def fake_download(settings):
+        calls.append(settings)
+        target = tmp_path / 'region.tif'
+        shutil.copy(raster_path, target)
+        return target
+
+    srv.state.workflow.download_basemap = fake_download
+    client.json(
+        'POST',
+        '/api/imagery/region',
+        {
+            'provider': 'google',
+            'zoom': 18,
+            'min_lon': '-118.15',
+            'min_lat': '34.18',
+            'max_lon': '-118.14',
+            'max_lat': '34.19',
+        },
+    )
+    state = client.wait_idle()
+    assert state['job'] == {
+        **state['job'],
+        'name': 'Download Google imagery',
+        'status': 'done',
+    }
+    assert state['raster']['name'] == 'region.tif'
+    assert calls[0].provider == 'google' and calls[0].zoom == 18
+    assert calls[0].output_dir == srv.state.output_dir
+
+    geojson = tmp_path / 'area.geojson'
+    geojson.write_text('{}')
+    client.json('POST', '/api/imagery/region', {'geojson': str(geojson), 'zoom': 17})
+    client.wait_idle()
+    assert calls[1].geojson_path == geojson and calls[1].provider == 'bing'
+
+    status, _, raw = client.request('POST', '/api/imagery/region', {'provider': 'esri'})
+    assert status == 400 and b'provider must be one of' in raw
+    status, _, raw = client.request(
+        'POST',
+        '/api/imagery/region',
+        {'min_lon': 'abc', 'min_lat': 1, 'max_lon': 2, 'max_lat': 3},
+    )
+    assert status == 400
+
+
+def test_street_discovery_endpoint_and_run_all(gui, raster_path):
+    client, srv = gui
+    workflow = srv.state.workflow
+    calls = []
+
+    def fake_discover(settings):
+        calls.append(settings)
+        collection = _asset_collection_covering_pixel(10, 4)
+        path = settings.output_dir / 'street_objects.geojson'
+        settings.output_dir.mkdir(parents=True, exist_ok=True)
+        path.write_text('{}')
+        from rapidtools.gui.workflow import StreetDetectionResult
+
+        return StreetDetectionResult(
+            collection=collection, geojson_path=path, n_images=3
+        )
+
+    workflow.discover_street = fake_discover
+
+    # Needs a raster first:
+    status, _, raw = client.request(
+        'POST', '/api/street/discover', {'classes': 'vehicles', 'mapillary_token': 't'}
+    )
+    assert status == 400 and b'Load an aerial image' in raw
+
+    client.json('POST', '/api/imagery/local', {'path': str(raster_path)})
+    client.wait_idle()
+    status, _, raw = client.request(
+        'POST', '/api/street/discover', {'classes': 'vehicles'}
+    )
+    assert status == 400 and b'Mapillary access token' in raw
+
+    client.json(
+        'POST',
+        '/api/street/discover',
+        {
+            'classes': 'vehicles, poles',
+            'mapillary_token': 'MLY|x',
+            'frame_spacing_m': 5,
+            'min_observations': 1,
+            'detection_source': 'mapillary',
+        },
+    )
+    state = client.wait_idle()
+    assert state['job']['status'] == 'done'
+    assert state['collection']['source'] == 'street survey'
+    assert [r['label'] for r in state['results']] == ['Street objects']
+    assert calls[0].classes == ['vehicles', 'poles']
+    assert calls[0].raster_path == raster_path
+    assert calls[0].frame_spacing_m == 5 and calls[0].detection_source == 'mapillary'
+
+    # Discovery + inference in one job:
+    client.json(
+        'POST',
+        '/api/run_all',
+        {
+            'mode': 'street',
+            'street': {'classes': 'vehicles', 'mapillary_token': 'MLY|x'},
+            'infer': {
+                'backend': 'gemma4',
+                'prompt': 'Condition?',
+                'imagery': 'mapillary_objects',
+                'mapillary_token': 'MLY|x',
+                'json_mode': True,
+                'temperature': 0.1,
+                'max_tokens': 300,
+                'min_footprint_coverage': '',
+            },
+        },
+    )
+    state = client.wait_idle()
+    assert state['job']['name'] == 'Street discovery + inference'
+    assert state['job']['status'] == 'done'
+    [settings] = workflow.analyze_calls
+    assert settings.imagery == 'mapillary_objects'
+    assert settings.json_mode is True and settings.temperature == 0.1
+    assert settings.max_tokens == 300 and settings.min_footprint_coverage is None
+    assert state['collection']['source'] == 'analyzed'
+
+    # Nothing found means no inference:
+    from rapidtools.gui.workflow import StreetDetectionResult
+
+    workflow.discover_street = lambda s: StreetDetectionResult(
+        PhysicalAssetCollection()
+    )
+    client.json(
+        'POST',
+        '/api/run_all',
+        {
+            'mode': 'street',
+            'street': {'classes': 'vehicles', 'mapillary_token': 'MLY|x'},
+            'infer': {'backend': 'gemma4', 'prompt': 'p'},
+        },
+    )
+    state = client.wait_idle()
+    assert state['job']['status'] == 'error' and 'No objects' in state['job']['message']
+
+
+def test_detect_accepts_basemap_and_merge_options(gui, raster_path):
+    client, srv = gui
+    client.json('POST', '/api/imagery/local', {'path': str(raster_path)})
+    client.wait_idle()
+    client.json(
+        'POST',
+        '/api/detect',
+        {'assets': 'vehicle', 'basemap': 'google', 'merge_overlaps': False},
+    )
+    client.wait_idle()
+    [settings] = srv.state.workflow.detect_calls
+    assert settings.basemap == 'google' and settings.merge_overlaps is False
+    status, _, raw = client.request(
+        'POST', '/api/detect', {'assets': 'vehicle', 'basemap': 'esri'}
+    )
+    assert status == 400 and b'basemap must be one of' in raw
+    # The legacy 'source' key still selects the recon raster:
+    client.json('POST', '/api/detect', {'assets': 'vehicle', 'source': 'recon'})
+    client.wait_idle()
+    assert srv.state.workflow.detect_calls[-1].basemap == 'recon'
+
+
+def test_infer_validates_street_imagery_options(gui, raster_path):
+    client, srv = gui
+    client.json('POST', '/api/imagery/local', {'path': str(raster_path)})
+    client.wait_idle()
+    client.json('POST', '/api/detect', {'assets': 'building'})
+    client.wait_idle()
+    status, _, raw = client.request(
+        'POST',
+        '/api/infer',
+        {'backend': 'gemma4', 'prompt': 'p', 'imagery': 'mapillary'},
+    )
+    assert status == 400 and b'Mapillary access token is required' in raw
+    status, _, raw = client.request(
+        'POST',
+        '/api/infer',
+        {
+            'backend': 'gemma4',
+            'prompt': 'p',
+            'imagery': 'google_streetview',
+            'street_crop_top': 0.9,
+            'street_crop_bottom': 0.2,
+        },
+    )
+    assert status == 400 and b'street_vertical_crop' in raw
+    client.json(
+        'POST',
+        '/api/infer',
+        {
+            'backend': 'gemma4',
+            'prompt': 'p',
+            'imagery': 'google_streetview',
+            'street_search_radius_m': 80,
+            'street_max_images': 2,
+            'street_crop_top': '0.1',
+            'street_crop_bottom': '0.8',
+            'pad_edges': False,
+            'min_footprint_coverage': '0.5',
+        },
+    )
+    client.wait_idle()
+    settings = srv.state.workflow.analyze_calls[-1]
+    assert settings.imagery == 'google_streetview'
+    assert settings.street_search_radius_m == 80 and settings.street_max_images == 2
+    assert settings.street_vertical_crop == (0.1, 0.8)
+    assert settings.pad_edges is False and settings.min_footprint_coverage == 0.5
+
+
+# ------------------------------------------------------ notifications, map picker
+def test_notify_endpoint_and_delivery_after_job(gui, raster_path):
+    from rapidtools.gui.notify import NotificationConfig, Notifier
+
+    client, srv = gui
+    posts = []
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+    def fake_post(url, json=None, timeout=None):
+        posts.append((url, json))
+        return Response()
+
+    srv.state.notifier = Notifier(NotificationConfig(), post=fake_post)
+    state = client.json('GET', '/api/state')
+    assert state['notify'] == {
+        'target': '',
+        'kind': '',
+        'email_available': False,
+        'last': {'seq': 0, 'ok': None, 'message': ''},
+    }
+    status, _, raw = client.request('POST', '/api/notify', {'target': 'nope'})
+    assert status == 400 and b'email address or a webhook' in raw
+    status, _, raw = client.request('POST', '/api/notify', {'target': 'a@b.org'})
+    assert status == 400 and b'not set up on this server' in raw
+    assert client.json('POST', '/api/notify', {'target': ' https://hooks/x '}) == {
+        'target': 'https://hooks/x',
+        'kind': 'webhook',
+    }
+    assert client.json('GET', '/api/state')['notify']['target'] == 'https://hooks/x'
+
+    client.json('POST', '/api/imagery/local', {'path': str(raster_path)})
+    state = client.wait_idle()
+    assert state['job']['status'] == 'done'
+    deadline = time.time() + 5
+    while time.time() < deadline and not posts:
+        time.sleep(0.05)
+    assert posts, 'webhook was not called'
+    url, payload = posts[0]
+    assert url == 'https://hooks/x'
+    assert payload['job'] == 'Load imagery' and payload['status'] == 'done'
+    assert payload['url'] == srv.state.public_url == srv.url
+    assert payload['duration_s'] >= 0
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        state = client.json('GET', '/api/state')
+        if state['notify']['last']['seq']:
+            break
+        time.sleep(0.05)
+    assert state['notify']['last']['ok'] is True
+    assert state['notify']['target'] == ''  # one message per request
+    log = client.json('GET', '/api/log?since=0')
+    assert any('Notification posted' in e['text'] for e in log['entries'])
+
+    # Email goes through the SMTP channel once a relay is configured:
+    sent = []
+    notifier = Notifier(NotificationConfig(smtp_host='mail.example.org'))
+    notifier.send_email = lambda to, summary: sent.append((to, summary.subject))
+    srv.state.notifier = notifier
+    assert client.json('GET', '/api/state')['notify']['email_available'] is True
+    client.json('POST', '/api/notify', {'target': 'bob@example.org'})
+    client.json('POST', '/api/imagery/local', {'path': str(raster_path)})
+    client.wait_idle()
+    deadline = time.time() + 5
+    while time.time() < deadline and not sent:
+        time.sleep(0.05)
+    assert sent == [('bob@example.org', 'rapidtools: Load imagery finished')]
+    # Clearing works and a cleared target sends nothing:
+    assert client.json('POST', '/api/notify', {'target': ''})['target'] == ''
+
+
+def test_basemap_tile_proxy_caches_and_validates(gui, monkeypatch):
+    client, srv = gui
+    calls = []
+
+    def fake_fetch(provider, z, x, y):
+        calls.append((provider, z, x, y))
+        if provider not in ('bing', 'google'):
+            raise ValueError('Unknown basemap provider')
+        return None if z == 3 else b'\xff\xd8tile'
+
+    monkeypatch.setattr(server_module, '_fetch_basemap_tile', fake_fetch)
+    status, ctype, raw = client.request('GET', '/api/basemap_tile/bing/10/5/6.jpg')
+    assert status == 200 and ctype == 'image/jpeg' and raw == b'\xff\xd8tile'
+    assert client.last_response.getheader('Cache-Control') == 'max-age=86400'
+    client.request('GET', '/api/basemap_tile/bing/10/5/6.jpg')
+    assert calls == [('bing', 10, 5, 6)]  # served from the cache
+    status, _, _ = client.request('GET', '/api/basemap_tile/esri/10/5/6.jpg')
+    assert status == 400
+    status, _, _ = client.request('GET', '/api/basemap_tile/google/3/1/1.jpg')
+    assert status == 404
+    status, _, _ = client.request('GET', '/api/basemap_tile/google/x/1/1.jpg')
+    assert status == 400
+    status, _, _ = client.request('GET', '/api/basemap_tile/google/1/1.jpg')
+    assert status == 404
+    assert len(srv.state.tile_cache) == 1
+
+
+def test_fetch_basemap_tile_builds_provider_urls(monkeypatch):
+    urls = []
+
+    class Session:
+        def get(self, url, timeout=None):
+            urls.append(url)
+
+            class R:
+                status_code = 200
+                content = b'img'
+
+            return R()
+
+    monkeypatch.setattr(server_module, '_TILE_SESSION', Session())
+    assert server_module._fetch_basemap_tile('google', 5, 3, 4) == b'img'
+    assert urls[-1] == 'https://mt3.google.com/vt/lyrs=s&x=3&y=4&z=5'
+    assert server_module._fetch_basemap_tile('bing', 3, 3, 5) == b'img'
+    assert urls[-1] == 'http://ecn.t3.tiles.virtualearth.net/tiles/a213.jpeg?g=1'
+    with pytest.raises(ValueError):
+        server_module._fetch_basemap_tile('bing', 3, 9, 0)
+    with pytest.raises(ValueError):
+        server_module._fetch_basemap_tile('osm', 3, 0, 0)
+
+
+def test_street_coverage_endpoint(gui, monkeypatch):
+    from rapidtools.core import ImageAsset, ImageCollection
+
+    client, srv = gui
+    calls = []
+
+    class FakeMapillary:
+        def __init__(self, token, save_dir=None):
+            self.token = token
+
+        def fetch_images_in_bbox(self, bbox, **kwargs):
+            calls.append((self.token, bbox.bounds, kwargs))
+            images = [
+                ImageAsset(
+                    id=str(i),
+                    path=f'/virtual/{i}.jpg',
+                    allow_missing_file=True,
+                    properties={
+                        'longitude': -117.4885 + i * 0.0001,
+                        'latitude': 47.7115,
+                        'sequence': 'seq' + str(i % 2),
+                        'capture_date': f'2026-09-{10 + i:02d}',
+                    },
+                )
+                for i in range(5)
+            ]
+            images.append(  # outside the box: dropped
+                ImageAsset(
+                    id='far',
+                    path='/virtual/far.jpg',
+                    allow_missing_file=True,
+                    properties={'longitude': -117.6, 'latitude': 47.7115},
+                )
+            )
+            return ImageCollection(images)
+
+    monkeypatch.setattr('rapidtools.data_sources.MapillaryClient', FakeMapillary)
+    monkeypatch.setattr(
+        server_module.Api, '_download_text', lambda self, dataset: 'RAPID-TOKEN'
+    )
+    q = 'min_lon=-117.489&min_lat=47.711&max_lon=-117.487&max_lat=47.7125'
+    data = client.json('GET', f'/api/street/coverage?{q}&start_date=2026-09-01')
+    assert data['count'] == 5 and len(data['points']) == 5
+    assert data['sequences'] == 2 and data['truncated'] is False
+    assert (data['first'], data['last']) == ('2026-09-10', '2026-09-14')
+    token, bounds, kwargs = calls[0]
+    assert token == 'RAPID-TOKEN' and bounds == (-117.489, 47.711, -117.487, 47.7125)
+    assert kwargs == {
+        'start_date': '2026-09-01',
+        'end_date': '',
+        'filter_rapid_only': True,
+    }
+    client.json('GET', f'/api/street/coverage?{q}&token=MLY|me&rapid_only=0')
+    assert calls[1][0] == 'MLY|me' and calls[1][2]['filter_rapid_only'] is False
+    assert len(srv.state.mapillary_clients) == 2
+    status, _, raw = client.request('GET', '/api/street/coverage?min_lon=1')
+    assert status == 400 and b'all four' in raw
+    status, _, raw = client.request(
+        'GET', '/api/street/coverage?min_lon=-125&min_lat=30&max_lon=-100&max_lat=50'
+    )
+    assert status == 400 and b'Zoom in' in raw
+
+
+def test_street_discovery_with_custom_box_needs_no_raster(gui):
+    from rapidtools.gui.workflow import StreetDetectionResult
+
+    client, srv = gui
+    calls = []
+
+    def fake_discover(settings):
+        calls.append(settings)
+        path = settings.output_dir / 'street_objects.geojson'
+        settings.output_dir.mkdir(parents=True, exist_ok=True)
+        path.write_text('{}')
+        return StreetDetectionResult(
+            collection=_asset_collection_covering_pixel(10, 4),
+            geojson_path=path,
+            n_images=2,
+        )
+
+    srv.state.workflow.discover_street = fake_discover
+    body = {'classes': 'vehicles', 'mapillary_token': 'MLY|x'}
+    status, _, raw = client.request('POST', '/api/street/discover', body)
+    assert status == 400 and b'pick an area on the map' in raw
+    status, _, raw = client.request(
+        'POST', '/api/street/discover', {**body, 'min_lon': '-117.49'}
+    )
+    assert status == 400 and b'all four' in raw
+    status, _, raw = client.request(
+        'POST',
+        '/api/street/discover',
+        {**body, 'min_lon': 'x', 'min_lat': 1, 'max_lon': 2, 'max_lat': 3},
+    )
+    assert status == 400 and b'must be numbers' in raw
+    client.json(
+        'POST',
+        '/api/street/discover',
+        {
+            **body,
+            'min_lon': '-117.489',
+            'min_lat': '47.711',
+            'max_lon': '-117.487',
+            'max_lat': '47.7125',
+        },
+    )
+    state = client.wait_idle()
+    assert state['job']['status'] == 'done' and state['collection']['count'] == 1
+    assert calls[0].raster_path is None
+    assert calls[0].region.bounds == (-117.489, 47.711, -117.487, 47.7125)
+
+
+def test_street_sequences_endpoint_caches_per_filter(gui, monkeypatch):
+    client, srv = gui
+    calls = []
+
+    class FakeMapillary:
+        def __init__(self, token, save_dir=None):
+            self.token = token
+
+        def fetch_sequence_lines(self, z, x, y, **kwargs):
+            calls.append((self.token, z, x, y, kwargs))
+            return {
+                'extent': 4096,
+                'lines': [[0, 0, 100, 100]],
+                'count': 1,
+                'first': '2026-09-01',
+                'last': '2026-09-02',
+            }
+
+    monkeypatch.setattr('rapidtools.data_sources.MapillaryClient', FakeMapillary)
+    monkeypatch.setattr(
+        server_module.Api, '_download_text', lambda self, dataset: 'RAPID-TOKEN'
+    )
+    data = client.json('GET', '/api/street/sequences/10/178/365')
+    assert data['count'] == 1 and data['lines'] == [[0, 0, 100, 100]]
+    assert calls[0] == (
+        'RAPID-TOKEN',
+        10,
+        178,
+        365,
+        {'filter_rapid_only': True, 'start_date': '', 'end_date': ''},
+    )
+    client.json('GET', '/api/street/sequences/10/178/365')
+    assert len(calls) == 1  # cached
+    client.json(
+        'GET',
+        '/api/street/sequences/10/178/365?rapid_only=0&start_date=2026-01-01&token=T',
+    )
+    assert calls[1][0] == 'T' and calls[1][4] == {
+        'filter_rapid_only': False,
+        'start_date': '2026-01-01',
+        'end_date': '',
+    }
+    status, _, raw = client.request('GET', '/api/street/sequences/15/1/1')
+    assert status == 400 and b'zoom levels 6 to 14' in raw
+    status, _, _ = client.request('GET', '/api/street/sequences/10/a/1')
+    assert status == 400
+    status, _, _ = client.request('GET', '/api/street/sequences/10/1')
+    assert status == 404
+
+
+def test_street_overview_builds_in_background_and_caches(gui, monkeypatch, tmp_path):
+    client, srv = gui
+    srv.state.cache_dir = tmp_path / 'cache'
+    fetched = []
+
+    class FakeMapillary:
+        def __init__(self, token, save_dir=None):
+            pass
+
+        def fetch_sequence_lines(self, z, x, y, **kwargs):
+            fetched.append((z, x, y, kwargs['filter_rapid_only']))
+            # One diagonal line across the tile:
+            return {'extent': 4096, 'lines': [[0, 0, 4096, 4096]], 'count': 1}
+
+    monkeypatch.setattr('rapidtools.data_sources.MapillaryClient', FakeMapillary)
+    monkeypatch.setattr(
+        server_module.Api, '_download_text', lambda self, dataset: 'RAPID-TOKEN'
+    )
+    monkeypatch.setattr(
+        server_module, '_overview_tiles', lambda: [(11, 23, 6), (12, 23, 6)]
+    )
+    first = client.json('GET', '/api/street/overview')
+    assert first['status'] in ('building', 'ready') and first['zoom'] == 6
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        data = client.json('GET', '/api/street/overview')
+        if data['status'] == 'ready':
+            break
+        time.sleep(0.05)
+    assert data['status'] == 'ready' and data['done'] == data['total'] == 2
+    assert len(data['lines']) == 2
+    lon0, lat0, lon1, lat1 = data['lines'][0]
+    assert -125 < lon0 < lon1 < -60 and 20 < lat1 < lat0 < 55
+    assert sorted(fetched) == [(6, 11, 23, True), (6, 12, 23, True)]
+    cache = tmp_path / 'cache' / 'survey_overview_z6_1.json'
+    assert cache.is_file()
+    # A new state reads the cache instead of fetching again:
+    fetched.clear()
+    srv.state.overview.clear()
+    data = client.json('GET', '/api/street/overview')
+    deadline = time.time() + 5
+    while data['status'] != 'ready' and time.time() < deadline:
+        time.sleep(0.05)
+        data = client.json('GET', '/api/street/overview')
+    assert data['status'] == 'ready' and len(data['lines']) == 2 and fetched == []
+    # rapid_only=0 is a separate index:
+    client.json('GET', '/api/street/overview?rapid_only=0')
+    deadline = time.time() + 5
+    while time.time() < deadline and not fetched:
+        time.sleep(0.05)
+    assert fetched and fetched[0][3] is False
+
+
+def test_geocode_endpoint(gui, monkeypatch):
+    client, srv = gui
+    calls = []
+
+    def fake_geocode(text, limit=6):
+        calls.append(text)
+        if text == 'nowhere':
+            raise RuntimeError('503 Service Unavailable')
+        return [
+            {
+                'name': 'Spokane, WA',
+                'lon': -117.4,
+                'lat': 47.66,
+                'bbox': [-117.6, 47.6, -117.3, 47.7],
+            }
+        ]
+
+    monkeypatch.setattr(server_module, '_geocode', fake_geocode)
+    data = client.json('GET', '/api/geocode?q=Spokane%2C%20WA')
+    assert data['matches'][0]['name'] == 'Spokane, WA' and calls == ['Spokane, WA']
+    status, _, raw = client.request('GET', '/api/geocode?q=')
+    assert status == 400 and b'address or place name' in raw
+    status, _, raw = client.request('GET', '/api/geocode?q=nowhere')
+    assert status == 502 and b'Address lookup failed' in raw
+
+
+def test_geocode_parses_nominatim(monkeypatch):
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return [
+                {
+                    'display_name': 'Altadena, Los Angeles County, California, USA',
+                    'lon': '-118.1312',
+                    'lat': '34.1897',
+                    'boundingbox': ['34.16', '34.22', '-118.17', '-118.09'],
+                },
+                {'display_name': 'broken'},
+            ]
+
+    captured = {}
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        captured.update(url=url, params=params, headers=headers)
+        return Response()
+
+    monkeypatch.setattr('requests.get', fake_get)
+    matches = server_module._geocode('Altadena')
+    assert captured['url'] == server_module.GEOCODE_URL
+    assert captured['params'] == {'q': 'Altadena', 'format': 'jsonv2', 'limit': 6}
+    assert 'rapidtools' in captured['headers']['User-Agent']
+    assert matches == [
+        {
+            'name': 'Altadena, Los Angeles County, California, USA',
+            'lon': -118.1312,
+            'lat': 34.1897,
+            'bbox': [-118.17, 34.16, -118.09, 34.22],
+        }
+    ]
+
+
+def test_geo_overlay_returns_wgs84_geometries(gui, tmp_path):
+    from shapely.geometry import LineString, Point
+
+    client, srv = gui
+    assert client.json('GET', '/api/geo_overlay') == {
+        'collection_version': 0,
+        'count': 0,
+        'features': [],
+    }
+    collection = _asset_collection_covering_pixel(10, 4)
+    collection.add(
+        PhysicalAsset(
+            id='p1',
+            geometry=Point(-117.5, 47.7),
+            attributes={
+                'asset_type': 'vehicles',
+                'n_observations': 3,
+                'observations': [{'polygon': [[0, 0]]}],
+                'nested': {'x': 1},
+            },
+        )
+    )
+    collection.add(
+        PhysicalAsset(id='l1', geometry=LineString([(0, 0), (1, 1)]), attributes={})
+    )
+    srv.state.set_collection(collection, 'test')
+    data = client.json('GET', '/api/geo_overlay')
+    assert data['count'] == 3 and data['collection_version'] == 1
+    by_id = {f['id']: f for f in data['features']}
+    assert by_id['a1']['kind'] == 'polygon' and len(by_id['a1']['coords'][0]) == 5
+    assert by_id['p1']['kind'] == 'point' and by_id['p1']['coords'] == [-117.5, 47.7]
+    assert by_id['p1']['attributes'] == {'asset_type': 'vehicles', 'n_observations': 3}
+    assert by_id['l1']['kind'] == 'line' and by_id['l1']['coords'] == [
+        [[0.0, 0.0], [1.0, 1.0]]
+    ]
+    assert by_id['a1']['bbox'][0] < by_id['a1']['bbox'][2]
+
+
+def test_static_logos_are_served(gui):
+    client, _ = gui
+    for name in ('RAPIDLogo.webp', 'rAPIdtoolsLogo.webp'):
+        status, ctype, raw = client.request('GET', f'/static/{name}')
+        assert status == 200 and ctype == 'image/webp' and raw[:4] == b'RIFF'
+
+
+def test_route_database_builds_serves_gzip_and_rebuilds(gui, monkeypatch, tmp_path):
+    import gzip
+
+    client, srv = gui
+    srv.state.cache_dir = tmp_path / 'cache'
+    fetched = []
+
+    class FakeMapillary:
+        def __init__(self, token, save_dir=None):
+            pass
+
+        def fetch_sequence_lines(self, z, x, y, **kwargs):
+            fetched.append((z, x, y))
+            return {
+                'extent': 4096,
+                'lines': [[0, 0, 4096, 4096]],
+                'count': 1,
+                'first': '2026-09-01',
+            }
+
+    monkeypatch.setattr('rapidtools.data_sources.MapillaryClient', FakeMapillary)
+    monkeypatch.setattr(
+        server_module.Api, '_download_text', lambda self, dataset: 'RAPID-TOKEN'
+    )
+    monkeypatch.setattr(server_module, '_overview_tiles', lambda: [(11, 23, 6)])
+    status, _, _ = client.request('GET', '/api/street/routes.json')
+    assert status == 404
+    first = client.json('GET', '/api/street/routes')
+    assert first['status'] in ('building', 'ready') and first['zoom'] == 13
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        data = client.json('GET', '/api/street/routes')
+        if data['status'] == 'ready':
+            break
+        time.sleep(0.05)
+    assert data['status'] == 'ready' and data['n_routes'] >= 1 and data['bytes'] > 0
+    assert data['built_at'].endswith('Z') and data['url'] == '/api/street/routes.json'
+    # One zoom-6 tile was read for the overview, then the zoom-13 tiles under it:
+    assert (6, 11, 23) in fetched and all(t[0] == 13 for t in fetched[1:])
+    assert data['total'] == len(fetched) - 1 == data['done']
+
+    status, ctype, raw = client.request(
+        'GET', '/api/street/routes.json', headers={'Accept-Encoding': 'gzip'}
+    )
+    assert status == 200 and ctype == 'application/json'
+    assert client.last_response.getheader('Content-Encoding') == 'gzip'
+    etag = client.last_response.getheader('ETag')
+    payload = json.loads(gzip.decompress(raw))
+    assert payload['n_routes'] == len(payload['lines']) == len(payload['dates'])
+    lon, lat = payload['lines'][0][:2]
+    assert -125 < lon < -60 and 20 < lat < 55 and payload['dates'][0] == '2026-09-01'
+    status, _, raw = client.request('GET', '/api/street/routes.json')
+    assert status == 200 and client.last_response.getheader('Content-Encoding') is None
+    assert json.loads(raw)['zoom'] == 13
+    status, _, _ = client.request(
+        'GET', '/api/street/routes.json', headers={'If-None-Match': etag}
+    )
+    assert status == 304
+    cache = tmp_path / 'cache' / 'survey_routes_z13.json.gz'
+    assert cache.is_file()
+
+    # A fresh server state loads the file without touching Mapillary:
+    fetched.clear()
+    srv.state.routes = {
+        'status': 'idle',
+        'done': 0,
+        'total': 0,
+        'n_routes': 0,
+        'built_at': '',
+        'error': '',
+    }
+    srv.state.routes_gz = None
+    deadline = time.time() + 10
+    data = client.json('GET', '/api/street/routes')
+    while data['status'] != 'ready' and time.time() < deadline:
+        time.sleep(0.05)
+        data = client.json('GET', '/api/street/routes')
+    assert data['status'] == 'ready' and data['n_routes'] == payload['n_routes']
+    assert fetched == []
+
+    # Rebuild fetches again and refuses to start twice:
+    client.json('POST', '/api/street/routes/rebuild', {})
+    status, _, _ = client.request('POST', '/api/street/routes/rebuild', {})
+    assert status in (200, 409)
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        data = client.json('GET', '/api/street/routes')
+        if data['status'] == 'ready' and fetched:
+            break
+        time.sleep(0.05)
+    assert data['status'] == 'ready' and fetched
+
+
+def test_routes_tiles_cover_polylines():
+    tiles = server_module._routes_tiles([[-117.49, 47.71, -117.48, 47.72]], zoom=13)
+    assert tiles == [(1422, 2857, 13)]
+    wide = server_module._routes_tiles([[-118.0, 34.0, -117.9, 34.1]], zoom=12)
+    assert len(wide) >= 2 and all(t[2] == 12 for t in wide)
+    assert server_module._routes_tiles([[]]) == []
+
+
+def test_route_database_refuses_to_cache_when_tiles_fail(gui, monkeypatch, tmp_path):
+    client, srv = gui
+    srv.state.cache_dir = tmp_path / 'cache'
+    calls = {'n': 0}
+
+    class FlakyMapillary:
+        def __init__(self, token, save_dir=None):
+            pass
+
+        def fetch_sequence_lines(self, z, x, y, **kwargs):
+            calls['n'] += 1
+            if z == 13:
+                return {
+                    'extent': 4096,
+                    'lines': [],
+                    'count': 0,
+                    'ok': False,
+                    'error': 'timeout',
+                }
+            return {
+                'extent': 4096,
+                'lines': [[0, 0, 4096, 4096]],
+                'count': 1,
+                'ok': True,
+            }
+
+    monkeypatch.setattr('rapidtools.data_sources.MapillaryClient', FlakyMapillary)
+    monkeypatch.setattr(
+        server_module.Api, '_download_text', lambda self, dataset: 'RAPID-TOKEN'
+    )
+    monkeypatch.setattr(server_module, '_overview_tiles', lambda: [(11, 23, 6)])
+    deadline = time.time() + 10
+    data = client.json('GET', '/api/street/routes')
+    while data['status'] == 'building' and time.time() < deadline:
+        time.sleep(0.05)
+        data = client.json('GET', '/api/street/routes')
+    assert data['status'] == 'error'
+    assert (
+        'could not be read' in data['error'] and 'nothing was cached' in data['error']
+    )
+    assert not (tmp_path / 'cache' / 'survey_routes_z13.json.gz').exists()
+    status, _, _ = client.request('GET', '/api/street/routes.json')
+    assert status == 404
+    # The overview itself succeeded and was cached; a failed overview would not be:
+    assert (tmp_path / 'cache' / 'survey_overview_z6_1.json').exists()
+    # A rebuild request is accepted after a failure:
+    client.json('POST', '/api/street/routes/rebuild', {})

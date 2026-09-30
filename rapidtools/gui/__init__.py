@@ -40,23 +40,39 @@
 """
 Graphical user interface for rapidtools.
 
-Provides a local web application that lets users detect assets in aerial
-imagery with SAM 3 and run vision-language-model inference on the detections
-with a custom prompt, without writing any code. The server is built on the
-Python standard library, so no extra dependencies are required.
+Provides a local web application that loads or downloads imagery, detects
+assets with SAM 3 (or discovers objects along a Mapillary street survey),
+gathers aerial or street-level crops of each asset and runs vision-language-
+model inference on them with a custom prompt, without writing any code. A
+guided prompt builder with an optional language-model assistant helps write
+that prompt. The server is built on the Python standard library, so no extra
+dependencies are required.
 
 Example:
     >>> from rapidtools.gui import launch_asset_analysis_app
     >>> launch_asset_analysis_app()  # opens http://localhost:8765/ in a browser
 """
 
+from .notify import JobSummary, NotificationConfig, Notifier
+from .prompt_builder import (
+    OutputField,
+    PromptAssistant,
+    PromptSpec,
+    RubricEntry,
+    assemble_prompt,
+)
 from .workflow import (
+    IMAGERY_SOURCES,
     MODEL_BACKENDS,
     AssetAnalysisWorkflow,
+    AssistSettings,
     DetectionResult,
     DetectionSettings,
     InferenceResult,
     InferenceSettings,
+    RegionImagerySettings,
+    StreetDetectionResult,
+    StreetDetectionSettings,
     WorkflowCancelled,
     list_available_models,
     parse_asset_list,
@@ -92,13 +108,26 @@ def launch_asset_analysis_app(**kwargs) -> None:
 
 
 __all__ = [
+    'IMAGERY_SOURCES',
     'MODEL_BACKENDS',
     'AssetAnalysisWorkflow',
+    'AssistSettings',
     'DetectionResult',
     'DetectionSettings',
     'InferenceResult',
     'InferenceSettings',
+    'JobSummary',
+    'NotificationConfig',
+    'Notifier',
+    'OutputField',
+    'PromptAssistant',
+    'PromptSpec',
+    'RegionImagerySettings',
+    'RubricEntry',
+    'StreetDetectionResult',
+    'StreetDetectionSettings',
     'WorkflowCancelled',
+    'assemble_prompt',
     'launch_asset_analysis_app',
     'list_available_models',
     'parse_asset_list',

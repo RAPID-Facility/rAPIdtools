@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 09-28-2026
+# 09-30-2026
 
 """
 Local web server behind the rapidtools asset-analysis GUI.
@@ -60,6 +60,8 @@ Example:
 from __future__ import annotations
 
 import argparse
+import datetime as _dt
+import gzip
 import json
 import logging
 import mimetypes
@@ -70,6 +72,7 @@ import sys
 import threading
 import time
 import webbrowser
+from collections import OrderedDict
 from collections.abc import Callable
 from http import HTTPStatus
 from http.cookies import SimpleCookie
@@ -81,19 +84,33 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from rapidtools.config import configure_logging
 from rapidtools.core import OperationCancelled, PhysicalAssetCollection
 from rapidtools.gui.logging_utils import CallbackLogHandler, LogBuffer, ProgressStream
+from rapidtools.gui.notify import JobSummary, NotificationConfig, Notifier
 from rapidtools.gui.preview import (
     RasterPreview,
     RasterTiler,
     project_collection,
     render_preview,
 )
+from rapidtools.gui.prompt_builder import (
+    ASSIST_ACTIONS,
+    SAMPLE_SPEC,
+    PromptSpec,
+    assemble_prompt,
+    describe_marking,
+)
 from rapidtools.gui.workflow import (
+    BASEMAP_PROVIDERS,
     DEFAULT_GEMINI_MODEL_ID,
     GEMMA4_MODEL_IDS,
+    IMAGERY_SOURCES,
     MODEL_BACKENDS,
+    STREET_CLASS_EXAMPLES,
     AssetAnalysisWorkflow,
+    AssistSettings,
     DetectionSettings,
     InferenceSettings,
+    RegionImagerySettings,
+    StreetDetectionSettings,
     list_available_models,
     parse_asset_list,
 )
@@ -102,7 +119,201 @@ logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / 'static'
 SAMPLE_RASTERS = ('eaton_patch1', 'eaton_patch2')
-SAMPLE_PROMPT_DATASET = 'aerial_chs_prompts'
+# Prompts from the dataset registry offered in the GUI, keyed by short name.
+SAMPLE_PROMPTS: dict[str, dict[str, str]] = {
+    'aerial_chs': {
+        'dataset': 'aerial_chs_prompts',
+        'label': 'Aerial CHS combustion level (buildings)',
+        'imagery': 'aerial',
+    },
+    'street_chs': {
+        'dataset': 'street_chs_prompts',
+        'label': 'Street-level CHS combustion level (buildings)',
+        'imagery': 'street',
+    },
+    'street_recovery': {
+        'dataset': 'street_recovery_prompts',
+        'label': 'Street-level recovery progress (two dates, JSON)',
+        'imagery': 'multi-temporal street',
+    },
+}
+SAMPLE_PROMPT_DATASET = SAMPLE_PROMPTS['aerial_chs']['dataset']
+MAPILLARY_TOKEN_DATASET = 'mapillary_token'
+# Basemap tiles served to the map picker: cache size and allowed providers.
+TILE_CACHE_SIZE = 800
+# Coverage lookups list Mapillary's zoom-14 tiles; cap how many one view may span.
+MAX_COVERAGE_TILES = 36
+MAX_COVERAGE_POINTS = 4000
+_TILE_SESSION = None
+_TILE_SESSION_LOCK = threading.Lock()
+SEQUENCE_CACHE_SIZE = 600
+# Address search goes through OpenStreetMap's Nominatim (no key; keep it light).
+GEOCODE_URL = 'https://nominatim.openstreetmap.org/search'
+MAX_OVERLAY_FEATURES = 5000
+# Low-zoom index of survey routes, built once per server and cached on disk so
+# the map can show where street-level imagery exists before the user zooms in.
+OVERVIEW_BBOX = (-125.0, 24.0, -66.0, 50.0)  # continental US
+OVERVIEW_ZOOM = 6
+OVERVIEW_MAX_AGE_S = 7 * 86400
+OVERVIEW_WORKERS = 8
+# Route database: every RAPID survey route at zoom-13 detail (about 1 m), built
+# once from the coverage tiles that the overview says contain routes, stored
+# gzipped under the cache directory and served to the map in one request.
+ROUTES_ZOOM = 13
+ROUTES_FILE = f'survey_routes_z{ROUTES_ZOOM}.json.gz'
+
+
+def _routes_tiles(
+    lines: list[list[float]], zoom: int = ROUTES_ZOOM
+) -> list[tuple[int, int, int]]:
+    """
+    The ``(x, y, zoom)`` tiles touched by longitude/latitude polylines.
+
+    Example:
+        >>> _routes_tiles([[-117.49, 47.71, -117.48, 47.72]], zoom=13)
+        [(1422, 2857, 13)]
+    """
+    import math
+
+    n = 2**zoom
+    tiles: set[tuple[int, int]] = set()
+    for line in lines:
+        lons, lats = line[0::2], line[1::2]
+        if not lons:
+            continue
+
+        def tx(lon: float) -> int:
+            return min(n - 1, max(0, int((lon + 180.0) / 360.0 * n)))
+
+        def ty(lat: float) -> int:
+            r = math.radians(max(-85.0, min(85.0, lat)))
+            return min(
+                n - 1,
+                max(
+                    0,
+                    int(
+                        (1 - math.log(math.tan(r) + 1 / math.cos(r)) / math.pi) / 2 * n
+                    ),
+                ),
+            )
+
+        for x in range(tx(min(lons)), tx(max(lons)) + 1):
+            for y in range(ty(max(lats)), ty(min(lats)) + 1):
+                tiles.add((x, y))
+    return [(x, y, zoom) for x, y in sorted(tiles)]
+
+
+def _overview_tiles() -> list[tuple[int, int, int]]:
+    """The ``(x, y, z)`` coverage tiles that make up the overview index."""
+    from rapidtools.core import BoundingBox
+    from rapidtools.data_sources import TileUtils
+
+    return TileUtils.bbox_to_mapbox_tiles(
+        BoundingBox(*OVERVIEW_BBOX), zoom=OVERVIEW_ZOOM
+    )
+
+
+mimetypes.add_type('image/webp', '.webp')
+
+
+def _geocode(query: str, limit: int = 6) -> list[dict[str, Any]]:
+    """
+    Look an address or place name up with Nominatim.
+
+    Args:
+        query (str): Free text such as ``'Altadena, CA'``.
+        limit (int): Maximum number of matches.
+
+    Returns:
+        list[dict[str, Any]]: ``name``, ``lon``, ``lat`` and ``bbox``
+        (``[min_lon, min_lat, max_lon, max_lat]``) per match, best first.
+
+    Raises:
+        requests.RequestException: On a network error or non-2xx reply.
+    """
+    import requests
+
+    from rapidtools.config import REQUESTS_HEADERS, REQUESTS_TIMEOUT_VAL
+
+    response = requests.get(
+        GEOCODE_URL,
+        params={'q': query, 'format': 'jsonv2', 'limit': limit},
+        headers={**REQUESTS_HEADERS, 'User-Agent': 'rapidtools-gui (asset analysis)'},
+        timeout=REQUESTS_TIMEOUT_VAL,
+    )
+    response.raise_for_status()
+    matches = []
+    for item in response.json():
+        try:
+            south, north, west, east = (float(v) for v in item['boundingbox'])
+            matches.append(
+                {
+                    'name': str(item.get('display_name', '')),
+                    'lon': float(item['lon']),
+                    'lat': float(item['lat']),
+                    'bbox': [west, south, east, north],
+                }
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    return matches
+
+
+def _fetch_basemap_tile(provider: str, z: int, x: int, y: int) -> bytes | None:
+    """
+    Download one 256 px satellite tile from Bing or Google.
+
+    Args:
+        provider (str): ``'bing'`` or ``'google'``.
+        z (int): Zoom level.
+        x (int): Tile column.
+        y (int): Tile row.
+
+    Returns:
+        bytes | None: JPEG/PNG bytes, or ``None`` when the request fails.
+
+    Raises:
+        ValueError: For an unknown provider or an off-grid address.
+    """
+    global _TILE_SESSION
+    if provider not in BASEMAP_PROVIDERS:
+        raise ValueError(f'Unknown basemap provider {provider!r}.')
+    if not (0 <= z <= BASEMAP_PROVIDERS[provider]['max_zoom']) or not (
+        0 <= x < 2**z and 0 <= y < 2**z
+    ):
+        raise ValueError('Tile address is outside the grid.')
+    if provider == 'bing':
+        from rapidtools.data_sources.bing_aerial_image_extractor import (
+            BING_TILE_URL,
+            BingAerialImageExtractor,
+        )
+
+        url = BING_TILE_URL.format(
+            quadkey=BingAerialImageExtractor.tile_to_quadkey(x, y, z)
+        )
+    else:
+        from rapidtools.data_sources.google_aerial_image_extractor import (
+            GOOGLE_TILE_URL,
+        )
+
+        url = GOOGLE_TILE_URL.format(subdomain=(x + y) % 4, layer='s', x=x, y=y, z=z)
+    with _TILE_SESSION_LOCK:
+        if _TILE_SESSION is None:
+            from rapidtools.config import get_configured_session
+
+            _TILE_SESSION = get_configured_session()
+        session = _TILE_SESSION
+    try:
+        from rapidtools.config import REQUESTS_TIMEOUT_VAL
+
+        response = session.get(url, timeout=REQUESTS_TIMEOUT_VAL)
+        if response.status_code == 200 and response.content:
+            return response.content
+    except Exception as exc:  # noqa: BLE001 - a missing tile is not an error
+        logger.debug(f'Basemap tile {provider} {z}/{x}/{y} failed: {exc}')
+    return None
+
+
 MAX_TEXT_FILE_BYTES = 1_000_000
 
 TOKEN_COOKIE = 'rapidtools_token'
@@ -218,6 +429,42 @@ class AppState:
         self._worker: threading.Thread | None = None
         self.data_root: Path | None = None
         self.token_required = False
+        self.basemap_label = ''
+        # Where to tell the user when the running job ends (email or webhook),
+        # the sender, the link put in messages and the last delivery outcome.
+        self.notifier = Notifier()
+        self.notify: dict[str, str] = {'target': '', 'kind': ''}
+        self.notify_last: dict[str, Any] = {'seq': 0, 'ok': None, 'message': ''}
+        self.public_url = ''
+        # Satellite tiles served to the map, most recent last.
+        self.tile_cache: OrderedDict[tuple[str, int, int, int], bytes] = OrderedDict()
+        self.tile_lock = threading.Lock()
+        self.mapillary_clients: dict[str, Any] = {}
+        # Decoded Mapillary coverage tiles (survey sequences), per filter.
+        self.sequence_cache: OrderedDict[tuple, dict[str, Any]] = OrderedDict()
+        # Low-zoom survey overview, keyed by the RAPID-only flag.
+        self.overview: dict[bool, dict[str, Any]] = {}
+        # The RAPID route database: build status and the gzipped payload.
+        self.routes: dict[str, Any] = {
+            'status': 'idle',
+            'done': 0,
+            'total': 0,
+            'n_routes': 0,
+            'built_at': '',
+            'error': '',
+        }
+        self.routes_gz: bytes | None = None
+        self.cache_dir = Path.home() / '.cache' / 'rapidtools'
+        # Outcome of the latest prompt-assistant request; ``seq`` increments
+        # per request so the browser can tell a new answer from an old one.
+        self.assistant: dict[str, Any] = {
+            'seq': 0,
+            'status': 'idle',
+            'action': None,
+            'model': '',
+            'result': None,
+            'error': '',
+        }
 
     # ------------------------------------------------------------ helpers
     def set_status(self, message: str) -> None:
@@ -289,7 +536,22 @@ class AppState:
             self.collection_version += 1
             self.results.clear()
             self.status = 'Ready.'
+            self.basemap_label = ''
             self.log.clear()
+
+    def set_assistant(self, **fields: Any) -> None:
+        """
+        Update the prompt-assistant record shown to the browser.
+
+        Args:
+            **fields: Keys of :attr:`assistant` to replace (``status``,
+                ``result``, ``error``, ...). Passing ``seq=True`` bumps the
+                sequence number.
+        """
+        with self.lock:
+            if fields.pop('seq', False):
+                self.assistant['seq'] += 1
+            self.assistant.update(fields)
 
     # --------------------------------------------------------------- jobs
     def busy(self) -> bool:
@@ -367,12 +629,63 @@ class AppState:
         self._worker.start()
 
     def _finish_job(self, status: str, message: str) -> None:
-        """Record the job outcome and append ``message`` to the log."""
+        """Record the job outcome, append ``message`` to the log and notify."""
         with self.lock:
             self.log.end_progress()
             self.job.update(status=status, message=message, finished_at=time.time())
             self.status = message
             self.log.add_line(message)
+            target = self.notify['target']
+            summary = JobSummary(
+                name=str(self.job.get('name') or 'Job'),
+                status=status,
+                message=message,
+                duration_s=self.job['finished_at'] - self.job.get('started_at', 0),
+                results=[dict(r) for r in self.results],
+                url=self.notifier.config.public_url or self.public_url,
+            )
+            if target and status != 'cancelled':
+                # One notification per request: the address is kept in the
+                # browser, so the next run asks again.
+                self.notify = {'target': '', 'kind': ''}
+        if target and status != 'cancelled':
+            self.notifier.send_in_background(target, summary, self._on_notified)
+
+    def _on_notified(self, ok: bool, message: str) -> None:
+        """Record a notification delivery result in the log and state."""
+        with self.lock:
+            self.notify_last = {
+                'seq': self.notify_last['seq'] + 1,
+                'ok': ok,
+                'message': message,
+            }
+            self.log.add_line(message)
+
+    def set_notification(self, target: str) -> dict[str, str]:
+        """
+        Choose where to send a message when the current job finishes.
+
+        Args:
+            target (str): Email address, webhook URL, or ``''`` to clear.
+
+        Returns:
+            dict[str, str]: ``{'target', 'kind'}`` as stored.
+
+        Raises:
+            ValueError: If the target is unusable (see
+                :meth:`~rapidtools.gui.notify.Notifier.validate_target`).
+        """
+        target = (target or '').strip()
+        kind = self.notifier.validate_target(target) if target else ''
+        with self.lock:
+            self.notify = {'target': target, 'kind': kind}
+            if target:
+                self.log.add_line(
+                    f'Will notify {target} when the job finishes.'
+                    if self.busy()
+                    else f'Will notify {target} when the next job finishes.'
+                )
+            return dict(self.notify)
 
     def cancel_job(self) -> None:
         """Ask the running workflow to stop at the next safe point (if any)."""
@@ -409,6 +722,7 @@ class AppState:
                     'attribute_keys': sorted(keys),
                 }
             job = dict(self.job)
+            assistant = dict(self.assistant)
             return {
                 'output_dir': str(self.output_dir),
                 'raster': self.previews['raster'].to_json()
@@ -418,16 +732,31 @@ class AppState:
                 if 'basemap' in self.previews
                 else None,
                 'collection': collection,
+                'basemap_label': self.basemap_label,
                 'job': job,
+                'assistant': assistant,
+                'notify': {
+                    **self.notify,
+                    'email_available': self.notifier.email_available,
+                    'last': dict(self.notify_last),
+                },
                 'busy': self.busy(),
                 'status': self.status,
                 'results': list(self.results),
                 'log_seq': self.log.seq,
                 'options': {
                     'sample_rasters': list(SAMPLE_RASTERS),
+                    'sample_prompts': {
+                        k: {'label': v['label'], 'imagery': v['imagery']}
+                        for k, v in SAMPLE_PROMPTS.items()
+                    },
                     'gemini_model': DEFAULT_GEMINI_MODEL_ID,
                     'gemma_models': list(GEMMA4_MODEL_IDS),
                     'backends': MODEL_BACKENDS,
+                    'basemaps': BASEMAP_PROVIDERS,
+                    'imagery_sources': IMAGERY_SOURCES,
+                    'street_classes': list(STREET_CLASS_EXAMPLES),
+                    'assist_actions': list(ASSIST_ACTIONS),
                     'home': str(Path.home()),
                     'cwd': str(Path.cwd()),
                     'data_root': str(self.data_root) if self.data_root else None,
@@ -539,6 +868,47 @@ class Api:
         state.start_job(f'Download {name}', job)
         return {'ok': True}
 
+    def download_region_imagery(self, body: dict[str, Any]) -> dict[str, Any]:
+        """
+        ``POST /api/imagery/region``: stitch a satellite basemap and preview it.
+
+        Args:
+            body (dict[str, Any]): ``provider`` (``'bing'`` or ``'google'``),
+                ``zoom`` and either ``min_lon``/``min_lat``/``max_lon``/
+                ``max_lat`` or ``geojson`` (a file whose extent is used).
+
+        Returns:
+            dict[str, Any]: ``{'ok': True}`` once the download job is queued.
+
+        Raises:
+            ApiError: If the region or provider is invalid or the GeoJSON is
+                outside ``data_root``.
+        """
+        geojson = str(body.get('geojson', '') or '').strip()
+        try:
+            settings = RegionImagerySettings(
+                output_dir=self.state.output_dir,
+                provider=str(body.get('provider', 'bing')),
+                zoom=int(body.get('zoom') or 19),
+                min_lon=_optional_float(body.get('min_lon')),
+                min_lat=_optional_float(body.get('min_lat')),
+                max_lon=_optional_float(body.get('max_lon')),
+                max_lat=_optional_float(body.get('max_lat')),
+                geojson_path=self._user_path(geojson) if geojson else None,
+            )
+        except (TypeError, ValueError) as exc:
+            raise ApiError(str(exc)) from exc
+        state = self.state
+
+        def job() -> None:
+            """Download the basemap into ``output_dir`` and render its preview."""
+            path = state.workflow.download_basemap(settings)
+            self._load_raster(Path(path))
+
+        label = BASEMAP_PROVIDERS[settings.provider]['label']
+        state.start_job(f'Download {label} imagery', job)
+        return {'ok': True}
+
     def _start_preview_job(self, path: Path, label: str) -> None:
         """Queue a background job that renders and installs a raster preview."""
         self.state.start_job(label, lambda: self._load_raster(path))
@@ -557,6 +927,7 @@ class Api:
             state.collection_source = ''
             state.collection_version += 1
             state.results.clear()
+            state.basemap_label = ''
         state.set_status(f'Loaded {path.name} ({preview.width}x{preview.height} px).')
 
     # ------------------------------------------------------------ assets
@@ -631,13 +1002,35 @@ class Api:
         )
         return {'ok': True}
 
+    def discover_street(self, body: dict[str, Any]) -> dict[str, Any]:
+        """
+        ``POST /api/street/discover``: find objects along a Mapillary survey.
+
+        Args:
+            body (dict[str, Any]): Options, see :meth:`_street_settings`.
+
+        Returns:
+            dict[str, Any]: ``{'ok': True}`` once the job is queued.
+
+        Raises:
+            ApiError: If no raster is loaded, the options are invalid, or a job
+                is already running.
+        """
+        settings = self._street_settings(body)
+        self.state.start_job(
+            'Street discovery', lambda: self._run_street_discovery(settings)
+        )
+        return {'ok': True}
+
     def run_all(self, body: dict[str, Any]) -> dict[str, Any]:
         """
         ``POST /api/run_all``: detection followed by inference as one job.
 
         Args:
             body (dict[str, Any]): ``{'detect': {...}, 'infer': {...}}`` with the
-                options accepted by :meth:`detect` and :meth:`infer`.
+                options accepted by :meth:`detect` and :meth:`infer`, or
+                ``{'mode': 'street', 'street': {...}, 'infer': {...}}`` to run
+                :meth:`discover_street` first instead.
 
         Returns:
             dict[str, Any]: ``{'ok': True}`` once the job is queued.
@@ -645,8 +1038,21 @@ class Api:
         Raises:
             ApiError: If either option set is invalid or a job is running.
         """
-        detection = self._detection_settings(body.get('detect') or {})
         inference = self._inference_settings(body.get('infer') or {})
+        if body.get('mode') == 'street':
+            street = self._street_settings(body.get('street') or {})
+
+            def street_job() -> None:
+                """Discover objects, then analyze them."""
+                collection = self._run_street_discovery(street)
+                if len(collection) == 0:
+                    raise ValueError('No objects were found; skipping inference.')
+                self._run_inference(collection, inference)
+
+            self.state.start_job('Street discovery + inference', street_job)
+            return {'ok': True}
+
+        detection = self._detection_settings(body.get('detect') or {})
 
         def job() -> None:
             """Detect, then analyze; fail loudly if nothing was detected."""
@@ -657,6 +1063,26 @@ class Api:
 
         self.state.start_job('Detection + inference', job)
         return {'ok': True}
+
+    def _run_street_discovery(
+        self, settings: StreetDetectionSettings
+    ) -> PhysicalAssetCollection:
+        """
+        Run street discovery and publish its results.
+
+        Args:
+            settings (StreetDetectionSettings): Validated options.
+
+        Returns:
+            PhysicalAssetCollection: The discovered point assets.
+        """
+        state = self.state
+        result = state.workflow.discover_street(settings)
+        with state.lock:
+            state.results = [r for r in state.results if r['label'] != 'Loaded assets']
+        state.set_collection(result.collection, 'street survey')
+        state.add_result('Street objects', result.geojson_path)
+        return result.collection
 
     def _run_detection(self, settings: DetectionSettings) -> PhysicalAssetCollection:
         """
@@ -678,9 +1104,13 @@ class Api:
             state.add_result(f'{name} footprints', path)
         state.add_result('All detected assets', result.combined_geojson)
         if result.detection_raster != settings.raster_path.resolve():
-            state.set_status('Rendering preview of the Bing basemap...')
+            provider = result.basemap or settings.basemap
+            label = BASEMAP_PROVIDERS.get(provider, {}).get('label', 'Basemap')
+            state.set_status(f'Rendering preview of the {label} basemap...')
             state.set_preview('basemap', render_preview(result.detection_raster))
-            state.add_result('Bing basemap', result.detection_raster)
+            with state.lock:
+                state.basemap_label = f'{label} basemap'
+            state.add_result(f'{label} basemap', result.detection_raster)
         return result.collection
 
     def _run_inference(
@@ -728,9 +1158,10 @@ class Api:
 
         Args:
             body (dict[str, Any]): ``assets`` (comma/newline separated string,
-                required), ``asset_size_m``, ``source`` (``'bing'`` or
-                ``'recon'``), ``threshold``, ``mask_threshold`` and
-                ``regularize``.
+                required), ``asset_size_m``, ``basemap`` (``'bing'``,
+                ``'google'`` or ``'recon'``; the older ``source`` key is
+                accepted), ``threshold``, ``mask_threshold``, ``regularize``
+                and ``merge_overlaps``.
 
         Returns:
             DetectionSettings: The validated settings.
@@ -748,10 +1179,59 @@ class Api:
                 output_dir=self.state.output_dir,
                 assets=assets,
                 asset_size_m=float(body.get('asset_size_m', 50.0)),
-                detect_in_recon_imagery=body.get('source', 'bing') == 'recon',
+                basemap=str(body.get('basemap') or body.get('source') or 'bing'),
                 threshold=float(body.get('threshold', 0.5)),
                 mask_threshold=float(body.get('mask_threshold', 0.4)),
                 regularize=bool(body.get('regularize', True)),
+                merge_overlaps=bool(body.get('merge_overlaps', True)),
+            )
+        except (TypeError, ValueError) as exc:
+            raise ApiError(str(exc)) from exc
+
+    def _street_settings(self, body: dict[str, Any]) -> StreetDetectionSettings:
+        """
+        Validate a street-discovery request body.
+
+        Args:
+            body (dict[str, Any]): ``classes`` (comma separated, required),
+                ``mapillary_token`` (required), ``start_date``, ``end_date``,
+                ``rapid_only``, ``detection_source``, ``frame_spacing_m``,
+                ``min_observations``, ``cluster_radius_m``,
+                ``camera_height_m`` and ``max_range_m``. The survey area is
+                the extent of the loaded raster unless ``min_lon``,
+                ``min_lat``, ``max_lon`` and ``max_lat`` give a box (picked
+                on the map), in which case no raster is needed.
+
+        Returns:
+            StreetDetectionSettings: The validated settings.
+
+        Raises:
+            ApiError: If neither a raster nor a box defines the area, or a
+                value is invalid.
+        """
+        region = _optional_bbox(body)
+        with self.state.lock:
+            raster = self.state.raster_path
+        if region is None and raster is None:
+            raise ApiError(
+                'Load an aerial image first (step 1), or pick an area on the map.'
+            )
+        try:
+            return StreetDetectionSettings(
+                output_dir=self.state.output_dir,
+                classes=parse_asset_list(str(body.get('classes', ''))),
+                access_token=str(body.get('mapillary_token', '')),
+                raster_path=raster,
+                region=region,
+                start_date=str(body.get('start_date', '') or ''),
+                end_date=str(body.get('end_date', '') or ''),
+                filter_rapid_only=bool(body.get('rapid_only', True)),
+                detection_source=str(body.get('detection_source') or 'auto'),
+                frame_spacing_m=float(body.get('frame_spacing_m', 3.0)),
+                min_observations=int(body.get('min_observations', 2)),
+                cluster_radius_m=float(body.get('cluster_radius_m', 4.0)),
+                camera_height_m=float(body.get('camera_height_m', 2.4)),
+                max_range_m=float(body.get('max_range_m', 30.0)),
             )
         except (TypeError, ValueError) as exc:
             raise ApiError(str(exc)) from exc
@@ -763,10 +1243,18 @@ class Api:
         Args:
             body (dict[str, Any]): ``backend`` (a :data:`MODEL_BACKENDS` key),
                 ``prompt``, ``api_key``, ``model_id``, ``max_workers``,
-                ``batch_size``, ``load_in_4bit``, ``overlay_outline`` and the
+                ``batch_size``, ``load_in_4bit``, ``temperature``,
+                ``max_tokens``, ``json_mode``, ``overlay_outline`` and the
                 optional ``outline_shape``, ``outline_buffer``,
                 ``outline_width`` and ``outline_color`` (blank values fall
-                back to the extractor defaults).
+                back to the extractor defaults); ``imagery`` (an
+                :data:`IMAGERY_SOURCES` key) with ``min_footprint_coverage``,
+                ``pad_edges``, ``street_search_radius_m``,
+                ``street_max_images``, ``street_crop_top``,
+                ``street_crop_bottom``, ``mapillary_token``,
+                ``mapillary_start_date``, ``mapillary_end_date``,
+                ``mapillary_rapid_only``, ``mapillary_max_images``,
+                ``object_image_size`` and ``object_crop_buffer``.
 
         Returns:
             InferenceSettings: The validated settings.
@@ -790,12 +1278,33 @@ class Api:
                 model_id=str(body.get('model_id') or default_model).strip(),
                 max_workers=int(body.get('max_workers', 5)),
                 batch_size=int(body.get('batch_size', 4)),
+                temperature=float(body.get('temperature', 0.4)),
+                max_tokens=int(body.get('max_tokens', 2048)),
+                json_mode=bool(body.get('json_mode', False)),
                 load_in_4bit=bool(body.get('load_in_4bit', True)),
                 overlay_asset_outline=bool(body.get('overlay_outline', True)),
                 outline_shape=str(body.get('outline_shape') or 'geometry'),
                 outline_buffer=body.get('outline_buffer') or 0,
                 outline_width=body.get('outline_width') or 6,
                 outline_color=str(body.get('outline_color') or 'red'),
+                imagery=str(body.get('imagery') or 'aerial'),
+                min_footprint_coverage=_optional_float(
+                    body.get('min_footprint_coverage')
+                ),
+                pad_edges=bool(body['pad_edges']) if 'pad_edges' in body else None,
+                street_search_radius_m=float(body.get('street_search_radius_m', 50)),
+                street_max_images=int(body.get('street_max_images', 1)),
+                street_vertical_crop=(
+                    float(body.get('street_crop_top', 0.0) or 0.0),
+                    float(body.get('street_crop_bottom', 1.0) or 1.0),
+                ),
+                mapillary_token=str(body.get('mapillary_token', '') or ''),
+                mapillary_start_date=str(body.get('mapillary_start_date', '') or ''),
+                mapillary_end_date=str(body.get('mapillary_end_date', '') or ''),
+                mapillary_rapid_only=bool(body.get('mapillary_rapid_only', True)),
+                mapillary_max_images=int(body.get('mapillary_max_images', 4)),
+                object_image_size=str(body.get('object_image_size') or '2048'),
+                object_crop_buffer=body.get('object_crop_buffer') or '25%',
             )
         except (TypeError, ValueError) as exc:
             raise ApiError(str(exc)) from exc
@@ -822,23 +1331,718 @@ class Api:
             self.state.output_dir = path
         return {'ok': True, 'output_dir': str(path)}
 
-    def sample_prompt(self, _body: dict[str, Any]) -> dict[str, Any]:
+    def sample_prompt(self, body: dict[str, Any]) -> dict[str, Any]:
         """
-        ``POST /api/prompt/sample``: fetch the sample CHS prompt from the registry.
+        ``POST /api/prompt/sample``: fetch a sample prompt from the registry.
+
+        Args:
+            body (dict[str, Any]): Optional ``name``, a :data:`SAMPLE_PROMPTS`
+                key (default ``'aerial_chs'``).
+
+        Returns:
+            dict[str, Any]: ``{'name': <key>, 'text': <prompt text>}``.
+
+        Raises:
+            ApiError: If ``name`` is not a known sample prompt.
+        """
+        name = str(body.get('name') or 'aerial_chs').strip()
+        entry = SAMPLE_PROMPTS.get(name)
+        if entry is None:
+            raise ApiError(f'Unknown sample prompt: {name!r}')
+        text = self._download_text(entry['dataset'])
+        return {'name': name, 'text': text}
+
+    def set_notification(self, body: dict[str, Any]) -> dict[str, Any]:
+        """
+        ``POST /api/notify``: send a message when the current job finishes.
+
+        Args:
+            body (dict[str, Any]): ``target``, an email address or a webhook
+                URL; empty clears the request.
+
+        Returns:
+            dict[str, Any]: ``{'target', 'kind'}`` as stored.
+
+        Raises:
+            ApiError: If the target is not deliverable.
+        """
+        try:
+            return self.state.set_notification(str(body.get('target', '') or ''))
+        except ValueError as exc:
+            raise ApiError(str(exc)) from exc
+
+    def basemap_tile(self, provider: str, z: int, x: int, y: int) -> bytes:
+        """
+        ``GET /api/basemap_tile/<provider>/<z>/<x>/<y>.jpg``: a satellite tile.
+
+        Tiles are fetched server-side (so the browser needs no cross-origin
+        access to Bing or Google) and kept in a bounded cache.
+
+        Args:
+            provider (str): ``'bing'`` or ``'google'``.
+            z (int): Zoom level.
+            x (int): Tile column.
+            y (int): Tile row.
+
+        Returns:
+            bytes: Image data.
+
+        Raises:
+            ApiError: ``400`` for a bad address, ``404`` when the tile could
+                not be fetched.
+        """
+        key = (provider, z, x, y)
+        state = self.state
+        with state.tile_lock:
+            data = state.tile_cache.get(key)
+            if data is not None:
+                state.tile_cache.move_to_end(key)
+                return data
+        try:
+            data = _fetch_basemap_tile(provider, z, x, y)
+        except ValueError as exc:
+            raise ApiError(str(exc)) from exc
+        if data is None:
+            raise ApiError('Tile unavailable.', HTTPStatus.NOT_FOUND)
+        with state.tile_lock:
+            state.tile_cache[key] = data
+            while len(state.tile_cache) > TILE_CACHE_SIZE:
+                state.tile_cache.popitem(last=False)
+        return data
+
+    def street_coverage(self, query: dict[str, Any]) -> dict[str, Any]:
+        """
+        ``GET /api/street/coverage``: where a Mapillary survey has images.
+
+        Lists the images in the box from Mapillary's coverage tiles (no
+        per-image requests) so the map picker can show where a street-level
+        survey went before an area is chosen.
+
+        Args:
+            query (dict[str, Any]): ``min_lon``, ``min_lat``, ``max_lon``,
+                ``max_lat``; optional ``token`` (the RAPID token is used when
+                empty), ``rapid_only`` (default ``1``), ``start_date`` and
+                ``end_date``.
+
+        Returns:
+            dict[str, Any]: ``count`` of images, ``points`` as
+                ``[[lon, lat], ...]`` (thinned to at most
+                :data:`MAX_COVERAGE_POINTS`), ``sequences``, ``first`` and
+                ``last`` capture dates and ``truncated``.
+
+        Raises:
+            ApiError: If the box is invalid or spans too many tiles.
+        """
+        from rapidtools.data_sources import TileUtils
+
+        bbox = _optional_bbox(query)
+        if bbox is None:
+            raise ApiError('Give min_lon, min_lat, max_lon and max_lat.')
+        n_tiles = len(TileUtils.bbox_to_mapbox_tiles(bbox, zoom=14))
+        if n_tiles > MAX_COVERAGE_TILES:
+            raise ApiError(
+                f'Zoom in to look up survey coverage: the view spans {n_tiles} '
+                f'tiles, at most {MAX_COVERAGE_TILES} are searched at once.'
+            )
+        client = self._mapillary_client(str(query.get('token', '') or ''))
+        rapid_only = str(query.get('rapid_only', '1')).lower() not in ('0', 'false', '')
+        images = client.fetch_images_in_bbox(
+            bbox,
+            start_date=str(query.get('start_date', '') or ''),
+            end_date=str(query.get('end_date', '') or ''),
+            filter_rapid_only=rapid_only,
+        )
+        min_lon, min_lat, max_lon, max_lat = bbox.bounds
+        points: list[list[float]] = []
+        sequences: set[str] = set()
+        dates: list[str] = []
+        for image in images:
+            props = image.properties
+            lon, lat = props.get('longitude'), props.get('latitude')
+            if lon is None or lat is None:
+                continue
+            if not (min_lon <= lon <= max_lon and min_lat <= lat <= max_lat):
+                continue
+            points.append([round(float(lon), 6), round(float(lat), 6)])
+            if props.get('sequence'):
+                sequences.add(str(props['sequence']))
+            if props.get('capture_date'):
+                dates.append(str(props['capture_date']))
+        total = len(points)
+        stride = max(1, -(-total // MAX_COVERAGE_POINTS))
+        return {
+            'count': total,
+            'points': points[::stride],
+            'sequences': len(sequences),
+            'first': min(dates) if dates else None,
+            'last': max(dates) if dates else None,
+            'truncated': stride > 1,
+        }
+
+    def _mapillary_client(self, token: str):
+        """A cached MapillaryClient for ``token`` (the RAPID token when empty)."""
+        from rapidtools.data_sources import MapillaryClient
+
+        token = (token or '').strip() or self._download_text(MAPILLARY_TOKEN_DATASET)
+        state = self.state
+        with state.lock:
+            client = state.mapillary_clients.get(token)
+            if client is None:
+                client = state.mapillary_clients[token] = MapillaryClient(
+                    token, save_dir=state.output_dir / 'mapillary'
+                )
+        return client
+
+    def street_sequences(
+        self, z: int, x: int, y: int, query: dict[str, Any]
+    ) -> dict[str, Any]:
+        """
+        ``GET /api/street/sequences/<z>/<x>/<y>``: survey routes in a tile.
+
+        Decodes the ``sequence`` layer of Mapillary's coverage tile so the
+        map can draw where street-level imagery exists at any zoom, from a
+        whole state (zoom 6) to a block (zoom 14). Results are cached per
+        tile and filter.
+
+        Args:
+            z (int): Tile zoom, 6 to 14.
+            x (int): Tile column.
+            y (int): Tile row.
+            query (dict[str, Any]): Optional ``token``, ``rapid_only``
+                (default ``1``), ``start_date`` and ``end_date``.
+
+        Returns:
+            dict[str, Any]: See
+                :meth:`~rapidtools.data_sources.MapillaryClient.fetch_sequence_lines`.
+
+        Raises:
+            ApiError: ``400`` for a zoom outside 6 to 14.
+        """
+        if not 6 <= z <= 14:
+            raise ApiError('Coverage tiles exist for zoom levels 6 to 14.')
+        token = str(query.get('token', '') or '').strip()
+        rapid_only = str(query.get('rapid_only', '1')).lower() not in ('0', 'false', '')
+        start = str(query.get('start_date', '') or '')
+        end = str(query.get('end_date', '') or '')
+        key = (token, z, x, y, rapid_only, start, end)
+        state = self.state
+        with state.tile_lock:
+            cached = state.sequence_cache.get(key)
+            if cached is not None:
+                state.sequence_cache.move_to_end(key)
+                return cached
+        client = self._mapillary_client(token)
+        data = client.fetch_sequence_lines(
+            z, x, y, filter_rapid_only=rapid_only, start_date=start, end_date=end
+        )
+        with state.tile_lock:
+            state.sequence_cache[key] = data
+            while len(state.sequence_cache) > SEQUENCE_CACHE_SIZE:
+                state.sequence_cache.popitem(last=False)
+        return data
+
+    def street_overview(self, query: dict[str, Any]) -> dict[str, Any]:
+        """
+        ``GET /api/street/overview``: survey routes across the whole country.
+
+        Reads the zoom-6 coverage tiles over :data:`OVERVIEW_BBOX` once (on a
+        background thread, cached on disk for a week under
+        ``~/.cache/rapidtools``) and returns the routes as longitude/latitude
+        polylines, so the map can show where street-level imagery exists
+        from its very first view.
+
+        Args:
+            query (dict[str, Any]): Optional ``rapid_only`` (default ``1``).
+
+        Returns:
+            dict[str, Any]: ``status`` (``'building'`` or ``'ready'``),
+                ``done`` and ``total`` tile counts, ``zoom`` and, when ready,
+                ``lines`` as flat ``[lon, lat, lon, lat, ...]`` lists.
+        """
+        rapid_only = str(query.get('rapid_only', '1')).lower() not in ('0', 'false', '')
+        state = self.state
+        with state.lock:
+            entry = state.overview.get(rapid_only)
+            if entry is not None and entry.get('status') == 'error':
+                entry = None  # retry a failed build on the next request
+            if entry is None:
+                entry = state.overview[rapid_only] = {
+                    'status': 'building',
+                    'done': 0,
+                    'total': 0,
+                    'lines': [],
+                    'error': '',
+                }
+                threading.Thread(
+                    target=self._build_overview,
+                    args=(rapid_only,),
+                    name='survey-overview',
+                    daemon=True,
+                ).start()
+            out = {k: v for k, v in entry.items() if k != 'lines'}
+            out['zoom'] = OVERVIEW_ZOOM
+            if entry['status'] == 'ready':
+                out['lines'] = entry['lines']
+            return out
+
+    def _build_overview(self, rapid_only: bool) -> None:
+        """Fill the overview entry from the disk cache or the coverage tiles."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        from rapidtools.data_sources import TileUtils
+
+        state = self.state
+        entry = state.overview[rapid_only]
+        cache = (
+            state.cache_dir / f'survey_overview_z{OVERVIEW_ZOOM}_{int(rapid_only)}.json'
+        )
+        try:
+            if (
+                cache.is_file()
+                and time.time() - cache.stat().st_mtime < OVERVIEW_MAX_AGE_S
+            ):
+                lines = json.loads(cache.read_text(encoding='utf-8'))
+                with state.lock:
+                    entry.update(status='ready', lines=lines, done=1, total=1)
+                return
+        except (OSError, ValueError) as exc:
+            logger.debug(f'Survey overview cache unreadable: {exc}')
+        try:
+            client = self._mapillary_client('')
+            tiles = _overview_tiles()
+            with state.lock:
+                entry['total'] = len(tiles)
+
+            failures: list[str] = []
+
+            def one(tile):
+                x, y, z = tile
+                data = client.fetch_sequence_lines(
+                    z, x, y, filter_rapid_only=rapid_only
+                )
+                if not data.get('ok', True):
+                    failures.append(f'{z}/{x}/{y}')
+                out = []
+                for line in data['lines']:
+                    flat: list[float] = []
+                    for i in range(0, len(line), 2):
+                        lon, lat = TileUtils.mvt_to_wgs84(
+                            line[i], line[i + 1], x, y, z, extent=data['extent']
+                        )
+                        flat.append(round(lon, 4))
+                        flat.append(round(lat, 4))
+                    out.append(flat)
+                with state.lock:
+                    entry['done'] += 1
+                return out
+
+            lines: list[list[float]] = []
+            with ThreadPoolExecutor(max_workers=OVERVIEW_WORKERS) as pool:
+                for result in pool.map(one, tiles):
+                    lines.extend(result)
+            if failures:
+                raise RuntimeError(
+                    f'{len(failures)} of {len(tiles)} coverage tiles could not be '
+                    'read (is the internet connection up?); nothing was cached.'
+                )
+            try:
+                cache.parent.mkdir(parents=True, exist_ok=True)
+                cache.write_text(json.dumps(lines), encoding='utf-8')
+            except OSError as exc:
+                logger.debug(f'Could not cache the survey overview: {exc}')
+            with state.lock:
+                entry.update(status='ready', lines=lines)
+        except Exception as exc:  # noqa: BLE001 - reported through the state
+            logger.warning(f'Survey overview failed: {exc}')
+            with state.lock:
+                entry.update(status='error', error=str(exc))
+
+    def street_routes(self, query: dict[str, Any]) -> dict[str, Any]:
+        """
+        ``GET /api/street/routes``: status of the RAPID route database.
+
+        The database holds every RAPID survey route at zoom-13 detail, built
+        once (on a background thread) from Mapillary's coverage tiles and
+        kept gzipped as ``survey_routes_z13.json.gz`` under
+        ``~/.cache/rapidtools``. It is static until
+        :meth:`rebuild_routes` is called, so the file can be copied between
+        machines or replaced by a published one. The first call starts the
+        build when no file exists.
+
+        Returns:
+            dict[str, Any]: ``status`` (``'building'``, ``'ready'`` or
+                ``'error'``), ``done`` / ``total`` tiles, ``n_routes``,
+                ``built_at``, ``zoom``, ``bytes`` of the gzipped payload and
+                ``url`` of the payload (``/api/street/routes.json``).
+        """
+        state = self.state
+        with state.lock:
+            if state.routes['status'] == 'error' and (
+                time.time() - state.routes.get('failed_at', 0) > 60
+            ):
+                state.routes['status'] = 'idle'  # retry a failed build after a minute
+            if state.routes['status'] == 'idle':
+                state.routes.update(status='building', error='')
+                threading.Thread(
+                    target=self._build_routes, name='survey-routes', daemon=True
+                ).start()
+            out = dict(state.routes)
+            out['zoom'] = ROUTES_ZOOM
+            out['bytes'] = len(state.routes_gz) if state.routes_gz else 0
+            out['url'] = '/api/street/routes.json'
+            return out
+
+    def rebuild_routes(self, _body: dict[str, Any]) -> dict[str, Any]:
+        """
+        ``POST /api/street/routes/rebuild``: fetch the route database afresh.
+
+        Returns:
+            dict[str, Any]: ``{'ok': True}``; poll :meth:`street_routes`.
+
+        Raises:
+            ApiError: ``409`` while a build is already running.
+        """
+        state = self.state
+        with state.lock:
+            if state.routes['status'] == 'building':
+                raise ApiError(
+                    'The route database is already being built.', HTTPStatus.CONFLICT
+                )
+            state.routes.update(status='building', done=0, total=0, error='')
+            state.overview.pop(True, None)
+        threading.Thread(
+            target=self._build_routes, args=(True,), name='survey-routes', daemon=True
+        ).start()
+        return {'ok': True}
+
+    def routes_payload(self) -> tuple[bytes, str] | None:
+        """The gzipped route database and its ETag, or ``None`` until ready."""
+        with self.state.lock:
+            if self.state.routes['status'] != 'ready' or not self.state.routes_gz:
+                return None
+            return self.state.routes_gz, f'"{self.state.routes["built_at"]}"'
+
+    def _build_routes(self, force: bool = False) -> None:
+        """Load the route database from disk or build it from coverage tiles."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        from rapidtools.data_sources import TileUtils
+
+        state = self.state
+        entry = state.routes
+        cache = state.cache_dir / ROUTES_FILE
+        if not force and cache.is_file():
+            try:
+                data = cache.read_bytes()
+                meta = json.loads(gzip.decompress(data))
+                with state.lock:
+                    state.routes_gz = data
+                    entry.update(
+                        status='ready',
+                        done=1,
+                        total=1,
+                        n_routes=int(meta.get('n_routes', 0)),
+                        built_at=str(meta.get('built_at', '')),
+                    )
+                return
+            except (OSError, ValueError) as exc:
+                logger.warning(f'Route database unreadable, rebuilding: {exc}')
+        try:
+            overview = state.overview.get(True)
+            if overview is None or overview.get('status') != 'ready' or force:
+                with state.lock:
+                    state.overview[True] = {
+                        'status': 'building',
+                        'done': 0,
+                        'total': 0,
+                        'lines': [],
+                        'error': '',
+                    }
+                if force:
+                    stale = state.cache_dir / f'survey_overview_z{OVERVIEW_ZOOM}_1.json'
+                    stale.unlink(missing_ok=True)
+                self._build_overview(True)
+                overview = state.overview[True]
+            if overview.get('status') != 'ready':
+                raise RuntimeError(
+                    overview.get('error') or 'the survey overview failed'
+                )
+            tiles = _routes_tiles(overview['lines'])
+            with state.lock:
+                entry.update(total=len(tiles), done=0)
+            client = self._mapillary_client('')
+
+            failures: list[str] = []
+
+            def one(tile):
+                x, y, z = tile
+                data = client.fetch_sequence_lines(z, x, y, filter_rapid_only=True)
+                if not data.get('ok', True):
+                    failures.append(f'{z}/{x}/{y}')
+                out = []
+                for line in data['lines']:
+                    flat: list[float] = []
+                    for i in range(0, len(line), 2):
+                        lon, lat = TileUtils.mvt_to_wgs84(
+                            line[i], line[i + 1], x, y, z, extent=data['extent']
+                        )
+                        flat.append(round(lon, 5))
+                        flat.append(round(lat, 5))
+                    out.append(flat)
+                with state.lock:
+                    entry['done'] += 1
+                return out, data.get('first')
+
+            lines: list[list[float]] = []
+            dates: list[str | None] = []
+            with ThreadPoolExecutor(max_workers=OVERVIEW_WORKERS) as pool:
+                for result, first in pool.map(one, tiles):
+                    lines.extend(result)
+                    dates.extend([first] * len(result))
+            if failures:
+                raise RuntimeError(
+                    f'{len(failures)} of {len(tiles)} coverage tiles could not be read '
+                    '(is the internet connection up?); nothing was cached. Use '
+                    'refresh to try again.'
+                )
+            built_at = _dt.datetime.now(_dt.UTC).strftime('%Y-%m-%dT%H:%M:%SZ')
+            payload = {
+                'zoom': ROUTES_ZOOM,
+                'built_at': built_at,
+                'n_routes': len(lines),
+                'n_tiles': len(tiles),
+                'lines': lines,
+                'dates': dates,
+            }
+            data = gzip.compress(
+                json.dumps(payload, separators=(',', ':')).encode('utf-8'),
+                compresslevel=6,
+            )
+            try:
+                cache.parent.mkdir(parents=True, exist_ok=True)
+                cache.write_bytes(data)
+            except OSError as exc:
+                logger.debug(f'Could not cache the route database: {exc}')
+            with state.lock:
+                state.routes_gz = data
+                entry.update(status='ready', n_routes=len(lines), built_at=built_at)
+            logger.info(
+                f'Survey route database ready: {len(lines):,} routes from {len(tiles)} '
+                f'tiles ({len(data) / 1e6:.1f} MB gzipped).'
+            )
+        except Exception as exc:  # noqa: BLE001 - reported through the state
+            logger.warning(f'Survey route database failed: {exc}')
+            with state.lock:
+                entry.update(status='error', error=str(exc), failed_at=time.time())
+
+    def geocode(self, query: dict[str, Any]) -> dict[str, Any]:
+        """
+        ``GET /api/geocode?q=...``: find a place by address or name.
+
+        Args:
+            query (dict[str, Any]): ``q``, the text to look up.
+
+        Returns:
+            dict[str, Any]: ``{'matches': [...]}`` as returned by
+                :func:`_geocode`.
+
+        Raises:
+            ApiError: If ``q`` is empty or the lookup fails.
+        """
+        text = str(query.get('q', '') or '').strip()
+        if not text:
+            raise ApiError('Type an address or place name.')
+        try:
+            return {'matches': _geocode(text)}
+        except Exception as exc:  # noqa: BLE001 - surfaced to the browser
+            raise ApiError(
+                f'Address lookup failed: {exc}', HTTPStatus.BAD_GATEWAY
+            ) from exc
+
+    def geo_overlay(self, _query: dict[str, Any]) -> dict[str, Any]:
+        """
+        ``GET /api/geo_overlay``: the current assets as WGS84 geometries.
+
+        Unlike :meth:`overlay`, which projects assets onto a raster preview,
+        this returns longitude/latitude coordinates for drawing on the map.
+
+        Returns:
+            dict[str, Any]: ``collection_version``, ``count`` and ``features``
+                with ``id``, ``kind`` (``'point'``, ``'line'`` or
+                ``'polygon'``), ``coords`` (a ``[lon, lat]`` for points, a
+                list of rings/lines otherwise), ``bbox`` and ``attributes``
+                (without the bulky observation and image records). At most
+                :data:`MAX_OVERLAY_FEATURES` features are returned.
+        """
+        state = self.state
+        with state.lock:
+            collection = state.collection
+            version = state.collection_version
+        features: list[dict[str, Any]] = []
+        if collection is not None:
+            for asset in collection:
+                if len(features) >= MAX_OVERLAY_FEATURES:
+                    break
+                geom = asset.geometry
+                if geom is None or geom.is_empty:
+                    continue
+                kind, coords = _geometry_coords(geom)
+                if kind is None:
+                    continue
+                attributes = {
+                    str(k): v
+                    for k, v in asset.attributes.items()
+                    if k not in ('observations', 'image_assets')
+                    and isinstance(v, (str, int, float, bool))
+                    or v is None
+                }
+                features.append(
+                    {
+                        'id': asset.id,
+                        'kind': kind,
+                        'coords': coords,
+                        'bbox': [round(v, 6) for v in geom.bounds],
+                        'attributes': attributes,
+                    }
+                )
+        return {
+            'collection_version': version,
+            'count': len(collection) if collection is not None else 0,
+            'features': features,
+        }
+
+    def mapillary_token(self, _body: dict[str, Any]) -> dict[str, Any]:
+        """
+        ``POST /api/mapillary_token``: fetch the token used by the examples.
 
         Args:
             _body (dict[str, Any]): Ignored.
 
         Returns:
-            dict[str, Any]: ``{'text': <prompt text>}``.
+            dict[str, Any]: ``{'token': <Mapillary access token>}``.
         """
+        return {'token': self._download_text(MAPILLARY_TOKEN_DATASET)}
+
+    def _download_text(self, dataset: str) -> str:
+        """Download a registry text file into ``output_dir`` and return it."""
         from rapidtools import download_dataset
 
         self.state.output_dir.mkdir(parents=True, exist_ok=True)
-        [path] = download_dataset(
-            SAMPLE_PROMPT_DATASET, output_dir=self.state.output_dir
+        [path] = download_dataset(dataset, output_dir=self.state.output_dir)
+        return Path(path).read_text(encoding='utf-8').strip()
+
+    # ------------------------------------------------------------ prompts
+    def assemble_prompt(self, body: dict[str, Any]) -> dict[str, Any]:
+        """
+        ``POST /api/prompt/assemble``: render a prompt specification as text.
+
+        Args:
+            body (dict[str, Any]): ``spec`` (a
+                :class:`~rapidtools.gui.prompt_builder.PromptSpec` object),
+                optional ``outline`` (``shape``, ``color``, ``overlay``) used
+                to fill an empty ``marking``, and optional ``backend`` whose
+                attribute prefix is used to name the resulting attributes.
+
+        Returns:
+            dict[str, Any]: ``text`` (the prompt), ``marking``, ``attributes``
+            (the asset attribute names the analyzer will write) and the
+            normalised ``spec``.
+
+        Raises:
+            ApiError: If the specification is invalid.
+        """
+        try:
+            spec = PromptSpec.from_dict(body.get('spec') or {})
+        except (TypeError, ValueError) as exc:
+            raise ApiError(f'Invalid prompt specification: {exc}') from exc
+        outline = body.get('outline') or {}
+        if not spec.marking and outline:
+            spec.marking = describe_marking(
+                str(outline.get('shape') or 'geometry'),
+                str(outline.get('color') or 'red'),
+                bool(outline.get('overlay', True)),
+            )
+        backend = MODEL_BACKENDS.get(str(body.get('backend') or ''), {})
+        prefix = backend.get('attribute_prefix') or 'vlm'
+        return {
+            'text': assemble_prompt(spec),
+            'marking': spec.marking,
+            'attributes': spec.attribute_keys(prefix),
+            'spec': spec.to_dict(),
+        }
+
+    def prompt_example(self, _body: dict[str, Any]) -> dict[str, Any]:
+        """
+        ``POST /api/prompt/example``: the CHS sample as a specification.
+
+        Returns:
+            dict[str, Any]: ``{'spec': <PromptSpec dict>}``.
+        """
+        return {'spec': SAMPLE_SPEC.to_dict()}
+
+    def prompt_assist(self, body: dict[str, Any]) -> dict[str, Any]:
+        """
+        ``POST /api/prompt/assist``: ask a model to help with the prompt.
+
+        The request runs as a background job; the browser reads the outcome
+        from ``assistant`` in ``GET /api/state`` once its ``seq`` changes.
+
+        Args:
+            body (dict[str, Any]): ``action`` (one of
+                :data:`~rapidtools.gui.prompt_builder.ASSIST_ACTIONS`),
+                ``backend``, ``api_key``, ``model_id``, ``load_in_4bit`` and
+                the action inputs ``brief``, ``instruction``, ``prompt_text``,
+                ``class_value``, ``spec`` and ``context``.
+
+        Returns:
+            dict[str, Any]: ``{'ok': True, 'seq': <request number>}``.
+
+        Raises:
+            ApiError: If the settings are invalid or a job is running.
+        """
+        try:
+            settings = AssistSettings(
+                action=str(body.get('action', '')),
+                backend=str(body.get('backend') or 'gemma4'),  # type: ignore[arg-type]
+                api_key=str(body.get('api_key', '') or ''),
+                model_id=str(body.get('model_id', '') or ''),
+                load_in_4bit=bool(body.get('load_in_4bit', True)),
+                brief=str(body.get('brief', '') or ''),
+                instruction=str(body.get('instruction', '') or ''),
+                prompt_text=str(body.get('prompt_text', '') or ''),
+                class_value=str(body.get('class_value', '') or ''),
+                spec=body.get('spec') or None,
+                context=dict(body.get('context') or {}),
+            )
+        except (TypeError, ValueError) as exc:
+            raise ApiError(str(exc)) from exc
+        state = self.state
+        state.set_assistant(
+            seq=True,
+            status='running',
+            action=settings.action,
+            model=f'{settings.backend_spec["label"]} · {settings.model_id}',
+            result=None,
+            error='',
         )
-        return {'text': Path(path).read_text(encoding='utf-8').strip()}
+
+        def job() -> None:
+            """Run the assistant and record its answer (or failure)."""
+            try:
+                result = state.workflow.assist(settings)
+            except Exception as exc:
+                state.set_assistant(status='error', error=str(exc))
+                raise
+            state.set_assistant(status='done', result=result)
+
+        try:
+            state.start_job('Prompt assistant', job)
+        except ApiError:
+            state.set_assistant(status='error', error='Another job is running.')
+            raise
+        with state.lock:
+            seq = state.assistant['seq']
+        return {'ok': True, 'seq': seq}
 
     def read_text_file(self, query: dict[str, str]) -> dict[str, Any]:
         """
@@ -1162,6 +2366,85 @@ def _json_primitive(value: Any) -> Any:
     return value if isinstance(value, (int, float, str, bool)) else str(value)
 
 
+def _geometry_coords(geom: Any) -> tuple[str | None, Any]:
+    """
+    Reduce a shapely geometry to a drawable ``(kind, coords)`` pair.
+
+    Example:
+        >>> from shapely.geometry import Point, box
+        >>> _geometry_coords(Point(1, 2))
+        ('point', [1.0, 2.0])
+        >>> _geometry_coords(box(0, 0, 1, 1))[0]
+        'polygon'
+    """
+    kind = geom.geom_type
+    rnd = lambda xy: [round(float(xy[0]), 6), round(float(xy[1]), 6)]  # noqa: E731
+    if kind == 'Point':
+        return 'point', rnd((geom.x, geom.y))
+    if kind == 'LineString':
+        return 'line', [[rnd(c) for c in geom.coords]]
+    if kind == 'MultiLineString':
+        return 'line', [[rnd(c) for c in part.coords] for part in geom.geoms]
+    if kind == 'Polygon':
+        return 'polygon', [[rnd(c) for c in geom.exterior.coords]]
+    if kind == 'MultiPolygon':
+        return 'polygon', [
+            [rnd(c) for c in part.exterior.coords] for part in geom.geoms
+        ]
+    if kind in ('MultiPoint', 'GeometryCollection'):
+        c = geom.centroid
+        return 'point', rnd((c.x, c.y))
+    return None, None
+
+
+def _optional_bbox(body: dict[str, Any]):
+    """
+    Read ``min_lon``/``min_lat``/``max_lon``/``max_lat`` as a BoundingBox.
+
+    Returns ``None`` when all four are blank.
+
+    Raises:
+        ApiError: If some but not all are given, or the box is invalid.
+
+    Example:
+        >>> _optional_bbox({}) is None
+        True
+        >>> box = {'min_lon': -1, 'min_lat': 0, 'max_lon': 1, 'max_lat': 2}
+        >>> _optional_bbox(box).bounds
+        (-1.0, 0.0, 1.0, 2.0)
+    """
+    keys = ('min_lon', 'min_lat', 'max_lon', 'max_lat')
+    try:
+        values = [_optional_float(body.get(k)) for k in keys]
+    except ValueError as exc:
+        raise ApiError('Longitudes and latitudes must be numbers.') from exc
+    if all(v is None for v in values):
+        return None
+    if any(v is None for v in values):
+        raise ApiError('Give all four of min/max longitude and latitude.')
+    min_lon, min_lat, max_lon, max_lat = values
+    if not (-180 <= min_lon < max_lon <= 180 and -85 <= min_lat < max_lat <= 85):
+        raise ApiError(
+            'The box must satisfy min < max with longitudes in [-180, 180] and '
+            'latitudes in [-85, 85].'
+        )
+    from rapidtools.core import BoundingBox
+
+    return BoundingBox(min_x=min_lon, min_y=min_lat, max_x=max_lon, max_y=max_lat)
+
+
+def _optional_float(value: Any) -> float | None:
+    """
+    Coerce a request value to ``float``, treating blanks as ``None``.
+
+    Raises:
+        ValueError: If the value is neither blank nor numeric.
+    """
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    return float(value)
+
+
 def _require_path(body: dict[str, Any], key: str) -> Path:
     """
     Extract a non-empty path from a request body.
@@ -1324,6 +2607,58 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(api.table(query))
             elif path == '/api/textfile':
                 self._send_json(api.read_text_file(query))
+            elif path == '/api/street/coverage':
+                self._send_json(api.street_coverage(query))
+            elif path == '/api/geocode':
+                self._send_json(api.geocode(query))
+            elif path == '/api/street/overview':
+                self._send_json(api.street_overview(query))
+            elif path == '/api/street/routes':
+                self._send_json(api.street_routes(query))
+            elif path == '/api/street/routes.json':
+                payload = api.routes_payload()
+                if payload is None:
+                    raise ApiError(
+                        'The route database is not ready.', HTTPStatus.NOT_FOUND
+                    )
+                data, etag = payload
+                if self.headers.get('If-None-Match') == etag:
+                    self.send_response(HTTPStatus.NOT_MODIFIED)
+                    self.send_header('ETag', etag)
+                    self.end_headers()
+                    return
+                headers = {'Cache-Control': 'no-cache', 'ETag': etag}
+                if 'gzip' in (self.headers.get('Accept-Encoding') or ''):
+                    headers['Content-Encoding'] = 'gzip'
+                else:
+                    data = gzip.decompress(data)
+                self._send_bytes(data, 'application/json', extra_headers=headers)
+            elif path == '/api/geo_overlay':
+                self._send_json(api.geo_overlay(query))
+            elif path.startswith('/api/street/sequences/'):
+                parts_ = path[len('/api/street/sequences/') :].split('/')
+                if len(parts_) != 3:
+                    raise ApiError('Not found', HTTPStatus.NOT_FOUND)
+                try:
+                    z, x, y = (int(v) for v in parts_)
+                except ValueError as exc:
+                    raise ApiError('Bad tile address') from exc
+                self._send_json(api.street_sequences(z, x, y, query))
+            elif path.startswith('/api/basemap_tile/'):
+                parts_ = (
+                    path[len('/api/basemap_tile/') :].removesuffix('.jpg').split('/')
+                )
+                if len(parts_) != 4:
+                    raise ApiError('Not found', HTTPStatus.NOT_FOUND)
+                try:
+                    data = api.basemap_tile(parts_[0], *(int(v) for v in parts_[1:]))
+                except ValueError as exc:
+                    raise ApiError('Bad tile address') from exc
+                self._send_bytes(
+                    data,
+                    'image/jpeg',
+                    extra_headers={'Cache-Control': 'max-age=86400'},
+                )
             elif path.startswith('/api/tile/'):
                 parts_ = path[len('/api/tile/') :].removesuffix('.jpg').split('/')
                 if len(parts_) != 4:
@@ -1376,12 +2711,20 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
         routes: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
             '/api/imagery/local': api.load_local_raster,
             '/api/imagery/sample': api.download_sample_raster,
+            '/api/imagery/region': api.download_region_imagery,
             '/api/output_dir': api.set_output_dir,
             '/api/assets/load': api.load_assets,
             '/api/detect': api.detect,
+            '/api/street/discover': api.discover_street,
             '/api/infer': api.infer,
             '/api/run_all': api.run_all,
             '/api/prompt/sample': api.sample_prompt,
+            '/api/prompt/assemble': api.assemble_prompt,
+            '/api/prompt/example': api.prompt_example,
+            '/api/prompt/assist': api.prompt_assist,
+            '/api/mapillary_token': api.mapillary_token,
+            '/api/notify': api.set_notification,
+            '/api/street/routes/rebuild': api.rebuild_routes,
             '/api/models': api.list_models,
             '/api/cancel': lambda _b: (state.cancel_job(), {'ok': True})[1],
             '/api/reset': lambda _b: (state.reset(), {'ok': True})[1],
@@ -1523,6 +2866,7 @@ class GuiServer(ThreadingHTTPServer):
         verbose: bool = False,
         token: str | None = None,
         data_root: str | Path | None = None,
+        notification: NotificationConfig | None = None,
     ) -> None:
         """
         Bind the server.
@@ -1536,11 +2880,16 @@ class GuiServer(ThreadingHTTPServer):
                 authentication.
             data_root (str | Path | None): Restrict all file access to this
                 directory.
+            notification (NotificationConfig | None): SMTP relay and public
+                link for job notifications; read from the environment when
+                omitted.
 
         Raises:
             OSError: If the address cannot be bound.
         """
         self.state = state
+        if notification is not None:
+            state.notifier = Notifier(notification)
         self.token = token or None
         self.api = Api(state, data_root=data_root)
         state.data_root = self.api.data_root
@@ -1548,6 +2897,7 @@ class GuiServer(ThreadingHTTPServer):
         self.verbose = verbose
         self._log_handler: CallbackLogHandler | None = None
         super().__init__(address, GuiRequestHandler)
+        state.public_url = self.share_urls()[-1] if self.token else self.url
         self._log_handler = CallbackLogHandler(state.log.add_line)
         logging.getLogger().addHandler(self._log_handler)
 
@@ -1618,6 +2968,7 @@ def create_server(
     verbose: bool = False,
     token: str | None = None,
     data_root: str | Path | None = None,
+    notification: NotificationConfig | None = None,
 ) -> GuiServer:
     """
     Build (but do not start) the GUI server.
@@ -1632,6 +2983,9 @@ def create_server(
             sign-in page) before using the app.
         data_root: Restrict the file browser and every user-supplied path to
             this directory.
+        notification: SMTP relay and public link for job notifications (see
+            :mod:`rapidtools.gui.notify`); the environment is read when
+            omitted.
 
     Returns:
         GuiServer: A bound (not yet serving) server.
@@ -1656,6 +3010,7 @@ def create_server(
         verbose=verbose,
         token=token,
         data_root=data_root,
+        notification=notification,
     )
 
 
@@ -1666,6 +3021,7 @@ def launch_asset_analysis_app(
     open_browser: bool = True,
     token: str | None = None,
     data_root: str | Path | None = None,
+    notification: NotificationConfig | None = None,
 ) -> None:
     """
     Start the GUI server, open a browser tab, and block until Ctrl+C.
@@ -1689,7 +3045,7 @@ def launch_asset_analysis_app(
     Example:
         >>> from rapidtools.gui.server import launch_asset_analysis_app
         >>>
-        >>> launch_asset_analysis_app(port=9000, open_browser=False)  # blocks
+        >>> launch_asset_analysis_app(port=9000, open_browser=False)  # doctest: +SKIP
     """
     if host not in ('127.0.0.1', 'localhost', '::1') and not token:
         logger.warning(
@@ -1703,6 +3059,7 @@ def launch_asset_analysis_app(
             output_dir=output_dir,
             token=token,
             data_root=data_root,
+            notification=notification,
         )
     except OSError as exc:
         logger.error(
@@ -1718,6 +3075,10 @@ def launch_asset_analysis_app(
             logger.info(f'Share this link with colleagues: {link}')
     if server.api.data_root:
         logger.info(f'File access is limited to {server.api.data_root}')
+    if server.state.notifier.email_available:
+        logger.info(
+            f'Email notifications go through {server.state.notifier.config.smtp_host}'
+        )
     if open_browser:
         first = server.share_urls()[-1] if server.token else url
         if server.token:
@@ -1751,12 +3112,15 @@ def main(argv: list[str] | None = None) -> int:
     Example:
         >>> from rapidtools.gui.server import main
         >>>
-        >>> main(['--port', '9000', '--no-browser'])  # blocks until Ctrl+C
+        >>> main(['--port', '9000', '--no-browser'])  # doctest: +SKIP
         0
     """
     parser = argparse.ArgumentParser(
         prog='rapidtools-gui',
-        description='Detect assets in aerial imagery and run VLM inference on them.',
+        description=(
+            'Detect assets in aerial or street-level imagery and run VLM '
+            'inference on them.'
+        ),
     )
     parser.add_argument('--host', default='127.0.0.1', help='interface to bind')
     parser.add_argument('--port', type=int, default=8765, help='port to listen on')
@@ -1780,7 +3144,43 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help='limit the file browser and all file paths to this directory',
     )
+    notify = parser.add_argument_group(
+        'notifications',
+        'email users when a long job finishes (webhooks need no setup); '
+        'the password is read from RAPIDTOOLS_SMTP_PASSWORD',
+    )
+    notify.add_argument(
+        '--smtp-host', default=None, help='SMTP relay host (or RAPIDTOOLS_SMTP_HOST)'
+    )
+    notify.add_argument(
+        '--smtp-port',
+        type=int,
+        default=None,
+        help='SMTP port (587, or 465 with --smtp-ssl)',
+    )
+    notify.add_argument(
+        '--smtp-user', default=None, help='SMTP login (or RAPIDTOOLS_SMTP_USER)'
+    )
+    notify.add_argument(
+        '--smtp-from', default=None, help='sender address (or RAPIDTOOLS_SMTP_FROM)'
+    )
+    notify.add_argument(
+        '--smtp-ssl', action='store_true', help='use implicit TLS instead of STARTTLS'
+    )
+    notify.add_argument(
+        '--public-url',
+        default=None,
+        help='link put in notifications when the server sits behind a proxy or tunnel',
+    )
     args = parser.parse_args(argv)
+    notification = NotificationConfig.from_env(
+        smtp_host=args.smtp_host,
+        smtp_port=args.smtp_port,
+        smtp_user=args.smtp_user,
+        smtp_from=args.smtp_from,
+        smtp_ssl=args.smtp_ssl,
+        public_url=args.public_url,
+    )
     if os.environ.get('RAPIDTOOLS_GUI_NO_BROWSER'):
         args.no_browser = True
     # The console script is an application: show library progress on stdout.
@@ -1792,6 +3192,7 @@ def main(argv: list[str] | None = None) -> int:
         token=args.token,
         data_root=args.data_root,
         open_browser=not args.no_browser,
+        notification=notification,
     )
     return 0
 

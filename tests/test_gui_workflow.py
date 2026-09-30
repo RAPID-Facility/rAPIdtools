@@ -712,3 +712,574 @@ def test_analyze_missing_raster_and_unreadable_image_paths(patched, tmp_path):
     # The image without a path is filtered out safely; the crop extractor's
     # image is the only one analyzed:
     assert result.n_analyzed == 1
+
+
+# ------------------------------------------------------- new imagery sources
+class FakeStreetView:
+    created: list = []
+
+    def __init__(self, save_directory, **kwargs):
+        self.save_directory = Path(save_directory)
+        self.kwargs = kwargs
+        FakeStreetView.created.append(self)
+
+    def __call__(self, collection):
+        self.save_directory.mkdir(parents=True, exist_ok=True)
+        for asset in collection:
+            asset.add_image_assets(
+                ImageAsset(
+                    id=f'{asset.id}_gsv',
+                    path=self.save_directory / f'{asset.id}.jpg',
+                    allow_missing_file=True,
+                )
+            )
+        return collection
+
+
+class FakeMapillaryImages(FakeStreetView):
+    created: list = []
+
+    def __init__(self, access_token, save_directory, **kwargs):
+        super().__init__(save_directory, access_token=access_token, **kwargs)
+        FakeMapillaryImages.created.append(self)
+
+
+class FakeObjectCrops(FakeStreetView):
+    created: list = []
+
+    def __init__(self, save_directory, **kwargs):
+        super().__init__(save_directory, **kwargs)
+        FakeObjectCrops.created.append(self)
+
+
+class FakeStreetDetector:
+    created: list = []
+    result: PhysicalAssetCollection | None = None
+
+    def __init__(self, classes, **kwargs):
+        self.classes = classes
+        self.kwargs = kwargs
+        FakeStreetDetector.created.append(self)
+
+    def __call__(self, source=None):
+        if FakeStreetDetector.result is not None:
+            return FakeStreetDetector.result
+        col = _collection('vehicle', 3)
+        col.set_attribute('localization', 'triangulated', overwrite=True)
+        return col
+
+
+class FakeGoogleOrtho(FakeBing):
+    created: list = []
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        FakeGoogleOrtho.created.append(self)
+
+    def __call__(self, region, output_path):
+        Path(output_path).write_bytes(b'google')
+        return Path(output_path)
+
+
+class FakeRegionBox:
+    """BoundingBox stand-in that remembers how it was built."""
+
+    def __init__(self, *bounds):
+        self.bounds = tuple(float(b) for b in bounds)
+
+    @classmethod
+    def from_raster(cls, path):
+        return cls(-1, -1, 1, 1)
+
+    @classmethod
+    def from_geojson(cls, path):
+        return cls(-118.15, 34.18, -118.14, 34.19)
+
+
+@pytest.fixture
+def patched_sources(patched, monkeypatch):
+    for fake in (
+        FakeStreetView,
+        FakeMapillaryImages,
+        FakeObjectCrops,
+        FakeStreetDetector,
+        FakeGoogleOrtho,
+    ):
+        fake.created.clear()
+    FakeStreetDetector.result = None
+    monkeypatch.setattr(rapidtools, 'GoogleStreetViewImageExtractor', FakeStreetView)
+    monkeypatch.setattr(rapidtools, 'MapillaryImageExtractor', FakeMapillaryImages)
+    monkeypatch.setattr(rapidtools, 'MapillaryObjectImageExtractor', FakeObjectCrops)
+    monkeypatch.setattr(rapidtools, 'MapillaryFeatureExtractor', FakeStreetDetector)
+    monkeypatch.setattr(rapidtools, 'GoogleOrthomosaicExtractor', FakeGoogleOrtho)
+    monkeypatch.setattr(rapidtools, 'BoundingBox', FakeRegionBox)
+
+
+def test_detection_settings_basemap_options(tmp_path):
+    from rapidtools.gui.workflow import DetectionSettings
+
+    legacy = DetectionSettings(
+        raster_path=tmp_path,
+        output_dir=tmp_path,
+        assets=['a'],
+        detect_in_recon_imagery=True,
+    )
+    assert legacy.basemap == 'recon'
+    google = DetectionSettings(
+        raster_path=tmp_path, output_dir=tmp_path, assets=['a'], basemap='Google'
+    )
+    assert google.basemap == 'google' and google.detect_in_recon_imagery is False
+    with pytest.raises(ValueError, match='basemap must be one of'):
+        DetectionSettings(
+            raster_path=tmp_path, output_dir=tmp_path, assets=['a'], basemap='esri'
+        )
+
+
+def test_detect_on_google_basemap_and_instances(patched_sources, raster, tmp_path):
+    from rapidtools.gui.workflow import DetectionSettings
+
+    wf = AssetAnalysisWorkflow()
+    result = wf.detect(
+        DetectionSettings(
+            raster_path=raster,
+            output_dir=tmp_path / 'out',
+            assets=['vehicle'],
+            basemap='google',
+            merge_overlaps=False,
+            regularize=False,
+        )
+    )
+    assert result.basemap == 'google'
+    assert result.detection_raster.name == 'scene_google.tiff'
+    assert len(FakeGoogleOrtho.created) == 1
+    assert FakeSAM3.instances[0].kwargs['merge_overlaps'] is False
+    # A second run reuses the stitched file:
+    wf.detect(
+        DetectionSettings(
+            raster_path=raster,
+            output_dir=tmp_path / 'out',
+            assets=['vehicle'],
+            basemap='google',
+        )
+    )
+    assert len(FakeGoogleOrtho.created) == 1
+
+
+def test_inference_settings_imagery_validation(tmp_path):
+    from rapidtools.gui.workflow import InferenceSettings
+
+    common = {
+        'raster_path': tmp_path,
+        'output_dir': tmp_path,
+        'prompt': 'p',
+        'backend': 'gemma4',
+    }
+    with pytest.raises(ValueError, match='imagery must be one of'):
+        InferenceSettings(imagery='drone', **common)
+    with pytest.raises(ValueError, match='Mapillary access token is required'):
+        InferenceSettings(imagery='mapillary', **common)
+    with pytest.raises(ValueError, match='Mapillary access token is required'):
+        InferenceSettings(imagery='mapillary_objects', **common)
+    with pytest.raises(ValueError, match='between 0 and 1'):
+        InferenceSettings(min_footprint_coverage=1.5, **common)
+    with pytest.raises(ValueError, match='search radius'):
+        InferenceSettings(
+            imagery='google_streetview', street_search_radius_m=0, **common
+        )
+    with pytest.raises(ValueError, match='At least one image'):
+        InferenceSettings(street_max_images=0, **common)
+    with pytest.raises(ValueError, match='street_vertical_crop'):
+        InferenceSettings(street_vertical_crop=(0.9, 0.2), **common)
+    ok = InferenceSettings(
+        imagery='Mapillary',
+        mapillary_token='MLY|x',
+        street_vertical_crop=('0.1', 0.8),
+        **common,
+    )
+    assert ok.imagery == 'mapillary' and ok.street_vertical_crop == (0.1, 0.8)
+
+
+@pytest.mark.parametrize(
+    ('imagery', 'fake', 'subdir'),
+    [
+        ('google_streetview', FakeStreetView, 'streetview'),
+        ('mapillary', FakeMapillaryImages, 'mapillary'),
+        ('mapillary_objects', FakeObjectCrops, 'street_objects'),
+    ],
+)
+def test_analyze_with_street_level_imagery(
+    patched_sources, raster, tmp_path, imagery, fake, subdir
+):
+    from rapidtools.gui.workflow import InferenceSettings
+
+    wf = AssetAnalysisWorkflow()
+    result = wf.analyze(
+        _collection('b', 2),
+        InferenceSettings(
+            raster_path=tmp_path / 'missing.tiff',  # street sources do not need it
+            output_dir=tmp_path / 'out',
+            prompt='Describe.',
+            backend='gemma4',
+            imagery=imagery,
+            mapillary_token='MLY|x',
+            mapillary_max_images=3,
+            street_max_images=2,
+            street_vertical_crop=(0.2, 0.9),
+            outline_shape='corners',
+            json_mode=True,
+        ),
+    )
+    assert result.n_analyzed == 2
+    [extractor] = fake.created
+    assert (
+        extractor.save_directory
+        == (tmp_path / 'out' / 'inference_imagery' / subdir).resolve()
+    )
+    if imagery == 'google_streetview':
+        assert extractor.kwargs['max_images_per_asset'] == 2
+        assert extractor.kwargs['vertical_crop'] == (0.2, 0.9)
+    else:
+        assert extractor.kwargs['access_token'] == 'MLY|x'
+        assert extractor.kwargs['max_images_per_asset'] == 3
+    if imagery == 'mapillary_objects':
+        assert extractor.kwargs['outline_shape'] == 'corners'
+    else:
+        assert 'outline_shape' not in extractor.kwargs
+    assert FakeAnalyzer.created[-1].kwargs['generation'].json_mode is True
+
+
+def test_analyze_aerial_passes_coverage_options(patched_sources, raster, tmp_path):
+    from rapidtools.gui.workflow import InferenceSettings
+
+    wf = AssetAnalysisWorkflow()
+    wf.analyze(
+        _collection('b', 1),
+        InferenceSettings(
+            raster_path=raster,
+            output_dir=tmp_path / 'out',
+            prompt='Describe.',
+            backend='gemma4',
+            min_footprint_coverage=0.6,
+            pad_edges=False,
+        ),
+    )
+    assert FakeAnalyzer.created[-1].kwargs['generation'].json_mode is False
+    # The aerial extractor received the edge-handling options:
+    assert FakeSAM3.instances == []  # detection was not involved
+
+
+def test_region_imagery_settings_validation(tmp_path):
+    from rapidtools.gui.workflow import RegionImagerySettings
+
+    with pytest.raises(ValueError, match='provider must be one of'):
+        RegionImagerySettings(output_dir=tmp_path, provider='esri')
+    with pytest.raises(ValueError, match='zoom must be between'):
+        RegionImagerySettings(output_dir=tmp_path, zoom=25, geojson_path=tmp_path)
+    with pytest.raises(ValueError, match='Give the region'):
+        RegionImagerySettings(output_dir=tmp_path, min_lon=1)
+    with pytest.raises(ValueError, match='min < max'):
+        RegionImagerySettings(
+            output_dir=tmp_path, min_lon=2, min_lat=0, max_lon=1, max_lat=1
+        )
+    ok = RegionImagerySettings(
+        output_dir=tmp_path,
+        provider='google',
+        zoom='18',
+        min_lon='-118.15',
+        min_lat='34.18',
+        max_lon='-118.14',
+        max_lat='34.19',
+    )
+    assert ok.zoom == 18 and ok.min_lon == -118.15
+
+
+def test_download_basemap_from_bounds_and_geojson(
+    patched_sources, tmp_path, monkeypatch
+):
+    from rapidtools.gui.workflow import RegionImagerySettings
+
+    messages = []
+    wf = AssetAnalysisWorkflow(progress_callback=messages.append)
+    path = wf.download_basemap(
+        RegionImagerySettings(
+            output_dir=tmp_path / 'out',
+            provider='google',
+            zoom=17,
+            min_lon=-118.15,
+            min_lat=34.18,
+            max_lon=-118.14,
+            max_lat=34.19,
+        )
+    )
+    assert path.is_file() and path.read_bytes() == b'google'
+    assert path.name.startswith('google_z17_m118p15000_34p18000')
+    assert FakeGoogleOrtho.created[0].kwargs['zoom_level'] == 17
+    assert any('tiles at zoom 17' in m for m in messages)
+    # Existing files are reused:
+    assert (
+        wf.download_basemap(
+            RegionImagerySettings(
+                output_dir=tmp_path / 'out',
+                provider='google',
+                zoom=17,
+                min_lon=-118.15,
+                min_lat=34.18,
+                max_lon=-118.14,
+                max_lat=34.19,
+            )
+        )
+        == path
+    )
+    assert len(FakeGoogleOrtho.created) == 1
+
+    geojson = tmp_path / 'area.geojson'
+    geojson.write_text('{}')
+    bing = wf.download_basemap(
+        RegionImagerySettings(
+            output_dir=tmp_path / 'out', zoom=16, geojson_path=geojson
+        )
+    )
+    assert bing.read_bytes() == b'bing'
+    with pytest.raises(FileNotFoundError):
+        wf.download_basemap(
+            RegionImagerySettings(
+                output_dir=tmp_path / 'out',
+                zoom=16,
+                geojson_path=tmp_path / 'nope.geojson',
+            )
+        )
+    # Too many tiles are refused before any download:
+    with pytest.raises(ValueError, match='Lower the zoom level'):
+        wf.download_basemap(
+            RegionImagerySettings(
+                output_dir=tmp_path / 'out',
+                zoom=19,
+                min_lon=-118.5,
+                min_lat=34.0,
+                max_lon=-118.0,
+                max_lat=34.5,
+            )
+        )
+
+
+def test_estimate_tile_count():
+    from rapidtools.gui.workflow import estimate_tile_count
+
+    assert estimate_tile_count((-118.15, 34.18, -118.14, 34.19), 19) == 288
+    assert estimate_tile_count((0, 0, 0, 0), 10) == 1
+    assert estimate_tile_count((-180, -85, 180, 85), 10) > 1_000_000
+
+
+def test_street_detection_settings_validation(tmp_path):
+    from rapidtools.gui.workflow import StreetDetectionSettings
+
+    with pytest.raises(ValueError, match='at least one object class'):
+        StreetDetectionSettings(
+            output_dir=tmp_path, classes=[], access_token='t', region=1
+        )
+    with pytest.raises(ValueError, match='access token'):
+        StreetDetectionSettings(
+            output_dir=tmp_path, classes=['cars'], access_token=' ', region=1
+        )
+    with pytest.raises(ValueError, match='Load imagery'):
+        StreetDetectionSettings(output_dir=tmp_path, classes=['cars'], access_token='t')
+    with pytest.raises(ValueError, match='detection_source'):
+        StreetDetectionSettings(
+            output_dir=tmp_path,
+            classes=['cars'],
+            access_token='t',
+            region=1,
+            detection_source='yolo',
+        )
+    with pytest.raises(ValueError, match='min_observations'):
+        StreetDetectionSettings(
+            output_dir=tmp_path,
+            classes=['cars'],
+            access_token='t',
+            region=1,
+            min_observations=0,
+        )
+    with pytest.raises(ValueError, match='Camera height'):
+        StreetDetectionSettings(
+            output_dir=tmp_path,
+            classes=['cars'],
+            access_token='t',
+            region=1,
+            camera_height_m=0,
+        )
+    with pytest.raises(ValueError, match='Frame spacing'):
+        StreetDetectionSettings(
+            output_dir=tmp_path,
+            classes=['cars'],
+            access_token='t',
+            region=1,
+            cluster_radius_m=0,
+        )
+    ok = StreetDetectionSettings(
+        output_dir=tmp_path, classes='cars, poles;cars', access_token='t', region=1
+    )
+    assert ok.classes == ['cars', 'poles']
+
+
+def test_discover_street_uses_raster_extent(patched_sources, raster, tmp_path):
+    from rapidtools.gui.workflow import StreetDetectionSettings
+
+    messages = []
+    wf = AssetAnalysisWorkflow(progress_callback=messages.append)
+    result = wf.discover_street(
+        StreetDetectionSettings(
+            output_dir=tmp_path / 'out',
+            classes=['vehicles', 'poles'],
+            access_token='MLY|x',
+            raster_path=raster,
+            start_date='2025-01-01',
+            frame_spacing_m=5,
+        )
+    )
+    assert len(result.collection) == 3
+    assert (
+        result.geojson_path == (tmp_path / 'out' / 'street_objects.geojson').resolve()
+    )
+    assert result.geojson_path.is_file()
+    [detector] = FakeStreetDetector.created
+    assert detector.classes == ['vehicles', 'poles']
+    assert detector.kwargs['region'].bounds == (-1, -1, 1, 1)
+    assert detector.kwargs['start_date'] == '2025-01-01'
+    assert detector.kwargs['frame_spacing_m'] == 5
+    assert detector.kwargs['cancel_event'] is wf._cancel_event
+    assert any('vehicles, poles' in m for m in messages)
+
+    with pytest.raises(FileNotFoundError):
+        wf.discover_street(
+            StreetDetectionSettings(
+                output_dir=tmp_path / 'out',
+                classes=['vehicles'],
+                access_token='t',
+                raster_path=tmp_path / 'missing.tiff',
+            )
+        )
+
+
+def test_discover_street_empty_and_cancelled(patched_sources, raster, tmp_path):
+    from rapidtools.gui.workflow import StreetDetectionSettings
+
+    messages = []
+    wf = AssetAnalysisWorkflow(progress_callback=messages.append)
+    FakeStreetDetector.result = PhysicalAssetCollection()
+    result = wf.discover_street(
+        StreetDetectionSettings(
+            output_dir=tmp_path / 'out',
+            classes=['vehicles'],
+            access_token='t',
+            raster_path=raster,
+        )
+    )
+    assert len(result.collection) == 0 and result.geojson_path is None
+    assert messages[-1].endswith('no objects were found.')
+
+    class Cancelling(FakeStreetDetector):
+        def __call__(self, source=None):
+            raise rapidtools.OperationCancelled('stop')
+
+    import rapidtools as rt
+
+    rt.MapillaryFeatureExtractor = Cancelling
+    with pytest.raises(WorkflowCancelled):
+        wf.discover_street(
+            StreetDetectionSettings(
+                output_dir=tmp_path / 'out',
+                classes=['vehicles'],
+                access_token='t',
+                raster_path=raster,
+            )
+        )
+
+
+# ---------------------------------------------------------------- assistant
+class TextModel:
+    """Model whose run_inference returns canned JSON for the assistant."""
+
+    def __init__(self, provider, **kwargs):
+        self.provider = provider
+        self.kwargs = kwargs
+        self.model_id = kwargs.get('model_id')
+        self.prompts: list[str] = []
+
+    def run_inference(self, image_inputs, prompt, **kwargs):
+        from rapidtools.models.base import ModelOutput
+
+        self.prompts.append(prompt)
+        assert image_inputs == []
+        if 'Review the prompt' in prompt:
+            return ModelOutput(text='- Fine.')
+        return ModelOutput(text='{"asset": "pole", "fields": [{"name": "State"}]}')
+
+
+def test_assist_settings_validation():
+    from rapidtools.gui.workflow import AssistSettings
+
+    with pytest.raises(ValueError, match='action must be one of'):
+        AssistSettings(action='translate')
+    with pytest.raises(ValueError, match='Unknown assistant backend'):
+        AssistSettings(action='draft', backend='nope')
+    with pytest.raises(ValueError, match='required to use Google Gemini'):
+        AssistSettings(action='draft', backend='gemini')
+    with pytest.raises(ValueError, match='JSON object'):
+        AssistSettings(action='draft', backend='gemma4', spec=['x'])
+    ok = AssistSettings(action='Draft', backend='gemma4')
+    assert ok.action == 'draft' and ok.model_id == ok.backend_spec['default_model']
+
+
+def test_assist_caches_and_releases_model(
+    monkeypatch, patched_sources, raster, tmp_path
+):
+    import rapidtools.models as models_module
+    from rapidtools.gui.workflow import AssistSettings, InferenceSettings
+
+    created: list[TextModel] = []
+
+    def fake_load(provider, **kw):
+        model = TextModel(provider, **kw)
+        created.append(model)
+        return model
+
+    monkeypatch.setattr(models_module, 'load', fake_load)
+    messages = []
+    wf = AssetAnalysisWorkflow(progress_callback=messages.append)
+
+    out = wf.assist(AssistSettings(action='draft', backend='gemma4', brief='poles'))
+    assert out['spec']['asset'] == 'pole'
+    assert created[0].kwargs == {
+        'model_id': 'google/gemma-4-E2B-it',
+        'temperature': 0.2,
+        'max_tokens': 4096,
+    }
+    assert any('Loading google/gemma-4-E2B-it' in m for m in messages)
+
+    # Same backend and model: the wrapper is reused.
+    out = wf.assist(AssistSettings(action='review', backend='gemma4', prompt_text='x'))
+    assert out == {'text': '- Fine.'} and len(created) == 1
+
+    # A hosted backend gets its own wrapper with the key and one worker.
+    wf.assist(AssistSettings(action='draft', backend='gemini', api_key='k', brief='b'))
+    assert created[1].kwargs['api_key'] == 'k' and created[1].kwargs['max_workers'] == 1
+    assert wf._assistant[0][0] == 'gemini'
+
+    # Inference does not evict a hosted assistant, but does evict a local one.
+    wf.analyze(
+        _collection('b', 1),
+        InferenceSettings(
+            raster_path=raster, output_dir=tmp_path, prompt='p', backend='gemma4'
+        ),
+    )
+    assert wf._assistant is not None
+    wf.assist(AssistSettings(action='draft', backend='gemma4', brief='poles'))
+    assert wf._assistant[0][0] == 'gemma4'
+    wf.analyze(
+        _collection('b', 1),
+        InferenceSettings(
+            raster_path=raster, output_dir=tmp_path, prompt='p', backend='gemma4'
+        ),
+    )
+    assert wf._assistant is None
+    wf.release_assistant()  # idempotent

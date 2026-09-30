@@ -71,8 +71,6 @@
   .choice .icon { width: 34px; height: 34px; border-radius: 9px; background: var(--accent-soft); display: grid; place-items: center; font-size: 17px; }
   .choice .title { font-weight: 600; display: flex; align-items: center; gap: 8px; }
   .choice .desc { color: var(--muted); font-size: 13px; margin-top: 2px; }
-  .choice-body { padding: 12px 2px 2px; display: none; }
-  .choice-body.open { display: block; }
   .row { display: flex; gap: 8px; align-items: center; }
   .row > .grow { flex: 1; min-width: 0; }
   .field { margin-bottom: 10px; }
@@ -196,9 +194,97 @@
   .toast { background: #1c2430; color: #fff; padding: 10px 14px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.3); max-width: 420px; font-size: 13px; animation: fade .2s ease-out; }
   .toast.error { background: var(--err); }
   .toast.ok { background: var(--ok); }
-  @keyframes fade { from { opacity: 0; transform: translateY(6px);} to { opacity: 1; transform: none; } }
+
+  /* ---- notification bar (long runs) ---- */
+  .notify-bar { display: none; align-items: center; gap: 10px; padding: 8px 20px; background: #fff8e6; border-bottom: 1px solid #f1dfb0; font-size: 13px; flex: 0 0 auto; flex-wrap: wrap; }
+  .notify-bar.open { display: flex; }
+  .notify-bar .msg { flex: 1 1 320px; min-width: 240px; }
+  .notify-bar input { width: 280px; }
+
+  /* ---- map view ---- */
+  .logos { display: flex; align-items: center; gap: 14px; }
+  .logos a { display: block; line-height: 0; }
+  .logos img { height: 30px; width: auto; display: block; }
+  .viewer-toolbar .tools { display: contents; }
+  .viewer-wrap.mapmode .raster-only { display: none !important; }
+  .viewer-wrap:not(.mapmode) .map-only { display: none !important; }
+  .viewer-toolbar .sep { width: 1px; height: 22px; background: var(--line); margin: 0 2px; }
+  #map-canvas { display: none; cursor: grab; }
+  .viewer.mapmode #map-canvas { display: block; }
+  .viewer.mapmode #canvas, .viewer.mapmode .empty, .viewer.mapmode #legend { display: none !important; }
+  #map-canvas.draw { cursor: crosshair; }
+  #map-canvas.panning { cursor: grabbing; }
+  .map-ui { display: none; }
+  .viewer.mapmode .map-ui { display: block; }
+  .map-readout { position: absolute; left: 10px; bottom: 10px; background: rgba(16,24,40,.8); color: #fff; font: 12px var(--mono); padding: 6px 8px; border-radius: 6px; pointer-events: none; white-space: pre; }
+  .map-attrib { position: absolute; right: 10px; bottom: 10px; background: rgba(255,255,255,.85); font-size: 11px; padding: 2px 6px; border-radius: 4px; }
+  .map-help { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); background: rgba(16,24,40,.8); color: #fff; font-size: 12px; padding: 5px 10px; border-radius: 6px; pointer-events: none; white-space: nowrap; }
+  .map-layers { position: absolute; right: 10px; top: 10px; background: rgba(255,255,255,.94); color: var(--ink); font-size: 12.5px; padding: 8px 10px; border-radius: 8px; box-shadow: var(--shadow); display: none; flex-direction: column; gap: 6px; }
+  .viewer.mapmode .map-layers { display: flex; }
+  .map-layers .ml-row { display: flex; align-items: center; gap: 6px; margin: 0; cursor: pointer; }
+  .map-layers .ml-row > span:first-child { color: var(--muted); }
+  .map-layers .ml-sub { margin-left: 22px; }
+  .map-layers .swatch { display: inline-block; width: 16px; height: 3px; background: #00e5ff; border-radius: 2px; margin: 0 2px; }
+  .map-layers #map-legend-who { color: var(--muted); }
+  .seg.sm button { padding: 2px 8px; font-size: 12px; }
+  .map-zoom { position: absolute; right: 10px; bottom: 34px; display: none; flex-direction: column; align-items: stretch; background: rgba(255,255,255,.94); border-radius: 8px; box-shadow: var(--shadow); overflow: hidden; }
+  .viewer.mapmode .map-zoom { display: flex; }
+  .map-zoom button { border: 0; background: transparent; width: 34px; height: 30px; font-size: 18px; line-height: 1; }
+  .map-zoom button:hover { background: var(--accent-soft); }
+  .map-zoom span { text-align: center; font: 11px var(--mono); color: var(--muted); padding: 2px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .geo-wrap { position: relative; }
+  .geo-wrap input { width: 260px; }
+  .geo-results { position: absolute; top: calc(100% + 4px); left: 0; z-index: 40; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); width: 440px; max-height: 280px; overflow: auto; display: none; }
+  .geo-results div { padding: 7px 10px; cursor: pointer; font-size: 13px; border-bottom: 1px solid var(--line); }
+  .geo-results div:last-child { border-bottom: 0; }
+  .geo-results div:hover { background: var(--accent-soft); }
+  .geo-results .none { color: var(--muted); cursor: default; }
+  #map-cov-info { max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; }
+  #area-card .area-info { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-top: 4px; white-space: pre-line; }
+  #area-card .row { flex-wrap: wrap; }
+  /* ---- prompt builder ---- */
+  .modal.builder { width: min(1240px, 96vw); max-height: 92vh; height: 92vh; }
+  .builder-body { flex: 1; display: grid; grid-template-columns: 170px minmax(0, 1fr) minmax(0, 420px); min-height: 0; }
+  .b-nav { border-right: 1px solid var(--line); padding: 12px 8px; background: #f7f9fc; display: flex; flex-direction: column; gap: 4px; }
+  .b-nav button { text-align: left; border: 0; background: transparent; padding: 9px 10px; border-radius: 8px; color: var(--muted); font-weight: 600; display: flex; gap: 8px; align-items: center; }
+  .b-nav button .n { width: 20px; height: 20px; border-radius: 50%; background: #e6eaf1; display: grid; place-items: center; font-size: 11px; }
+  .b-nav button.active { background: var(--accent-soft); color: var(--accent); }
+  .b-nav button.active .n { background: var(--accent); color: #fff; }
+  .b-form { overflow: auto; padding: 16px 18px; }
+  .b-form .panel { display: none; } .b-form .panel.active { display: block; }
+  .b-form h4 { margin: 0 0 4px; font-size: 15px; }
+  .b-form .lead { margin-bottom: 12px; }
+  .b-form textarea { min-height: 70px; font-family: inherit; font-size: 13px; }
+  .b-side { border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: #fbfcfe; }
+  .b-assist { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .b-assist h5, .b-preview h5 { margin: 0 0 8px; font-size: 12.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; display: flex; align-items: center; gap: 8px; }
+  .b-assist textarea { min-height: 64px; font-family: inherit; font-size: 13px; }
+  .b-assist .reply { margin-top: 8px; font-size: 12.5px; white-space: pre-wrap; max-height: 180px; overflow: auto; background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: none; }
+  .b-assist .reply.show { display: block; }
+  .b-preview { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 12px 14px; }
+  .b-preview pre { flex: 1; margin: 0; overflow: auto; font-family: var(--mono); font-size: 11.5px; line-height: 1.45; background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 10px; white-space: pre-wrap; }
+  .b-preview .attrs { margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .b-preview .attrs code { background: #eef1f6; padding: 1px 6px; border-radius: 6px; font-size: 11px; margin: 0 3px 3px 0; display: inline-block; }
+  .frow { display: grid; grid-template-columns: 1.1fr .8fr 1.4fr auto; gap: 6px; align-items: start; margin-bottom: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  .frow .full { grid-column: 1 / -1; }
+  .frow .num { display: none; gap: 6px; } .frow.number .num { display: flex; } .frow.number .opts { display: none; }
+  .frow.text .opts, .frow.boolean .opts { display: none; }
+  .rub { border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 10px; margin-bottom: 8px; }
+  .rub .head { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .rub .head b { font-size: 13px; }
+  .rub textarea { min-height: 56px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+  .chip { border: 1px dashed #b9c8ea; background: #fff; border-radius: 999px; padding: 3px 10px; font-size: 12px; color: var(--accent); }
+  .chip:hover { background: var(--accent-soft); }
+  .btn.tiny { padding: 3px 8px; font-size: 12px; font-weight: 500; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .imagery-opts { display: none; padding-top: 8px; } .imagery-opts.open { display: block; }
+  #bbox-grid input { font-family: var(--mono); font-size: 12.5px; }
 
   @media (max-width: 980px) {
+    .builder-body { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
+    .b-nav { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--line); }
+    .b-side { border-left: 0; border-top: 1px solid var(--line); max-height: 45vh; }
     main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
     .side { border-right: 0; border-bottom: 1px solid var(--line); max-height: 50vh; }
     .status { display: none; }
@@ -207,60 +293,116 @@
 </head>
 <body>
 <header id="header">
-  <div class="brand"><div class="logo">R</div><div>rAPIdtools <small>· Asset Analysis</small></div></div>
+  <div class="logos">
+    <a href="https://www.uwrapid.org/" target="_blank" rel="noopener" title="NSF NHERI RAPID Facility"><img src="/static/RAPIDLogo.webp" alt="NSF NHERI RAPID Facility"></a>
+    <a href="https://pypi.org/project/rapidtools/" target="_blank" rel="noopener" title="rapidtools on PyPI"><img src="/static/rAPIdtoolsLogo.webp" alt="rapidtools"></a>
+    <small class="hint" id="shared-note" style="display:none;margin:0 0 0 4px">shared server</small>
+  </div>
   <nav class="stepper">
     <button class="step-tab active" data-step="1"><span class="n">1</span>Imagery</button>
-    <button class="step-tab" data-step="2" disabled><span class="n">2</span>Detect &amp; analyze</button>
+    <button class="step-tab" data-step="2" disabled><span class="n">2</span>Detect &amp; Analyze</button>
     <button class="step-tab" data-step="3" disabled><span class="n">3</span>Results</button>
   </nav>
   <div class="spacer"></div>
   <div class="status"><span class="spinner"></span><span id="status-text">Ready.</span></div>
   <button class="btn sm danger btn-cancel" id="btn-cancel">Cancel</button>
 </header>
+<div class="notify-bar" id="notify-bar">
+  <span class="msg" id="notify-text">This run may take a while. You can leave this tab open, or close it and come back later: the results stay on the server.</span>
+  <input class="input" id="notify-target" placeholder="email address or webhook URL" autocomplete="email">
+  <button class="btn sm primary" id="notify-send">Notify me when it's done</button>
+  <button class="btn sm" id="notify-browser" title="Show a desktop notification from this browser when the run finishes">Browser alert</button>
+  <button class="btn sm" id="notify-dismiss">Not now</button>
+</div>
 
 <main>
   <aside class="side">
     <!-- ========================= STEP 1 ========================= -->
     <section class="panel active" id="panel-1">
-      <h1>Where is your aerial image?</h1>
-      <p class="lead">Choose how to bring in the post-disaster orthomosaic. A preview will appear on the right once it is loaded.</p>
+      <h1>Choose your study area</h1>
+      <p class="lead">Pick how you want to start: select an area on the map, load your own imagery, or download a sample dataset.</p>
+      <p class="lead">To select an area, search for an address or pan and zoom, then draw a box around the region you want to analyze. Highlighted routes on the map indicate where street-level survey imagery is available.</p>
+      <p class="lead">To use your own imagery, load the files from your computer.</p>
 
       <div class="card">
-        <div class="choice-grid">
-          <button class="choice selected" data-source="local">
-            <div class="icon">💻</div>
-            <div><div class="title">Load from this computer</div><div class="desc">Pick a GeoTIFF that is already on this machine.</div></div>
-          </button>
-          <div class="choice-body open" id="body-local">
-            <div class="field">
-              <label>GeoTIFF path</label>
-              <div class="row">
-                <input class="input grow" id="raster-path" placeholder="/path/to/orthomosaic.tiff">
-                <button class="btn" data-browse="raster-path" data-kind="raster">Browse…</button>
+        <div class="choice-grid" id="start-grid">
+          <button class="choice selected" data-start="area"><div class="icon">🗺️</div><div><div class="title">Select an area on the map</div><div class="desc">Draw a box, then download satellite imagery for it or discover objects along the street survey.</div></div></button>
+          <button class="choice" data-start="local"><div class="icon">💻</div><div><div class="title">Load my own imagery</div><div class="desc">A GeoTIFF that is already on this computer.</div></div></button>
+          <button class="choice" data-start="sample"><div class="icon">⬇️</div><div><div class="title">Download a UW RAPID sample</div><div class="desc">Post-event imagery such as the 2025 Eaton Fire in Altadena, CA.</div></div></button>
+          <button class="choice" data-start="tacc" disabled><div class="icon">🏛️</div><div><div class="title">Get from TACC <span class="pill warn">Coming soon</span></div><div class="desc">UW RAPID datasets hosted on the DesignSafe / TACC data depot.</div></div></button>
+        </div>
+      </div>
+
+      <div class="card start-panel" id="area-card" data-start="area">
+        <h2>Selected area</h2>
+        <div class="area-info" id="area-info">No area yet: hold Shift and drag on the map, or press Draw box.</div>
+        <div class="row" style="margin-top:8px">
+          <button class="btn" id="btn-area-draw">✏️ Draw on map</button>
+          <button class="btn" id="btn-map-region">🗺️ Show on map</button>
+          <button class="btn" id="btn-area-clear">Clear</button>
+        </div>
+        <details class="adv" style="margin-top:8px">
+          <summary>Coordinates, or the extent of a GeoJSON file</summary>
+          <div class="body">
+            <div class="seg" id="region-mode" style="margin-bottom:8px"><button class="on" data-mode="bbox">Box on the map</button><button data-mode="geojson">Extent of a GeoJSON file</button></div>
+            <div id="region-bbox">
+              <div class="grid2" id="bbox-grid">
+                <div class="field"><label>Min longitude (west)</label><input class="input" id="bbox-min-lon" placeholder="-118.150"></div>
+                <div class="field"><label>Min latitude (south)</label><input class="input" id="bbox-min-lat" placeholder="34.180"></div>
+                <div class="field"><label>Max longitude (east)</label><input class="input" id="bbox-max-lon" placeholder="-118.140"></div>
+                <div class="field"><label>Max latitude (north)</label><input class="input" id="bbox-max-lat" placeholder="34.190"></div>
+              </div>
+              <div class="hint">WGS84 degrees. Editing the numbers moves the box on the map.</div>
+            </div>
+            <div id="region-geojson" style="display:none">
+              <div class="field">
+                <label>GeoJSON file</label>
+                <div class="row">
+                  <input class="input grow" id="region-geojson-path" placeholder="/path/to/area_or_assets.geojson">
+                  <button class="btn" data-browse="region-geojson-path" data-kind="geojson">Browse…</button>
+                </div>
               </div>
             </div>
-            <button class="btn primary" id="btn-load-local">Load image</button>
           </div>
-
-          <button class="choice" data-source="tacc" disabled>
-            <div class="icon">🏛️</div>
-            <div><div class="title">Get from TACC <span class="pill warn">Coming soon</span></div><div class="desc">Browse UW RAPID datasets hosted on the DesignSafe / TACC data depot.</div></div>
-          </button>
-
-          <button class="choice" data-source="sample">
-            <div class="icon">⬇️</div>
-            <div><div class="title">Download a UW RAPID sample</div><div class="desc">Post-event imagery from the 2025 Eaton Fire in Altadena, CA.</div></div>
-          </button>
-          <div class="choice-body" id="body-sample">
-            <div class="field">
-              <label>Sample dataset</label>
-              <div class="row">
-                <select id="sample-name" class="grow"></select>
-                <button class="btn primary" id="btn-download-sample">Download</button>
-              </div>
-              <div class="hint">Files are about 1–2 GB and are saved to the working folder below.</div>
-            </div>
+        </details>
+        <h3 style="margin:14px 0 6px;font-size:13px">Work with this area</h3>
+        <div class="row" style="margin-bottom:4px">
+          <span class="label" style="margin:0">Satellite tiles</span>
+          <div class="seg" id="region-provider"><button class="on" data-provider="bing">Bing</button><button data-provider="google">Google</button></div>
+          <span class="hint" id="region-zoom-info" style="margin:0 0 0 8px">Resolution is chosen from the area size.</span>
+        </div>
+        <details class="adv" id="zoom-adv" style="margin:0 0 10px">
+          <summary>Adjust resolution</summary>
+          <div class="body">
+            <div class="row"><label class="label" style="margin:0">Tile zoom level</label><input class="input" type="number" id="region-zoom" value="19" min="10" max="21" style="width:64px"><span class="hint" style="margin:0">19 is about 0.3 m/px; the download is limited to 2,500 tiles.</span></div>
           </div>
+        </details>
+        <div class="row">
+          <button class="btn primary" id="btn-download-region" disabled title="Stitch satellite tiles over the area into a GeoTIFF you can detect assets in">Download satellite imagery here</button>
+          <button class="btn" id="btn-area-street" disabled title="Find objects along the Mapillary survey inside the area; no aerial image needed">Discover street-level objects here</button>
+        </div>
+      </div>
+
+      <div class="card start-panel" id="start-local" data-start="local" style="display:none">
+        <h2>Load from this computer</h2>
+        <div class="field">
+          <label>GeoTIFF path</label>
+          <div class="row">
+            <input class="input grow" id="raster-path" placeholder="/path/to/orthomosaic.tiff">
+            <button class="btn" data-browse="raster-path" data-kind="raster">Browse…</button>
+          </div>
+        </div>
+        <button class="btn primary" id="btn-load-local">Load image</button>
+      </div>
+
+      <div class="card start-panel" id="start-sample" data-start="sample" style="display:none">
+        <h2>Download a UW RAPID sample</h2>
+        <div class="field">
+          <div class="row">
+            <select id="sample-name" class="grow"></select>
+            <button class="btn primary" id="btn-download-sample">Download</button>
+          </div>
+          <div class="hint">Post-event imagery such as the 2025 Eaton Fire in Altadena, CA. Files are about 1–2 GB and are saved to the working folder below.</div>
         </div>
       </div>
 
@@ -282,13 +424,14 @@
     <!-- ========================= STEP 2 ========================= -->
     <section class="panel" id="panel-2">
       <h1>What should we look for?</h1>
-      <p class="lead">Tell us which assets to extract from the image, then choose the model and the prompt used to analyze each one.</p>
+      <p class="lead">Tell us which assets to find, where the imagery of each one should come from, and the model and prompt used to analyze it.</p>
 
       <div class="card">
         <h2>Assets</h2>
         <div class="seg" id="asset-mode">
-          <button class="on" data-mode="detect">Detect assets in the image</button>
-          <button data-mode="load">I already have asset locations</button>
+          <button class="on" data-mode="detect">Detect in the image</button>
+          <button data-mode="street">Discover along a street survey</button>
+          <button data-mode="load">I have asset locations</button>
         </div>
 
         <div id="asset-detect" style="margin-top:12px">
@@ -307,7 +450,8 @@
               <div class="field">
                 <label>Detect assets in</label>
                 <div class="check"><input type="radio" name="source" id="src-bing" value="bing" checked><label for="src-bing" style="margin:0;font-weight:500;color:var(--ink)">Bing basemap over the image extent (pre-disaster appearance)</label></div>
-                <div class="check"><input type="radio" name="source" id="src-recon" value="recon"><label for="src-recon" style="margin:0;font-weight:500;color:var(--ink)">The post-disaster image itself</label></div>
+                <div class="check"><input type="radio" name="source" id="src-google" value="google"><label for="src-google" style="margin:0;font-weight:500;color:var(--ink)">Google satellite basemap over the image extent</label></div>
+                <div class="check"><input type="radio" name="source" id="src-recon" value="recon"><label for="src-recon" style="margin:0;font-weight:500;color:var(--ink)">The loaded image itself</label></div>
               </div>
               <div class="grid2">
                 <div class="field">
@@ -320,6 +464,55 @@
                 </div>
               </div>
               <div class="check"><input type="checkbox" id="regularize" checked><label for="regularize" style="margin:0;font-weight:500;color:var(--ink)">Regularize geometries (buildings and roads)</label></div>
+              <div class="check"><input type="checkbox" id="instances"><label for="instances" style="margin:0;font-weight:500;color:var(--ink)">Keep every detected instance separate (countable objects such as vehicles)</label></div>
+            </div>
+          </details>
+        </div>
+
+        <div id="asset-street" style="margin-top:12px; display:none">
+          <div class="field">
+            <label>Objects to discover</label>
+            <input class="input" id="street-classes" value="vehicles" list="street-class-list" placeholder="vehicles, utility poles, fire hydrants">
+            <datalist id="street-class-list"></datalist>
+            <div class="hint">Plain English, comma separated. Found in every Mapillary image within the survey area from Mapillary's own detections, without downloading pictures.</div>
+          </div>
+          <div class="field">
+            <label>Survey area</label>
+            <div class="seg" id="street-area"><button class="on" data-area="image">Extent of the loaded image</button><button data-area="box">Custom box</button></div>
+            <div id="street-box" style="display:none; margin-top:8px">
+              <div class="grid2">
+                <div class="field"><label>Min longitude (west)</label><input class="input" id="sbox-min-lon" placeholder="-117.489"></div>
+                <div class="field"><label>Min latitude (south)</label><input class="input" id="sbox-min-lat" placeholder="47.711"></div>
+                <div class="field"><label>Max longitude (east)</label><input class="input" id="sbox-max-lon" placeholder="-117.487"></div>
+                <div class="field"><label>Max latitude (north)</label><input class="input" id="sbox-max-lat" placeholder="47.7125"></div>
+              </div>
+              <div class="row" style="margin-top:6px"><button class="btn" id="btn-map-street">🗺️ Show on map</button><span class="hint" style="margin:0 0 0 8px">Follows the box drawn on the map. Objects outside the loaded image still appear in the table, the GeoJSON and on the map.</span></div>
+            </div>
+          </div>
+          <div class="field">
+            <label>Mapillary access token</label>
+            <div class="row">
+              <input class="input grow" type="password" id="street-token" placeholder="MLY|..." autocomplete="off" data-sync="mly-token">
+              <button class="btn" data-textfile="street-token" data-kind="text">From file…</button>
+              <button class="btn" data-mly-token="street-token" title="Download the token used by the rapidtools examples">RAPID token</button>
+            </div>
+          </div>
+          <details class="adv">
+            <summary>Advanced options</summary>
+            <div class="body">
+              <div class="grid2">
+                <div class="field"><label>Captured after (YYYY-MM-DD)</label><input class="input" id="street-start" placeholder="optional"></div>
+                <div class="field"><label>Captured before (YYYY-MM-DD)</label><input class="input" id="street-end" placeholder="optional"></div>
+              </div>
+              <div class="check"><input type="checkbox" id="street-rapid" checked><label for="street-rapid" style="margin:0;font-weight:500;color:var(--ink)">Only imagery uploaded by the RAPID Facility</label></div>
+              <div class="grid3">
+                <div class="field"><label>Frame spacing (m)</label><input class="input" type="number" id="street-spacing" value="3" min="0" step="0.5"></div>
+                <div class="field"><label>Min. sightings</label><input class="input" type="number" id="street-minobs" value="2" min="1"></div>
+                <div class="field"><label>Cluster radius (m)</label><input class="input" type="number" id="street-cluster" value="4" min="0.5" step="0.5"></div>
+                <div class="field"><label>Camera height (m)</label><input class="input" type="number" id="street-camera" value="2.4" min="0.5" step="0.1"></div>
+                <div class="field"><label>Max range (m)</label><input class="input" type="number" id="street-range" value="30" min="2"></div>
+                <div class="field"><label>Detections from</label><select class="input" id="street-detsource"><option value="auto">Auto</option><option value="mapillary">Mapillary labels</option><option value="sam3">SAM 3 on thumbnails</option></select></div>
+              </div>
             </div>
           </details>
         </div>
@@ -338,6 +531,66 @@
       </div>
 
       <div class="card">
+        <h2>Imagery for analysis</h2>
+        <div class="radio-cards" id="imagery"></div>
+        <div class="field" id="field-mly-token" style="display:none">
+          <label>Mapillary access token</label>
+          <div class="row">
+            <input class="input grow" type="password" id="mly-token" placeholder="MLY|..." autocomplete="off" data-sync="street-token">
+            <button class="btn" data-textfile="mly-token" data-kind="text">From file…</button>
+            <button class="btn" data-mly-token="mly-token" title="Download the token used by the rapidtools examples">RAPID token</button>
+          </div>
+        </div>
+        <details class="adv" id="imagery-adv">
+          <summary>Advanced options</summary>
+          <div class="body">
+        <div class="imagery-opts" id="imagery-aerial">
+          <details class="adv">
+            <summary>Edge handling</summary>
+            <div class="body grid2">
+              <div class="field"><label>Min. footprint coverage (0–1)</label><input class="input" id="min-coverage" placeholder="e.g. 0.6 (blank = default)"></div>
+              <div class="check" style="margin-top:22px"><input type="checkbox" id="pad-edges" checked><label for="pad-edges" style="margin:0;font-weight:500;color:var(--ink)">Pad crops at the image edge</label></div>
+            </div>
+          </details>
+        </div>
+        <div class="imagery-opts" id="imagery-google_streetview">
+          <div class="grid3">
+            <div class="field"><label>Search radius (m)</label><input class="input" type="number" id="gsv-radius" value="50" min="5"></div>
+            <div class="field"><label>Images per asset</label><input class="input" type="number" id="gsv-images" value="1" min="1" max="8"></div>
+            <div class="field"><label>Vertical crop (top–bottom)</label><div class="row"><input class="input" id="gsv-top" value="0.2"><input class="input" id="gsv-bottom" value="0.9"></div></div>
+          </div>
+          <div class="hint">The nearest official panorama is cropped to the footprint; 0.2–0.9 trims the sky and the camera car.</div>
+        </div>
+        <div class="imagery-opts" id="imagery-mapillary">
+          <div class="grid3">
+            <div class="field"><label>Captured after</label><input class="input" id="mly-start" placeholder="YYYY-MM-DD"></div>
+            <div class="field"><label>Captured before</label><input class="input" id="mly-end" placeholder="YYYY-MM-DD"></div>
+            <div class="field"><label>Images per asset</label><input class="input" type="number" id="mly-images" value="4" min="1" max="16"></div>
+          </div>
+          <div class="check"><input type="checkbox" id="mly-rapid" checked><label for="mly-rapid" style="margin:0;font-weight:500;color:var(--ink)">Only imagery uploaded by the RAPID Facility</label></div>
+        </div>
+        <div class="imagery-opts" id="imagery-mapillary_objects">
+          <div class="grid3">
+            <div class="field"><label>Views per object</label><input class="input" type="number" id="obj-images" value="2" min="1" max="8"></div>
+            <div class="field"><label>Thumbnail size</label><select class="input" id="obj-size"><option>2048</option><option>1024</option></select></div>
+            <div class="field"><label>Crop margin</label><input class="input" id="obj-buffer" value="40%" placeholder="e.g. 40%, 120 px"></div>
+          </div>
+          <div class="hint">Crops the closest distinct views of each discovered object from Mapillary thumbnails.</div>
+        </div>
+        <div id="outline-block">
+          <div class="check"><input type="checkbox" id="overlay-outline" checked><label for="overlay-outline" style="margin:0;font-weight:500;color:var(--ink)">Mark the asset on each image before inference</label></div>
+          <div class="grid2" id="outline-opts">
+            <div class="field"><label>Outline shape</label><select class="input" id="outline-shape"><option value="geometry">Asset geometry</option><option value="bbox">Bounding box</option><option value="rotated_bbox">Rotated bounding box</option><option value="convex_hull">Convex hull</option><option value="corners">Corner brackets</option></select></div>
+            <div class="field"><label>Outline buffer</label><input class="input" type="text" id="outline-buffer" value="0" placeholder="e.g. 2 m, 10 ft, 10%, 12 px"></div>
+            <div class="field"><label>Outline width</label><input class="input" type="text" id="outline-width" value="6" placeholder="pixels or % of image"></div>
+            <div class="field"><label>Outline colour</label><input class="input" type="text" id="outline-color" value="red" placeholder="red, #00ffff, ..."></div>
+          </div>
+        </div>
+          </div>
+        </details>
+      </div>
+
+      <div class="card">
         <h2>Analysis model</h2>
         <div class="radio-cards" id="backend"></div>
         <div class="field" id="field-api-key" style="margin-top:10px">
@@ -351,10 +604,10 @@
         <div class="field">
           <label>Model ID</label>
           <div class="row">
-            <input class="input grow" id="model-id" list="model-list">
+            <select class="input grow" id="model-id"></select>
+            <input class="input grow" id="model-id-custom" placeholder="custom model ID" style="display:none">
             <button class="btn" id="btn-fetch-models" title="List the models available to this backend">Fetch models</button>
           </div>
-          <datalist id="model-list"></datalist>
           <div class="hint" id="model-hint"></div>
         </div>
         <details class="adv">
@@ -365,13 +618,11 @@
               <div class="field" id="field-batch"><label>Local batch size</label><input class="input" type="number" id="batch-size" value="4" min="1" max="64"></div>
             </div>
             <div class="check" id="field-4bit"><input type="checkbox" id="load-4bit" checked><label for="load-4bit" style="margin:0;font-weight:500;color:var(--ink)">Load the local model in 4-bit (fits consumer GPUs)</label></div>
-            <div class="check"><input type="checkbox" id="overlay-outline" checked><label for="overlay-outline" style="margin:0;font-weight:500;color:var(--ink)">Draw the asset outline on each image before inference</label></div>
-            <div class="grid2" id="outline-opts">
-              <div class="field"><label>Outline shape</label><select class="input" id="outline-shape"><option value="geometry">Asset geometry</option><option value="bbox">Bounding box</option><option value="rotated_bbox">Rotated bounding box</option><option value="convex_hull">Convex hull</option><option value="corners">Corner brackets</option></select></div>
-              <div class="field"><label>Outline buffer</label><input class="input" type="text" id="outline-buffer" value="0" placeholder="e.g. 2 m, 10 ft, 10%, 12 px"></div>
-              <div class="field"><label>Outline width</label><input class="input" type="text" id="outline-width" value="6" placeholder="pixels or % of image"></div>
-              <div class="field"><label>Outline colour</label><input class="input" type="text" id="outline-color" value="red" placeholder="red, #00ffff, ..."></div>
+            <div class="grid2">
+              <div class="field"><label>Temperature</label><input class="input" type="number" id="temperature" value="0.4" min="0" max="2" step="0.1"></div>
+              <div class="field"><label>Max output tokens</label><input class="input" type="number" id="max-tokens" value="2048" min="64" max="32768" step="64"></div>
             </div>
+            <div class="check"><input type="checkbox" id="json-mode"><label for="json-mode" style="margin:0;font-weight:500;color:var(--ink)">Ask for JSON output (use with a JSON prompt format)</label></div>
           </div>
         </details>
       </div>
@@ -380,9 +631,12 @@
         <h2>Prompt <span class="hint" style="margin:0;font-weight:500">applied to every asset</span></h2>
         <textarea id="prompt"></textarea>
         <div class="actions">
+          <button class="btn sm primary" id="btn-builder">✨ Build a prompt…</button>
           <button class="btn sm" data-textfile="prompt" data-kind="text">Load from file…</button>
-          <button class="btn sm" id="btn-sample-prompt">Use sample CHS damage prompt</button>
+          <select id="sample-prompt" class="input" style="width:auto; padding:6px 8px"></select>
+          <button class="btn sm" id="btn-sample-prompt">Load sample</button>
         </div>
+        <div class="hint" id="prompt-hint" style="margin-top:8px">The builder walks you through task, output fields, class indicators and edge cases, and can draft the whole prompt with a language model.</div>
       </div>
 
       <div class="card">
@@ -428,21 +682,45 @@
   <!-- ========================= VIEWER ========================= -->
   <section class="viewer-wrap">
     <div class="viewer-toolbar">
-      <span class="label">Image</span>
       <div class="seg" id="preview-seg">
-        <button class="on" data-preview="raster">Post-disaster</button>
-        <button data-preview="basemap" disabled title="Available after detection on the Bing basemap">Bing basemap</button>
+        <button class="on" data-preview="map">Map</button>
+        <button data-preview="raster" disabled id="raster-btn" title="The loaded aerial image">Image</button>
       </div>
-      <span class="label" style="margin-left:8px">Colour by</span>
-      <select id="color-by"><option value="">Outline only</option></select>
-      <label class="check" style="margin:0 0 0 8px"><input type="checkbox" id="show-overlay" checked> Show assets</label>
-      <label class="check" style="margin:0"><input type="checkbox" id="show-labels"> Labels</label>
-      <label class="check" style="margin:0 0 0 8px" title="Stream the original pixels when zoomed in"><input type="checkbox" id="full-res" checked> Full resolution</label>
-      <span class="spacer"></span>
-      <button class="btn sm" id="btn-fit">Fit</button>
+      <span class="tools raster-only">
+        <label class="check" id="basemap-wrap" style="margin:0 0 0 8px;display:none" title="View the stitched basemap the detection ran on instead of the loaded image"><input type="checkbox" id="basemap-check"> <span id="basemap-label">Stitched basemap</span></label>
+        <span class="label" style="margin-left:8px">Colour by</span>
+        <select id="color-by"><option value="">Outline only</option></select>
+        <label class="check" style="margin:0 0 0 8px"><input type="checkbox" id="show-overlay" checked> Show assets</label>
+        <label class="check" style="margin:0"><input type="checkbox" id="show-labels"> Labels</label>
+        <label class="check" style="margin:0 0 0 8px" title="Stream the original pixels when zoomed in"><input type="checkbox" id="full-res" checked> Full resolution</label>
+        <span class="spacer"></span>
+        <button class="btn sm" id="btn-fit">Fit</button>
+      </span>
+      <span class="tools map-only">
+        <span class="sep"></span>
+        <div class="geo-wrap"><input class="input" id="geo-q" placeholder="Search an address or place…" autocomplete="off"><div class="geo-results" id="geo-results"></div></div>
+        <button class="btn sm" id="geo-go">Go</button>
+        <span class="sep"></span>
+        <button class="btn sm" id="map-draw" title="Then drag on the map (or hold Shift and drag at any time)">✏️ Draw box</button>
+        <button class="btn sm" id="map-clear">Clear box</button>
+        <span class="hint" id="map-cov-info" style="margin-left:10px"></span>
+        <span class="spacer"></span>
+      </span>
     </div>
     <div class="viewer" id="viewer">
       <canvas id="canvas"></canvas>
+      <canvas id="map-canvas"></canvas>
+      <div class="map-ui map-help" id="map-help">Drag to pan · scroll to zoom · hold Shift and drag (or press Draw box) to choose an area</div>
+      <div class="map-ui map-layers" id="map-layers">
+        <label class="ml-row"><input type="checkbox" id="map-coverage" checked> <i class="swatch"></i>Street-level imagery <span id="map-legend-who">(RAPID surveys)</span></label>
+        <label class="ml-row ml-sub"><input type="checkbox" id="map-rapid" checked> RAPID surveys only</label>
+        <div class="ml-row ml-sub" id="map-db-info" style="color:var(--muted);font-size:11.5px">route database…</div>
+        <div class="ml-row ml-sub"><span>Style</span><div class="seg sm" id="map-style"><button class="on" data-style="lines">Lines</button><button data-style="heat">Heat</button></div></div>
+        <div class="ml-row"><span>Basemap</span><div class="seg sm" id="map-provider"><button class="on" data-provider="bing">Bing</button><button data-provider="google">Google</button></div></div>
+      </div>
+      <div class="map-ui map-zoom"><button id="map-zoom-in" title="Zoom in">+</button><span id="map-zoom-label">z4</span><button id="map-zoom-out" title="Zoom out">−</button></div>
+      <div class="map-ui map-readout" id="map-readout"></div>
+      <div class="map-ui map-attrib" id="map-attrib">Imagery © Microsoft Bing · Coverage © Mapillary · Search © OpenStreetMap</div>
       <div class="empty" id="empty"><div><div class="big">🛰️</div>Load an aerial image to see it here.<br><small>Detections and inference results will be drawn on top as they arrive.</small></div></div>
       <div class="tooltip" id="tooltip"></div>
       <div class="legend" id="legend"></div>
@@ -478,13 +756,131 @@
     </div>
   </div>
 </div>
+<!-- prompt builder modal -->
+<div class="modal-bg" id="builder">
+  <div class="modal builder">
+    <div class="modal-head">
+      <h3>Prompt builder</h3>
+      <span class="hint" id="b-status"></span>
+      <select class="input" id="b-sample" style="width:auto;padding:4px 8px;font-size:12.5px" title="A finished prompt to start from"></select>
+      <button class="btn sm" id="b-load-sample" title="Load the selected sample into the builder">Start from sample</button>
+      <button class="btn sm" id="b-clear" title="Empty every field">Clear</button>
+      <button class="btn sm" id="builder-close">✕</button>
+    </div>
+    <div class="builder-body">
+      <nav class="b-nav">
+        <button class="active" data-bstep="1"><span class="n">1</span>Task</button>
+        <button data-bstep="2"><span class="n">2</span>Output fields</button>
+        <button data-bstep="3"><span class="n">3</span>Class indicators</button>
+        <button data-bstep="4"><span class="n">4</span>Steps &amp; edge cases</button>
+        <button data-bstep="5"><span class="n">5</span>Review</button>
+      </nav>
+      <section class="b-form">
+        <div class="panel active" id="bpanel-1">
+          <h4>What is the model looking at, and what should it decide?</h4>
+          <p class="lead">These sentences become the <b>TASK</b> line. Be specific about the asset and the decision; the assistant on the right can draft everything from a one-line description.</p>
+          <div class="grid2">
+            <div class="field"><label>Asset</label><input class="input" id="b-asset" placeholder="building, vehicle, utility pole"></div>
+            <div class="field"><label>Imagery</label><select class="input" id="b-imagery"><option value="aerial">Aerial / satellite crop</option><option value="street">Street-level image</option><option value="multi-temporal street">Several street-level images over time</option></select></div>
+          </div>
+          <div class="field"><label>Objective</label><textarea id="b-objective" placeholder="assign a CHS Level (0–4) to the primary building structure based on the index below"></textarea><div class="hint">Completes "Analyze each provided image and …".</div></div>
+          <div class="field"><label>Expert role</label><input class="input" id="b-persona" placeholder="an expert in forensic engineering and wildfire damage assessment"></div>
+          <div class="field"><label>Scope and things to ignore</label><textarea id="b-focus" placeholder="Do not focus on non-combustible materials. Ignore neighbouring structures."></textarea></div>
+          <div class="field"><label>How the asset is marked</label><div class="row"><input class="input grow" id="b-marking" placeholder="roughly marked with a red outline"><label class="check" style="margin:0" title="Fill from the outline settings of the analysis imagery"><input type="checkbox" id="b-marking-auto" checked> from settings</label></div></div>
+        </div>
+
+        <div class="panel" id="bpanel-2">
+          <h4>What should the model return?</h4>
+          <p class="lead">Each field becomes one line of the <b>REQUIRED OUTPUT FORMAT</b> and one attribute on every asset. Put the main classification first and a short justification last.</p>
+          <div id="b-fields"></div>
+          <div class="actions">
+            <button class="btn sm" id="b-add-field">+ Add field</button>
+            <button class="btn sm" id="b-add-justification">+ Justification</button>
+            <button class="btn sm" id="b-add-confidence">+ Confidence 1–3</button>
+          </div>
+          <div class="check" style="margin-top:12px"><input type="checkbox" id="b-json"><label for="b-json" style="margin:0;font-weight:500;color:var(--ink)">Ask for a JSON object instead of "Field: value" lines</label></div>
+          <div class="hint">Both formats are parsed into attributes. JSON is stricter with hosted models; plain lines work well with small local models.</div>
+        </div>
+
+        <div class="panel" id="bpanel-3">
+          <h4>Describe each class with visual indicators</h4>
+          <p class="lead">The rubric is what makes grades consistent. Give every option of the main field a name, a one-sentence meaning and 3–5 cues that are visible in the imagery.</p>
+          <div class="grid2">
+            <div class="field"><label>Main field</label><select class="input" id="b-rubric-field"></select></div>
+            <div class="field"><label>Rubric heading</label><input class="input" id="b-rubric-title" placeholder="CHS COMBUSTION INDEX"></div>
+          </div>
+          <div id="b-rubric"></div>
+          <div class="hint" id="b-rubric-hint"></div>
+        </div>
+
+        <div class="panel" id="bpanel-4">
+          <h4>Analysis steps and edge cases</h4>
+          <p class="lead">Steps tell the model the order to work in. Edge cases say what to answer when the image does not fit any class.</p>
+          <div class="field"><label>Analysis steps (one per line; leave empty for sensible defaults)</label><textarea id="b-steps" placeholder="Locate the primary building footprint marked with a red outline&#10;Apply the indicators below&#10;Assign the level with a brief justification"></textarea></div>
+          <div class="field"><label>Edge cases (one per line)</label><textarea id="b-edge" placeholder="Assign No Data if the site has been bulldozed."></textarea></div>
+          <div class="label">Common edge cases</div>
+          <div class="chips" id="b-edge-chips">
+            <button class="chip" data-edge="Assign &quot;No Data&quot; if the site has been cleared, bulldozed or is under demolition so the original damage state cannot be judged.">Site cleared / bulldozed</button>
+            <button class="chip" data-edge="Assign &quot;No Data-Footprint Unclear&quot; if the image does not show a single mostly complete asset, for example when several complete footprints are visible.">Footprint unclear / several assets</button>
+            <button class="chip" data-edge="Assign &quot;Unclear&quot; if the asset is hidden by vegetation, vehicles, shadows or clouds and its condition cannot be assessed.">Occluded view</button>
+            <button class="chip" data-edge="Assign &quot;Unclear&quot; if the image is too blurry, dark or low-resolution to judge the indicators.">Poor image quality</button>
+            <button class="chip" data-edge="If the marked outline does not match any structure, judge the structure closest to the centre of the image.">Outline mismatch</button>
+            <button class="chip" data-edge="Do not confuse foreground barriers such as fences, gates and walls with the primary asset; judge the structure behind them.">Foreground barriers</button>
+          </div>
+        </div>
+
+        <div class="panel" id="bpanel-5">
+          <h4>Review and use</h4>
+          <p class="lead">The full prompt is on the right. Add optional background, ask the assistant for a critical review, then insert the prompt into the editor.</p>
+          <div class="field"><label>Context and background (optional)</label><textarea id="b-context" placeholder="Why the assessment matters, definitions the model should know, ..."></textarea></div>
+          <div class="hint" id="b-review-attrs"></div>
+        </div>
+      </section>
+
+      <aside class="b-side">
+        <div class="b-assist">
+          <h5>Assistant <span class="pill" id="b-assist-model">no model</span></h5>
+          <div class="row" style="margin-bottom:6px">
+            <select class="input grow" id="assist-backend"></select>
+            <input class="input" id="assist-model-id" placeholder="model ID" list="assist-model-list" style="flex:1">
+            <datalist id="assist-model-list"></datalist>
+          </div>
+          <div class="row" id="assist-key-row" style="margin-bottom:6px; display:none">
+            <input class="input grow" type="password" id="assist-key" placeholder="API key for this backend" autocomplete="off">
+          </div>
+          <textarea id="assist-text" placeholder="Describe what you want to assess (e.g. 'grade roof damage of houses after a hurricane into four levels') or how to change the current prompt."></textarea>
+          <div class="actions">
+            <button class="btn sm primary" data-assist="draft" title="Write the whole specification from the description">Draft</button>
+            <button class="btn sm" data-assist="refine" title="Change the current specification as instructed">Refine</button>
+            <button class="btn sm" data-assist="review" title="Critique the assembled prompt">Review</button>
+            <button class="btn sm" data-assist="repurpose" title="Rewrite the loaded specification (a sample, or your own) for the task described above, keeping its structure">Repurpose for this task</button>
+            <button class="btn sm" data-assist="import" title="Split the prompt in the editor into fields">Import editor prompt</button>
+          </div>
+          <div class="reply" id="assist-reply"></div>
+        </div>
+        <div class="b-preview">
+          <h5>Prompt preview</h5>
+          <pre id="b-preview-text"></pre>
+          <div class="attrs" id="b-attrs"></div>
+        </div>
+      </aside>
+    </div>
+    <div class="modal-foot">
+      <span class="hint" style="flex:1; align-self:center" id="b-foot-hint"></span>
+      <button class="btn" id="b-back">← Back</button>
+      <button class="btn" id="b-next">Next →</button>
+      <button class="btn primary" id="b-use">Use this prompt</button>
+    </div>
+  </div>
+</div>
 <div class="toast-wrap" id="toasts"></div>
 
 <script>
 (() => {
   'use strict';
   const $ = (id) => document.getElementById(id);
-  const DETECTION_KEYS = new Set(['asset_type', 'source_model', 'extraction_scale']);
+  const DETECTION_KEYS = new Set(['asset_type', 'source_model', 'extraction_scale', 'class', 'label', 'source', 'confidence', 'n_observations', 'n_images', 'localization', 'observations', 'position_rms_m', 'min_range_m', 'sequence_ids', 'first_seen', 'last_seen']);
+  const HIDDEN_KEYS = new Set(['image_assets', 'observations']);
   const PALETTE = ['#ff5d5d','#ffb347','#ffe74c','#5ee08a','#4cc9f0','#7b8cff','#d67bff','#ff7ab6','#9ee37d','#f4a261','#8ecae6','#ffafcc'];
   const DEFAULT_PROMPT = `You are an expert in post-disaster damage assessment. The primary asset is outlined in red. Describe its condition and assign a damage level.
 
@@ -495,7 +891,7 @@ Justification: [2-3 sentences citing visual evidence]`;
   // ------------------------------------------------------------ state
   const S = {
     step: 1, state: null, lastJob: null, logSeq: 0,
-    previewKey: 'raster', previewVersions: {}, image: null, imageKey: null,
+    previewKey: 'map', previewVersions: {}, image: null, imageKey: null,
     overlay: null, overlayVersion: -1, overlayPreviewVersion: -1, colorBy: '',
     view: { scale: 1, ox: 0, oy: 0 }, drag: null, hover: null, maxStepUnlocked: 1,
     analyzedCount: 0,
@@ -544,24 +940,86 @@ Justification: [2-3 sentences citing visual evidence]`;
   $('next-2').addEventListener('click', () => { unlock(3); goto(3); });
 
   // ------------------------------------------------------------ step 1
-  document.querySelectorAll('.choice[data-source]').forEach(c => c.addEventListener('click', () => {
-    if (c.disabled) return;
-    document.querySelectorAll('.choice').forEach(x => x.classList.toggle('selected', x === c));
-    document.querySelectorAll('.choice-body').forEach(b => b.classList.toggle('open', b.id === 'body-' + c.dataset.source));
-  }));
   $('btn-load-local').addEventListener('click', () => run(() => api('/api/imagery/local', { path: $('raster-path').value })));
   $('btn-download-sample').addEventListener('click', () => run(() => api('/api/imagery/sample', { name: $('sample-name').value })));
   $('output-dir').addEventListener('change', () => run(() => api('/api/output_dir', { path: $('output-dir').value })));
+  let regionProvider = 'bing', regionMode = 'bbox';
+  $('region-provider').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    regionProvider = b.dataset.provider; if (typeof autoZoom === 'function' && typeof M !== 'undefined') autoZoom();
+    $('region-provider').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    const max = S.state && S.state.options.basemaps ? S.state.options.basemaps[regionProvider].max_zoom : 20;
+    $('region-zoom').max = max; if (num('region-zoom') > max) $('region-zoom').value = max;
+    saveForm();
+  }));
+  $('region-mode').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    regionMode = b.dataset.mode;
+    $('region-mode').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    $('region-bbox').style.display = regionMode === 'bbox' ? '' : 'none';
+    $('region-geojson').style.display = regionMode === 'geojson' ? '' : 'none';
+  }));
+  $('btn-download-region').addEventListener('click', () => run(() => {
+    const body = { provider: regionProvider, zoom: num('region-zoom') };
+    if (regionMode === 'geojson') body.geojson = $('region-geojson-path').value;
+    else Object.assign(body, { min_lon: $('bbox-min-lon').value, min_lat: $('bbox-min-lat').value, max_lon: $('bbox-max-lon').value, max_lat: $('bbox-max-lat').value });
+    return api('/api/imagery/region', body);
+  }));
 
   // ------------------------------------------------------------ step 2
   let assetMode = 'detect';
+  let startMode = 'area';
+  function setStart(mode) {
+    startMode = mode;
+    document.querySelectorAll('#start-grid .choice').forEach(c => c.classList.toggle('selected', c.dataset.start === mode));
+    document.querySelectorAll('.start-panel').forEach(p => { p.style.display = p.dataset.start === mode ? '' : 'none'; });
+    if (mode === 'area' && typeof setPreview === 'function' && S.state) setPreview('map');
+    saveForm();
+  }
+  document.querySelectorAll('#start-grid .choice').forEach(c => c.addEventListener('click', () => { if (!c.disabled) setStart(c.dataset.start); }));
+  let streetArea = 'image';
+  $('street-area').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    streetArea = b.dataset.area;
+    $('street-area').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    $('street-box').style.display = streetArea === 'box' ? '' : 'none';
+    updateRunButtons(); saveForm();
+  }));
   $('asset-mode').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
     assetMode = b.dataset.mode;
     $('asset-mode').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
     $('asset-detect').style.display = assetMode === 'detect' ? '' : 'none';
+    $('asset-street').style.display = assetMode === 'street' ? '' : 'none';
     $('asset-load').style.display = assetMode === 'load' ? '' : 'none';
+    $('btn-run-all').textContent = assetMode === 'street' ? 'Discover + run inference' : 'Detect + run inference';
+    $('btn-detect').textContent = assetMode === 'street' ? 'Discover only' : 'Detect only';
+    if (assetMode === 'street' && imagery === 'aerial') setImagery('mapillary_objects');
+    if (assetMode !== 'street' && imagery === 'mapillary_objects') setImagery('aerial');
     updateRunButtons();
   }));
+  // Both Mapillary token fields hold the same value.
+  document.querySelectorAll('[data-sync]').forEach(el => el.addEventListener('input', () => { $(el.dataset.sync).value = el.value; }));
+  document.querySelectorAll('[data-mly-token]').forEach(b => b.addEventListener('click', () => run(async () => {
+    const r = await api('/api/mapillary_token', {});
+    $('street-token').value = r.token; $('mly-token').value = r.token; saveForm();
+    toast('RAPID Mapillary token loaded.', 'ok');
+  })));
+
+  // ---- imagery for analysis
+  let imagery = 'aerial';
+  function imagerySpec(k) { return S.state && S.state.options.imagery_sources ? S.state.options.imagery_sources[k] : null; }
+  function buildImageryCards() {
+    const specs = S.state.options.imagery_sources || {};
+    $('imagery').innerHTML = Object.entries(specs).map(([key, sp]) =>
+      `<button class="radio-card" data-imagery="${key}"><b>${esc(sp.label)}</b><span>${esc(sp.description)}</span></button>`).join('');
+    document.querySelectorAll('[data-imagery]').forEach(c => c.addEventListener('click', () => setImagery(c.dataset.imagery)));
+  }
+  function setImagery(k) {
+    const sp = imagerySpec(k); if (!sp) return;
+    imagery = k;
+    document.querySelectorAll('[data-imagery]').forEach(c => c.classList.toggle('selected', c.dataset.imagery === k));
+    document.querySelectorAll('.imagery-opts').forEach(o => o.classList.toggle('open', o.id === 'imagery-' + k));
+    $('field-mly-token').style.display = sp.needs_token ? '' : 'none';
+    $('outline-block').style.display = sp.supports_outline ? '' : 'none';
+    saveForm(); updateRunButtons();
+  }
   ['threshold', 'mask-threshold'].forEach(id => {
     const upd = () => { $(id + '-out').value = num(id).toFixed(2); };
     $(id).addEventListener('input', upd); upd();
@@ -569,6 +1027,16 @@ Justification: [2-3 sentences citing visual evidence]`;
   let backend = 'gemini';
   const modelLists = {};   // backend -> models fetched from the provider
   function backendSpec(b) { return S.state && S.state.options.backends ? S.state.options.backends[b] : null; }
+  function fillModelSelect(list, current) {
+    const sel = $('model-id');
+    const custom = current && !list.includes(current) ? current : '';
+    sel.innerHTML = list.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('') + '<option value="__custom__">Other (type a model ID)…</option>';
+    sel.value = custom ? '__custom__' : (list.includes(current) ? current : list[0] || '__custom__');
+    $('model-id-custom').style.display = sel.value === '__custom__' ? '' : 'none';
+    if (custom) $('model-id-custom').value = custom;
+  }
+  function modelId() { const v = $('model-id').value; return v === '__custom__' ? $('model-id-custom').value.trim() : v; }
+  $('model-id').addEventListener('change', () => { $('model-id-custom').style.display = $('model-id').value === '__custom__' ? '' : 'none'; if ($('model-id').value === '__custom__') $('model-id-custom').focus(); });
   function buildBackendCards() {
     const specs = S.state.options.backends || {};
     $('backend').innerHTML = Object.entries(specs).map(([key, sp]) =>
@@ -589,8 +1057,8 @@ Justification: [2-3 sentences citing visual evidence]`;
     $('field-4bit').style.display = sp.supports_4bit ? '' : 'none';
     $('btn-fetch-models').textContent = isApi ? 'Fetch models' : 'Show models';
     const list = modelLists[b] || sp.models;
-    $('model-list').innerHTML = list.map(m => `<option value="${esc(m)}">`).join('');
-    if (!list.includes($('model-id').value)) $('model-id').value = sp.default_model;
+    const want = $('model-id').dataset.want || modelId(); delete $('model-id').dataset.want;
+    fillModelSelect(list, list.includes(want) ? want : sp.default_model);
     $('model-hint').textContent = isApi ? `Default: ${sp.default_model}. Fetch models lists what your key can access.` : `Hugging Face repository. Default: ${sp.default_model}.`;
     saveForm();
   }
@@ -598,16 +1066,18 @@ Justification: [2-3 sentences citing visual evidence]`;
     const sp = backendSpec(backend);
     const r = await api('/api/models', { backend, api_key: $('api-key').value });
     modelLists[backend] = r.models;
-    $('model-list').innerHTML = r.models.map(m => `<option value="${esc(m)}">`).join('');
-    $('model-hint').textContent = `${r.models.length} model(s) available for ${sp.label}. Start typing in the field to pick one.`;
+    fillModelSelect(r.models, modelId());
+    $('model-hint').textContent = `${r.models.length} model(s) available for ${sp.label}. Pick one from the list.`;
     if (sp.kind === 'api' && !$('api-key').value.trim()) toast('No API key given, showing the built-in list only.');
     else toast(`${r.models.length} models listed.`, 'ok');
-    $('model-id').focus();
   }));
   $('prompt').value = DEFAULT_PROMPT;
   $('btn-sample-prompt').addEventListener('click', () => run(async () => {
-    const r = await api('/api/prompt/sample', {});
-    $('prompt').value = r.text; toast('Sample CHS prompt loaded.', 'ok');
+    const r = await api('/api/prompt/sample', { name: $('sample-prompt').value });
+    $('prompt').value = r.text; saveForm();
+    const sp = S.state.options.sample_prompts[r.name];
+    if (sp && sp.imagery === 'multi-temporal street') $('json-mode').checked = true;
+    toast(`Sample prompt loaded: ${sp ? sp.label : r.name}.`, 'ok');
   }));
   $('btn-load-geojson').addEventListener('click', () => run(async () => {
     const r = await api('/api/assets/load', { path: $('geojson-path').value });
@@ -617,22 +1087,43 @@ Justification: [2-3 sentences citing visual evidence]`;
   function detectPayload() {
     return {
       assets: $('assets').value, asset_size_m: num('asset-size'),
-      source: document.querySelector('input[name=source]:checked').value,
+      basemap: document.querySelector('input[name=source]:checked').value,
       threshold: num('threshold'), mask_threshold: num('mask-threshold'), regularize: $('regularize').checked,
+      merge_overlaps: !$('instances').checked,
     };
+  }
+  function streetPayload() {
+    const body = {
+      classes: $('street-classes').value, mapillary_token: $('street-token').value,
+      start_date: $('street-start').value, end_date: $('street-end').value, rapid_only: $('street-rapid').checked,
+      frame_spacing_m: num('street-spacing'), min_observations: num('street-minobs'), cluster_radius_m: num('street-cluster'),
+      camera_height_m: num('street-camera'), max_range_m: num('street-range'), detection_source: $('street-detsource').value,
+    };
+    if (streetArea === 'box') Object.assign(body, { min_lon: $('sbox-min-lon').value, min_lat: $('sbox-min-lat').value, max_lon: $('sbox-max-lon').value, max_lat: $('sbox-max-lat').value });
+    return body;
   }
   function inferPayload() {
     return {
-      prompt: $('prompt').value, backend, api_key: $('api-key').value, model_id: $('model-id').value,
+      prompt: $('prompt').value, backend, api_key: $('api-key').value, model_id: modelId(),
       max_workers: num('max-workers'), batch_size: num('batch-size'), load_in_4bit: $('load-4bit').checked,
+      temperature: num('temperature'), max_tokens: num('max-tokens'), json_mode: $('json-mode').checked,
       overlay_outline: $('overlay-outline').checked,
       outline_shape: $('outline-shape').value, outline_buffer: $('outline-buffer').value,
       outline_width: $('outline-width').value, outline_color: $('outline-color').value,
+      imagery, min_footprint_coverage: $('min-coverage').value, pad_edges: $('pad-edges').checked,
+      street_search_radius_m: num('gsv-radius'), street_max_images: num('gsv-images'),
+      street_crop_top: $('gsv-top').value, street_crop_bottom: $('gsv-bottom').value,
+      mapillary_token: $('mly-token').value, mapillary_start_date: $('mly-start').value, mapillary_end_date: $('mly-end').value,
+      mapillary_rapid_only: $('mly-rapid').checked,
+      mapillary_max_images: imagery === 'mapillary_objects' ? num('obj-images') : num('mly-images'),
+      object_image_size: $('obj-size').value, object_crop_buffer: $('obj-buffer').value,
     };
   }
-  $('btn-detect').addEventListener('click', () => run(() => api('/api/detect', detectPayload())));
+  $('btn-detect').addEventListener('click', () => run(() => assetMode === 'street' ? api('/api/street/discover', streetPayload()) : api('/api/detect', detectPayload())));
   $('btn-infer').addEventListener('click', () => run(() => api('/api/infer', inferPayload())));
-  $('btn-run-all').addEventListener('click', () => run(() => api('/api/run_all', { detect: detectPayload(), infer: inferPayload() })));
+  $('btn-run-all').addEventListener('click', () => run(() => assetMode === 'street'
+    ? api('/api/run_all', { mode: 'street', street: streetPayload(), infer: inferPayload() })
+    : api('/api/run_all', { detect: detectPayload(), infer: inferPayload() })));
   $('btn-cancel').addEventListener('click', () => run(() => api('/api/cancel', {})));
   $('btn-reset').addEventListener('click', async () => {
     if (!confirm('Clear the loaded image, assets and results?')) return;
@@ -645,23 +1136,33 @@ Justification: [2-3 sentences citing visual evidence]`;
   function updateRunButtons() {
     const st = S.state; if (!st) return;
     const busy = st.busy, hasRaster = !!st.raster, hasAssets = !!(st.collection && st.collection.count);
-    $('btn-run-all').disabled = busy || !hasRaster || assetMode !== 'detect';
-    $('btn-detect').disabled = busy || !hasRaster || assetMode !== 'detect';
+    const canFind = assetMode === 'detect' || assetMode === 'street';
+    const hasArea = hasRaster || (assetMode === 'street' && streetArea === 'box');
+    $('btn-run-all').disabled = busy || !hasArea || !canFind;
+    $('btn-detect').disabled = busy || !hasArea || !canFind;
     $('btn-infer').disabled = busy || !hasRaster || !hasAssets;
     $('btn-load-geojson').disabled = busy;
-    $('btn-load-local').disabled = busy; $('btn-download-sample').disabled = busy; $('btn-sample-prompt').disabled = busy;
-    $('next-1').disabled = !hasRaster;
+    $('btn-load-local').disabled = busy; $('btn-download-sample').disabled = busy; $('btn-download-region').disabled = busy; $('btn-sample-prompt').disabled = busy;
+    $('next-1').disabled = !hasRaster && !M.box;
+    updateAreaCard();
     $('next-2').disabled = !hasAssets;
-    $('run-hint').textContent = !hasRaster ? 'Load an image in step 1 first.' :
+    const needsToken = assetMode === 'street' || (imagerySpec(imagery) || {}).needs_token;
+    const hasToken = !!($('mly-token').value.trim() || $('street-token').value.trim());
+    $('run-hint').textContent = !hasRaster ? 'Load an image in step 1 first (its extent defines the survey area).' :
+      needsToken && !hasToken ? 'A Mapillary access token is required for this imagery.' :
       assetMode === 'load' && !hasAssets ? 'Load an asset file above, then run inference.' :
       hasAssets ? `${st.collection.count} assets ready (${st.collection.source}).` : '';
   }
 
   // ------------------------------------------------------------ form persistence
-  const PERSISTED = ['assets', 'asset-size', 'threshold', 'mask-threshold', 'regularize', 'model-id', 'max-workers', 'batch-size', 'load-4bit', 'overlay-outline', 'outline-shape', 'outline-buffer', 'outline-width', 'outline-color', 'prompt', 'raster-path', 'geojson-path'];
+  const PERSISTED = ['assets', 'asset-size', 'threshold', 'mask-threshold', 'regularize', 'instances', 'model-id', 'model-id-custom', 'max-workers', 'batch-size', 'load-4bit', 'temperature', 'max-tokens', 'json-mode', 'overlay-outline', 'outline-shape', 'outline-buffer', 'outline-width', 'outline-color', 'prompt', 'raster-path', 'geojson-path',
+    'street-classes', 'street-token', 'street-start', 'street-end', 'street-rapid', 'street-spacing', 'street-minobs', 'street-cluster', 'street-camera', 'street-range', 'street-detsource',
+    'min-coverage', 'pad-edges', 'gsv-radius', 'gsv-images', 'gsv-top', 'gsv-bottom', 'mly-token', 'mly-start', 'mly-end', 'mly-images', 'mly-rapid', 'obj-images', 'obj-size', 'obj-buffer',
+    'region-zoom', 'bbox-min-lon', 'bbox-min-lat', 'bbox-max-lon', 'bbox-max-lat', 'region-geojson-path', 'sample-prompt',
+    'sbox-min-lon', 'sbox-min-lat', 'sbox-max-lon', 'sbox-max-lat'];
   function saveForm() {
     try {
-      const data = { backend, assetMode, source: document.querySelector('input[name=source]:checked').value };
+      const data = { backend, assetMode, imagery, regionProvider, streetArea, startMode, source: document.querySelector('input[name=source]:checked').value };
       for (const id of PERSISTED) { const el = $(id); data[id] = el.type === 'checkbox' ? el.checked : el.value; }
       localStorage.setItem('rapidtools-gui-form', JSON.stringify(data));
     } catch (e) { /* storage unavailable */ }
@@ -670,9 +1171,14 @@ Justification: [2-3 sentences citing visual evidence]`;
     let data; try { data = JSON.parse(localStorage.getItem('rapidtools-gui-form') || 'null'); } catch (e) { data = null; }
     if (!data) return;
     for (const id of PERSISTED) { if (!(id in data)) continue; const el = $(id); if (el.type === 'checkbox') el.checked = !!data[id]; else el.value = data[id]; }
+    if (data['model-id']) $('model-id').dataset.want = data['model-id'] === '__custom__' ? (data['model-id-custom'] || '') : data['model-id'];
     if (data.source) { const r = document.querySelector(`input[name=source][value=${data.source}]`); if (r) r.checked = true; }
     if (data.backend && backendSpec(data.backend)) backend = data.backend;
+    if (data.imagery && imagerySpec(data.imagery)) imagery = data.imagery;
+    if (data.regionProvider) { const b = $('region-provider').querySelector(`[data-provider=${data.regionProvider}]`); if (b) b.click(); }
     if (data.assetMode) { const b = $('asset-mode').querySelector(`[data-mode=${data.assetMode}]`); if (b) b.click(); }
+    if (data.streetArea) { const b = $('street-area').querySelector(`[data-area=${data.streetArea}]`); if (b) b.click(); }
+    if (data.startMode && data.startMode !== 'tacc') setStart(data.startMode);
     ['threshold', 'mask-threshold'].forEach(id => { $(id + '-out').value = num(id).toFixed(2); });
   }
   document.querySelector('.side').addEventListener('change', saveForm);
@@ -688,13 +1194,17 @@ Justification: [2-3 sentences citing visual evidence]`;
     $('output-dir').value = document.activeElement === $('output-dir') ? $('output-dir').value : st.output_dir;
     if (!prev) {
       $('sample-name').innerHTML = st.options.sample_rasters.map(s => `<option>${s}</option>`).join('');
-      buildBackendCards();
+      $('sample-prompt').innerHTML = Object.entries(st.options.sample_prompts || {}).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
+      $('b-sample').innerHTML = $('sample-prompt').innerHTML;
+      $('street-class-list').innerHTML = (st.options.street_classes || []).map(c => `<option value="${esc(c)}">`).join('');
+      buildBackendCards(); buildImageryCards(); buildAssistBackends();
       restoreForm();
-      if (st.options.shared) document.querySelector('.brand small').textContent = '· Asset Analysis · shared server';
+      if (st.options.shared) $('shared-note').style.display = '';
       if (st.options.data_root) document.querySelector('#body-local .hint, #panel-1 .hint').textContent = `Files are limited to ${st.options.data_root}.`;
-      setBackend(backend);
+      setBackend(backend); setImagery(imagery);
       // Resume where the server left off (e.g. after a page reload).
-      if (st.raster) { unlock(2); if (st.collection && st.collection.count) unlock(3); goto(2); }
+      if (st.raster) { unlock(2); if (st.collection && st.collection.count) unlock(3); goto(2); setPreview('raster'); }
+      else if (st.collection && st.collection.count) { unlock(2); unlock(3); goto(3); }
     }
     // unlock steps based on state
     if (st.raster) unlock(2);
@@ -703,22 +1213,28 @@ Justification: [2-3 sentences citing visual evidence]`;
     // job transitions
     const job = st.job;
     if (S.lastJob && S.lastJob.status === 'running' && job.status !== 'running') {
+      onJobFinished(job);
       if (job.status === 'done') {
-        toast(job.message, 'ok');
-        if (job.name === 'Inference' || job.name === 'Detection + inference') { unlock(3); goto(3); }
-        else if (job.name === 'Detection') { unlock(3); }
-        else if (job.name === 'Load imagery' || job.name.startsWith('Download')) { if (S.step === 1) { unlock(2); goto(2); } }
-      } else if (job.status === 'error') toast(job.message, 'error');
+        if (job.name !== 'Prompt assistant') toast(job.message, 'ok');
+        if (job.name.endsWith('+ inference') || job.name === 'Inference') { unlock(3); goto(3); }
+        else if (job.name === 'Detection' || job.name === 'Street discovery') { unlock(3); }
+        else if (job.name === 'Load imagery' || job.name.startsWith('Download')) { if (S.step === 1) { unlock(2); goto(2); } setPreview('raster'); }
+      } else if (job.status === 'error') { if (job.name !== 'Prompt assistant') toast(job.message, 'error'); }
       else toast(job.message);
     }
     S.lastJob = job;
+    updateNotifyBar(st);
+    if (st.assistant && st.assistant.seq !== S.assistSeq) onAssistantUpdate(st.assistant);
 
     // previews
     const raster = st.raster, basemap = st.basemap;
-    const seg = $('preview-seg');
-    seg.querySelector('[data-preview=basemap]').disabled = !basemap;
-    if (!basemap && S.previewKey === 'basemap') setPreview('raster');
-    const active = S.previewKey === 'basemap' ? basemap : raster;
+    $('basemap-wrap').style.display = basemap ? '' : 'none';
+    $('basemap-label').textContent = st.basemap_label ? `Stitched ${st.basemap_label} basemap` : 'Stitched basemap';
+    $('basemap-check').checked = S.previewKey === 'basemap';
+    if (!basemap && S.previewKey === 'basemap') setPreview(raster ? 'raster' : 'map');
+    if (!raster && S.previewKey === 'raster') setPreview('map');
+    $('raster-btn').disabled = !raster;
+    const active = S.previewKey === 'map' ? null : (S.previewKey === 'basemap' ? basemap : raster);
     if (active && (S.previewVersions[S.previewKey] !== active.version || S.imageKey !== S.previewKey)) loadImage(S.previewKey, active);
     if (!raster) { S.image = null; $('empty').style.display = ''; draw(); }
 
@@ -729,6 +1245,8 @@ Justification: [2-3 sentences citing visual evidence]`;
     if (st.collection && (cv !== S.overlayVersion || live || (active && S.overlayPreviewVersion !== active.version + ':' + S.previewKey))) refreshOverlay();
     if (!st.collection && S.overlay) { S.overlay = null; S.overlayVersion = cv; updateColorMenu(); draw(); }
     if (!st.collection) S.overlayVersion = cv;
+    if (st.collection && (cv !== M.featVersion || (live && Date.now() - (M.featAt || 0) > 4000))) refreshGeoOverlay(cv);
+    if (!st.collection && M.features) { M.features = null; M.featVersion = 0; scheduleMap(); }
 
     updateRunButtons();
     if (S.step === 3 && st.collection && prev && prev.collection && prev.collection.version !== cv) refreshTable();
@@ -763,13 +1281,16 @@ Justification: [2-3 sentences citing visual evidence]`;
   async function refreshTable() {
     const st = S.state; if (!st || !st.collection) return;
     const r = await api('/api/table?limit=500');
-    const cols = r.columns.filter(c => !['image_assets'].includes(c));
+    const cols = r.columns.filter(c => !HIDDEN_KEYS.has(c));
     $('table').querySelector('thead').innerHTML = '<tr><th>ID</th>' + cols.map(c => `<th>${esc(c)}</th>`).join('') + '</tr>';
     $('table').querySelector('tbody').innerHTML = r.rows.map(row => '<tr><td>' + esc(row.id) + '</td>' + cols.map(c => `<td title="${esc(String(row.attributes[c] ?? ''))}">${esc(String(row.attributes[c] ?? ''))}</td>`).join('') + '</tr>').join('');
     $('table-hint').textContent = r.total > r.rows.length ? `Showing the first ${r.rows.length} of ${r.total} assets. Download the GeoJSON for the full table.` : `${r.total} assets.`;
     $('tile-count').textContent = r.total;
     $('tile-source').textContent = st.collection.source;
-    const analyzed = r.rows.filter(row => Object.keys(row.attributes).some(k => !DETECTION_KEYS.has(k))).length;
+    // Assets the analyzer wrote to carry ai_model_used; loaded files may hold
+    // results from elsewhere, so fall back to "any non-detection attribute".
+    let analyzed = r.rows.filter(row => 'ai_model_used' in row.attributes).length;
+    if (!analyzed && st.collection.source.startsWith('loaded')) analyzed = r.rows.filter(row => Object.keys(row.attributes).some(k => !DETECTION_KEYS.has(k))).length;
     $('tile-analyzed').textContent = r.total > r.rows.length ? `${analyzed}+` : analyzed;
   }
   function renderFiles(results) {
@@ -782,11 +1303,18 @@ Justification: [2-3 sentences citing visual evidence]`;
   // ------------------------------------------------------------ viewer
   const canvas = $('canvas'), ctx = canvas.getContext('2d');
   function setPreview(key) {
+    const changed = S.previewKey !== key;
     S.previewKey = key;
-    $('preview-seg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.preview === key));
-    poll();
+    $('preview-seg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.preview === key || (key === 'basemap' && b.dataset.preview === 'raster')));
+    const mapmode = key === 'map';
+    document.querySelector('.viewer-wrap').classList.toggle('mapmode', mapmode);
+    $('viewer').classList.toggle('mapmode', mapmode);
+    M.open = mapmode;
+    if (mapmode) scheduleMap(); else if (changed) resize();
+    if (changed) poll();
   }
   $('preview-seg').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { if (!b.disabled) setPreview(b.dataset.preview); }));
+  $('basemap-check').addEventListener('change', () => setPreview($('basemap-check').checked ? 'basemap' : 'raster'));
   function loadImage(key, info) {
     const img = new Image();
     const first = !S.image;
@@ -856,7 +1384,7 @@ Justification: [2-3 sentences citing visual evidence]`;
     try {
       const d = await api(`/api/asset?id=${encodeURIComponent(f.id)}`);
       const imgs = d.images.filter(i => i.exists);
-      const kv = Object.entries(d.attributes).map(([k, v]) => `<span>${esc(k)}</span><span>${esc(v)}</span>`).join('');
+      const kv = Object.entries(d.attributes).filter(([k]) => !HIDDEN_KEYS.has(k)).map(([k, v]) => `<span>${esc(k)}</span><span>${esc(v)}</span>`).join('');
       body.innerHTML = (imgs.length ? `<div class="label">${imgs.length} image${imgs.length > 1 ? 's' : ''} attached (click to open full size)</div>` +
         imgs.map(i => `<a href="${i.url}" target="_blank" rel="noopener"><img src="${i.url}" alt="${esc(i.name)}" loading="lazy"></a><div class="hint">${esc(i.name)}</div>`).join('')
         : '<div class="hint">No images attached to this asset yet. Run inference to crop and analyze it.</div>') +
@@ -866,6 +1394,7 @@ Justification: [2-3 sentences citing visual evidence]`;
   $('details-close').addEventListener('click', () => $('details').classList.remove('open'));
   async function refreshOverlay() {
     const st = S.state; if (!st || !st.collection) return;
+    if (S.previewKey === 'map') return;
     const active = S.previewKey === 'basemap' ? st.basemap : st.raster; if (!active) return;
     try {
       const data = await api(`/api/overlay?preview=${S.previewKey}`);
@@ -940,7 +1469,7 @@ Justification: [2-3 sentences citing visual evidence]`;
     const { scale, ox, oy } = S.view;
     ctx.imageSmoothingEnabled = scale < 2;
     ctx.drawImage(S.image, ox, oy, S.image.width * scale, S.image.height * scale);
-    if (S.imageKey === $('preview-seg').querySelector('.on').dataset.preview) drawTiles();
+    if (S.imageKey === S.previewKey) drawTiles();
 
     if (S.overlay && $('show-overlay').checked) {
       const dpr = window.devicePixelRatio || 1;
@@ -1032,7 +1561,7 @@ Justification: [2-3 sentences citing visual evidence]`;
     const tip = $('tooltip');
     if (f !== S.hover) { S.hover = f; draw(); }
     if (f) {
-      const rows = Object.entries(f.attributes).filter(([k]) => k !== 'image_assets').map(([k, v]) => `<span>${esc(k)}</span><span>${esc(typeof v === 'object' ? JSON.stringify(v) : v)}</span>`).join('');
+      const rows = Object.entries(f.attributes).filter(([k]) => !HIDDEN_KEYS.has(k)).map(([k, v]) => `<span>${esc(k)}</span><span>${esc(typeof v === 'object' ? JSON.stringify(v) : v)}</span>`).join('');
       tip.innerHTML = `<b>${esc(f.id)}</b><div class="kv">${rows}</div>`;
       tip.style.display = 'block';
       const vr = $('viewer').getBoundingClientRect();
@@ -1096,8 +1625,719 @@ Justification: [2-3 sentences citing visual evidence]`;
   }
   $('fs-select').addEventListener('click', chooseFs);
 
+  // ------------------------------------------------------------ prompt builder
+  const B = { step: 1, spec: emptySpec(), text: '', timer: null, pendingSeq: null, pendingAction: null, pendingClass: null };
+  S.assistSeq = 0;
+  function emptySpec() {
+    return { asset: 'building', imagery: 'aerial', objective: '', persona: '', focus: '', marking: '', steps: [], edge_cases: [],
+      fields: [], rubric_title: '', rubric_field: '', rubric: [], context: '', json_output: false };
+  }
+  function imageryKind() { return imagery === 'aerial' ? 'aerial' : 'street'; }
+  function firstAsset() { return (assetMode === 'street' ? $('street-classes').value : $('assets').value).split(/[,;\n]/)[0].trim() || 'building'; }
+  function loadSpec() {
+    try { const d = JSON.parse(localStorage.getItem('rapidtools-gui-spec') || 'null'); if (d && d.fields) return d; } catch (e) { /* ignore */ }
+    const sp = emptySpec(); sp.asset = firstAsset(); sp.imagery = imageryKind();
+    sp.fields = [{ name: 'Damage Level', kind: 'category', options: ['None', 'Minor', 'Major', 'Destroyed'], minimum: null, maximum: null, description: '' },
+      { name: 'Justification', kind: 'text', options: [], minimum: null, maximum: null, description: '2-3 sentences citing visual evidence' }];
+    return sp;
+  }
+  function saveSpec() { try { localStorage.setItem('rapidtools-gui-spec', JSON.stringify(B.spec)); } catch (e) { /* ignore */ } }
+  function openBuilder() {
+    B.spec = loadSpec(); syncRubric(); renderBuilder(); bgoto(B.step || 1);
+    $('builder').classList.add('open'); schedulePreview(); updateAssistBackend();
+  }
+  function closeBuilder() { $('builder').classList.remove('open'); }
+  $('btn-builder').addEventListener('click', openBuilder);
+  $('builder-close').addEventListener('click', closeBuilder);
+  $('builder').addEventListener('click', (e) => { if (e.target === $('builder')) closeBuilder(); });
+  function bgoto(step) {
+    B.step = Math.min(5, Math.max(1, step));
+    document.querySelectorAll('.b-nav button').forEach(b => b.classList.toggle('active', +b.dataset.bstep === B.step));
+    document.querySelectorAll('.b-form .panel').forEach(p => p.classList.toggle('active', p.id === 'bpanel-' + B.step));
+    $('b-back').disabled = B.step === 1; $('b-next').style.visibility = B.step === 5 ? 'hidden' : '';
+    if (B.step === 3) renderRubric();
+  }
+  document.querySelectorAll('.b-nav button').forEach(b => b.addEventListener('click', () => bgoto(+b.dataset.bstep)));
+  $('b-back').addEventListener('click', () => bgoto(B.step - 1));
+  $('b-next').addEventListener('click', () => bgoto(B.step + 1));
+
+  // form <-> spec
+  const TASK_FIELDS = { asset: 'b-asset', imagery: 'b-imagery', objective: 'b-objective', persona: 'b-persona', focus: 'b-focus', rubric_title: 'b-rubric-title', context: 'b-context' };
+  function renderBuilder() {
+    const sp = B.spec;
+    for (const [k, id] of Object.entries(TASK_FIELDS)) $(id).value = sp[k] || '';
+    $('b-marking').value = sp.marking || ''; $('b-marking').disabled = $('b-marking-auto').checked;
+    $('b-steps').value = (sp.steps || []).join('\n'); $('b-edge').value = (sp.edge_cases || []).join('\n');
+    $('b-json').checked = !!sp.json_output;
+    renderFields(); renderRubric();
+  }
+  function readTask() {
+    const sp = B.spec;
+    for (const [k, id] of Object.entries(TASK_FIELDS)) sp[k] = $(id).value;
+    if (!$('b-marking-auto').checked) sp.marking = $('b-marking').value;
+    sp.steps = $('b-steps').value.split('\n').map(s => s.trim()).filter(Boolean);
+    sp.edge_cases = $('b-edge').value.split('\n').map(s => s.trim()).filter(Boolean);
+    sp.json_output = $('b-json').checked;
+  }
+  Object.values(TASK_FIELDS).concat(['b-marking', 'b-steps', 'b-edge']).forEach(id => $(id).addEventListener('input', () => { readTask(); schedulePreview(); }));
+  $('b-json').addEventListener('change', () => { readTask(); schedulePreview(); });
+  $('b-marking-auto').addEventListener('change', () => { $('b-marking').disabled = $('b-marking-auto').checked; if (!$('b-marking-auto').checked) B.spec.marking = $('b-marking').value; schedulePreview(); });
+  $('b-edge-chips').addEventListener('click', (e) => {
+    const c = e.target.closest('.chip'); if (!c) return;
+    const lines = $('b-edge').value.split('\n').filter(Boolean);
+    if (!lines.includes(c.dataset.edge)) lines.push(c.dataset.edge);
+    $('b-edge').value = lines.join('\n'); readTask(); schedulePreview();
+  });
+
+  // output fields
+  function renderFields() {
+    const box = $('b-fields');
+    box.innerHTML = B.spec.fields.map((f, i) => `<div class="frow ${esc(f.kind)}" data-idx="${i}">
+      <input class="input" data-k="name" value="${esc(f.name)}" placeholder="Field name">
+      <select class="input" data-k="kind">${['category', 'number', 'text', 'boolean'].map(k => `<option value="${k}" ${k === f.kind ? 'selected' : ''}>${k}</option>`).join('')}</select>
+      <input class="input opts" data-k="options" value="${esc((f.options || []).join(', '))}" placeholder="options, comma separated">
+      <div class="num"><input class="input" data-k="minimum" value="${f.minimum ?? ''}" placeholder="min"><input class="input" data-k="maximum" value="${f.maximum ?? ''}" placeholder="max"></div>
+      <div class="row"><button class="btn tiny" data-move="-1" title="Move up">↑</button><button class="btn tiny" data-move="1" title="Move down">↓</button><button class="btn tiny danger" data-del title="Remove">✕</button></div>
+      <input class="input full" data-k="description" value="${esc(f.description || '')}" placeholder="How to fill it (e.g. 2-3 sentences citing visual evidence)">
+    </div>`).join('') || '<div class="hint">No fields yet. Add the main classification first.</div>';
+    updateRubricFieldMenu();
+  }
+  $('b-fields').addEventListener('input', (e) => {
+    const row = e.target.closest('.frow'); if (!row) return;
+    const f = B.spec.fields[+row.dataset.idx], k = e.target.dataset.k;
+    if (k === 'options') f.options = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+    else if (k === 'minimum' || k === 'maximum') f[k] = e.target.value === '' ? null : parseFloat(e.target.value);
+    else f[k] = e.target.value;
+    if (k === 'kind') { row.className = 'frow ' + f.kind; updateRubricFieldMenu(); }
+    if (k === 'options' || k === 'name') { syncRubric(); updateRubricFieldMenu(); }
+    schedulePreview();
+  });
+  $('b-fields').addEventListener('click', (e) => {
+    const row = e.target.closest('.frow'); if (!row) return;
+    const i = +row.dataset.idx;
+    if (e.target.dataset.del !== undefined) B.spec.fields.splice(i, 1);
+    else if (e.target.dataset.move) { const j = i + (+e.target.dataset.move); if (j < 0 || j >= B.spec.fields.length) return; [B.spec.fields[i], B.spec.fields[j]] = [B.spec.fields[j], B.spec.fields[i]]; }
+    else return;
+    syncRubric(); renderFields(); schedulePreview();
+  });
+  function addField(f) { B.spec.fields.push(Object.assign({ name: '', kind: 'category', options: [], minimum: null, maximum: null, description: '' }, f)); syncRubric(); renderFields(); schedulePreview(); }
+  $('b-add-field').addEventListener('click', () => { addField({}); const rows = $('b-fields').querySelectorAll('.frow'); rows[rows.length - 1].querySelector('input').focus(); });
+  $('b-add-justification').addEventListener('click', () => addField({ name: 'Justification', kind: 'text', description: '2-3 sentences explaining key visual evidence' }));
+  $('b-add-confidence').addEventListener('click', () => addField({ name: 'Confidence', kind: 'number', minimum: 1, maximum: 3, description: '1 = uncertain, 3 = certain' }));
+
+  // rubric
+  function primaryField() {
+    const sp = B.spec;
+    return sp.fields.find(f => sp.rubric_field && f.name.toLowerCase() === sp.rubric_field.toLowerCase()) || sp.fields.find(f => f.kind === 'category') || null;
+  }
+  function updateRubricFieldMenu() {
+    const sel = $('b-rubric-field'), cats = B.spec.fields.filter(f => f.kind === 'category' && f.name);
+    const pf = primaryField();
+    sel.innerHTML = cats.map(f => `<option value="${esc(f.name)}" ${pf && f.name === pf.name ? 'selected' : ''}>${esc(f.name)}</option>`).join('') || '<option value="">(add a category field first)</option>';
+  }
+  $('b-rubric-field').addEventListener('change', () => { B.spec.rubric_field = $('b-rubric-field').value; syncRubric(); renderRubric(); schedulePreview(); });
+  function syncRubric() {
+    const pf = primaryField(); if (!pf) { B.spec.rubric = []; return; }
+    const byValue = Object.fromEntries((B.spec.rubric || []).map(r => [r.value, r]));
+    B.spec.rubric = pf.options.map(v => byValue[v] || { value: v, title: '', description: '', indicators: [] });
+  }
+  function renderRubric() {
+    syncRubric(); updateRubricFieldMenu();
+    const pf = primaryField(), box = $('b-rubric');
+    $('b-rubric-hint').textContent = pf ? `Classes come from the options of "${pf.name}" (step 2).` : 'Add a category field in step 2 to describe its classes here.';
+    box.innerHTML = B.spec.rubric.map((r, i) => `<div class="rub" data-idx="${i}">
+      <div class="head"><b>${esc(pf ? pf.name : '')} ${esc(r.value)}</b><input class="input grow" data-k="title" value="${esc(r.title || '')}" placeholder="Short name, e.g. Partial Structural Combustion"><button class="btn tiny" data-suggest="${esc(r.value)}" title="Ask the assistant for indicators">✨ Suggest</button></div>
+      <input class="input" data-k="description" value="${esc(r.description || '')}" placeholder="What this class means, in one sentence" style="margin-bottom:6px">
+      <textarea data-k="indicators" placeholder="Key visual indicators, one per line">${esc((r.indicators || []).join('\n'))}</textarea>
+    </div>`).join('');
+  }
+  $('b-rubric').addEventListener('input', (e) => {
+    const card = e.target.closest('.rub'); if (!card) return;
+    const r = B.spec.rubric[+card.dataset.idx], k = e.target.dataset.k;
+    if (k === 'indicators') r.indicators = e.target.value.split('\n').map(s => s.trim()).filter(Boolean); else r[k] = e.target.value;
+    schedulePreview();
+  });
+  $('b-rubric').addEventListener('click', (e) => { const b = e.target.closest('[data-suggest]'); if (b) askAssistant('indicators', b.dataset.suggest); });
+
+  // preview (assembled on the server so text and headless use never drift)
+  function outlineFromSettings() { return { shape: $('outline-shape').value, color: $('outline-color').value, overlay: $('overlay-outline').checked && (imagerySpec(imagery) || {}).supports_outline !== false }; }
+  function specForServer() { return Object.assign({}, B.spec, { marking: $('b-marking-auto').checked ? '' : B.spec.marking }); }
+  function schedulePreview() { saveSpec(); clearTimeout(B.timer); B.timer = setTimeout(refreshPreview, 250); }
+  async function refreshPreview() {
+    try {
+      const r = await api('/api/prompt/assemble', { spec: specForServer(), outline: outlineFromSettings(), backend });
+      B.text = r.text; $('b-preview-text').textContent = r.text;
+      if ($('b-marking-auto').checked) { B.spec.marking = r.marking; $('b-marking').value = r.marking; }
+      const attrs = r.attributes.map(a => `<code>${esc(a)}</code>`).join('');
+      $('b-attrs').innerHTML = attrs ? 'Attributes written to each asset: ' + attrs : 'Add output fields to define the attributes.';
+      $('b-review-attrs').innerHTML = attrs ? 'Results will appear on every asset as ' + attrs : '';
+      $('b-foot-hint').textContent = `${r.text.length.toLocaleString()} characters · ${B.spec.fields.length} field(s) · ${B.spec.rubric.filter(x => x.indicators.length).length}/${B.spec.rubric.length} classes described`;
+    } catch (e) { $('b-preview-text').textContent = 'Could not assemble the prompt: ' + e.message; }
+  }
+  $('b-use').addEventListener('click', () => {
+    if (!B.text.trim()) { toast('The prompt is still empty.', 'error'); return; }
+    $('prompt').value = B.text; $('json-mode').checked = !!B.spec.json_output; saveForm(); closeBuilder();
+    toast('Prompt inserted. Review it in the editor before running.', 'ok');
+  });
+  $('b-load-sample').addEventListener('click', () => run(async () => {
+    const name = $('b-sample').value, label = $('b-sample').selectedOptions[0] ? $('b-sample').selectedOptions[0].textContent : name;
+    if (name === 'aerial_chs') { const r = await api('/api/prompt/example', {}); B.spec = r.spec; syncRubric(); renderBuilder(); schedulePreview(); toast(`Loaded "${label}". Describe another task above and press Repurpose to adapt it.`, 'ok'); return; }
+    const r = await api('/api/prompt/sample', { name });
+    toast(`Asking the assistant to split "${label}" into the builder fields…`);
+    await askAssistant('import', null, r.text);
+  }));
+  $('b-clear').addEventListener('click', () => { if (!confirm('Clear every field of the builder?')) return; B.spec = emptySpec(); B.spec.asset = firstAsset(); B.spec.imagery = imageryKind(); renderBuilder(); schedulePreview(); });
+
+  // assistant
+  function buildAssistBackends() {
+    const specs = S.state.options.backends || {};
+    $('assist-backend').innerHTML = '<option value="same">Same as analysis model</option>' + Object.entries(specs).map(([k, sp]) => `<option value="${k}">${esc(sp.label)}${sp.kind === 'local' ? ' (local)' : ''}</option>`).join('');
+    $('assist-backend').value = specs.gemma4 ? 'gemma4' : 'same';
+  }
+  function assistTarget() {
+    const choice = $('assist-backend').value;
+    if (choice === 'same') return { backend, api_key: $('api-key').value, model_id: modelId(), load_in_4bit: $('load-4bit').checked };
+    const sp = backendSpec(choice);
+    return { backend: choice, api_key: $('assist-key').value, model_id: $('assist-model-id').value || sp.default_model, load_in_4bit: true };
+  }
+  function updateAssistBackend() {
+    const choice = $('assist-backend').value, same = choice === 'same', sp = backendSpec(same ? backend : choice);
+    if (!sp) return;
+    $('assist-key-row').style.display = !same && sp.kind === 'api' ? '' : 'none';
+    $('assist-model-id').style.display = same ? 'none' : '';
+    $('assist-model-list').innerHTML = (modelLists[choice] || sp.models).map(m => `<option value="${esc(m)}">`).join('');
+    if (!same && !$('assist-model-id').value) $('assist-model-id').value = sp.default_model;
+    const t = assistTarget();
+    $('b-assist-model').textContent = `${sp.label} · ${t.model_id || sp.default_model}`;
+    $('assist-key').placeholder = (sp.key_label || 'API key') + ' for this backend';
+  }
+  $('assist-backend').addEventListener('change', () => { $('assist-model-id').value = ''; updateAssistBackend(); });
+  $('assist-model-id').addEventListener('input', updateAssistBackend);
+  document.querySelectorAll('[data-assist]').forEach(b => b.addEventListener('click', () => askAssistant(b.dataset.assist)));
+  async function askAssistant(action, classValue, promptText) {
+    readTask();
+    let instruction = null;
+    if (action === 'repurpose') {
+      const wanted = $('assist-text').value.trim();
+      if (!wanted) { toast('Describe the new task in the box above first (e.g. "grade vehicle damage after a wildfire").', 'error'); $('assist-text').focus(); return; }
+      action = 'refine';
+      instruction = `Repurpose this entire specification for a different task while keeping its structure, level of detail and output format: ${wanted}. Replace the asset, objective, expert role, output fields, class indicators, steps and edge cases so they fit the new task; drop anything that only applied to the old one.`;
+    }
+    const t = assistTarget();
+    const sp = backendSpec(t.backend);
+    if (sp && sp.kind === 'api' && !t.api_key.trim()) { toast(`${sp.key_label} is required. Pick a local model (e.g. Gemma-4) or paste a key.`, 'error'); return; }
+    const text = $('assist-text').value.trim();
+    const body = Object.assign({ action, spec: specForServer(), prompt_text: promptText || (action === 'import' ? $('prompt').value : B.text), class_value: classValue || '',
+      brief: text, instruction: instruction || text, context: { asset: B.spec.asset, imagery: B.spec.imagery, marking: B.spec.marking, json_output: B.spec.json_output } }, t);
+    if (action === 'draft' && !text) { toast('Describe what you want to assess in the box above first.', 'error'); $('assist-text').focus(); return; }
+    if (action === 'refine' && !text && !instruction) { toast('Say what should change first.', 'error'); $('assist-text').focus(); return; }
+    try {
+      const r = await api('/api/prompt/assist', body);
+      B.pendingSeq = r.seq; B.pendingAction = action; B.pendingClass = classValue || null;
+      const reply = $('assist-reply'); reply.classList.add('show'); reply.textContent = sp && sp.kind === 'local' ? 'Working… the first request loads the model, which can take a minute.' : 'Working…';
+      $('b-status').textContent = 'Assistant is thinking…';
+      await poll();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+  function onAssistantUpdate(a) {
+    if (a.status === 'running') { $('b-status').textContent = 'Assistant is thinking…'; return; }
+    S.assistSeq = a.seq;
+    $('b-status').textContent = '';
+    if (a.seq !== B.pendingSeq) return;
+    const reply = $('assist-reply'); reply.classList.add('show');
+    if (a.status === 'error') { reply.textContent = 'The assistant failed: ' + a.error; toast('Assistant failed: ' + a.error, 'error'); return; }
+    const r = a.result || {};
+    if (r.spec) {
+      const keepMarking = $('b-marking-auto').checked ? B.spec.marking : r.spec.marking;
+      B.spec = r.spec; B.spec.marking = keepMarking; syncRubric(); renderBuilder(); schedulePreview();
+      reply.textContent = B.pendingAction === 'import' ? 'Imported the editor prompt into the builder. Check each step and adjust.' : `Specification ${B.pendingAction === 'draft' ? 'drafted' : 'refined'} by ${a.model}. Walk through the steps to check it.`;
+      if (B.pendingAction === 'draft') { $('assist-text').value = ''; bgoto(1); }
+      toast('Assistant updated the prompt specification.', 'ok');
+    } else if (r.indicators) {
+      const entry = B.spec.rubric.find(x => x.value === B.pendingClass);
+      if (entry) { entry.indicators = r.indicators; renderRubric(); schedulePreview(); }
+      reply.textContent = `Indicators for "${B.pendingClass}":\n- ` + r.indicators.join('\n- ');
+      toast('Indicators added.', 'ok');
+    } else if (r.text) {
+      reply.textContent = r.text; bgoto(5);
+    }
+  }
+
+  // ------------------------------------------------------------ notifications for long runs
+  // The server keeps running and holds the results, so the user may leave the
+  // tab open, close it and return, or ask for a message when the job ends.
+  // The bar never blocks: progress keeps streaming whether or not it is used.
+  const NOTIFY_AFTER_S = 20;         // show the bar once a job has run this long
+  const LONG_JOBS = /Inference|inference|Street discovery|Download/;
+  const N = { dismissedFor: null, browser: false, lastSeq: 0 };
+  try { N.browser = localStorage.getItem('rapidtools-gui-notify-browser') === '1'; $('notify-target').value = localStorage.getItem('rapidtools-gui-notify-target') || ''; } catch (e) { /* ignore */ }
+  function updateNotifyBar(st) {
+    const job = st.job || {}, bar = $('notify-bar'), info = st.notify || {};
+    const running = st.busy && job.status === 'running' && job.name !== 'Prompt assistant';
+    const age = job.started_at ? Date.now() / 1000 - job.started_at : 0;
+    const wanted = running && (LONG_JOBS.test(job.name || '') || age > NOTIFY_AFTER_S) && N.dismissedFor !== job.started_at;
+    bar.classList.toggle('open', wanted);
+    if (info.last && info.last.seq !== N.lastSeq) { N.lastSeq = info.last.seq; if (info.last.message) toast(info.last.message, info.last.ok ? 'ok' : 'error'); }
+    if (!wanted) return;
+    const armed = !!info.target;
+    $('notify-text').textContent = armed
+      ? `A message will go to ${info.target} when this run finishes. You can keep watching here, or close the tab and come back.`
+      : (N.browser ? 'This run may take a while. This browser will show an alert when it finishes; leave the tab open, or add an address to be told wherever you are.'
+                   : 'This run may take a while. You can leave this tab open, or close it and come back later: the results stay on the server.');
+    $('notify-target').style.display = armed ? 'none' : '';
+    $('notify-send').style.display = armed ? 'none' : '';
+    $('notify-browser').style.display = (armed || N.browser) ? 'none' : '';
+    $('notify-send').disabled = false;
+    if (!info.email_available) $('notify-target').placeholder = 'webhook URL (email not set up on this server)';
+  }
+  $('notify-send').addEventListener('click', async () => {
+    const target = $('notify-target').value.trim();
+    if (!target) { toast('Enter an email address or a webhook URL first.', 'error'); $('notify-target').focus(); return; }
+    try {
+      const r = await api('/api/notify', { target });
+      try { localStorage.setItem('rapidtools-gui-notify-target', target); } catch (e) { /* ignore */ }
+      toast(r.kind === 'email' ? `Will email ${target} when the run finishes.` : 'Will post to the webhook when the run finishes.', 'ok');
+      await poll();
+    } catch (e) { toast(e.message, 'error'); }
+  });
+  $('notify-target').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('notify-send').click(); });
+  $('notify-browser').addEventListener('click', async () => {
+    if (!('Notification' in window)) { toast('This browser does not support notifications.', 'error'); return; }
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { toast('Notifications were not allowed by the browser.', 'error'); return; }
+    N.browser = true; try { localStorage.setItem('rapidtools-gui-notify-browser', '1'); } catch (e) { /* ignore */ }
+    toast('This browser will alert you when the run finishes (keep the tab open).', 'ok');
+    if (S.state) updateNotifyBar(S.state);
+  });
+  $('notify-dismiss').addEventListener('click', () => { N.dismissedFor = (S.state && S.state.job && S.state.job.started_at) || true; $('notify-bar').classList.remove('open'); });
+  function onJobFinished(job) {
+    if (job.name === 'Prompt assistant') return;
+    if (document.hidden) {
+      document.title = (job.status === 'done' ? '✓ ' : '⚠ ') + job.name + ' · rapidtools';
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) document.title = 'rapidtools · Asset Analysis'; }, { once: true });
+    }
+    if (N.browser && 'Notification' in window && Notification.permission === 'granted') {
+      try { const n = new Notification('rapidtools: ' + job.name + (job.status === 'done' ? ' finished' : ' ' + job.status), { body: job.message }); n.onclick = () => { window.focus(); n.close(); }; } catch (e) { /* ignore */ }
+    }
+  }
+
+  // ------------------------------------------------------------ map view
+  // The default view: a streaming satellite map (tiles proxied by the server)
+  // with Mapillary's survey routes drawn on top, an address search, and a
+  // box the user draws to choose the working area. The box feeds the imagery
+  // download in step 1 and the street survey area in step 2; results are
+  // drawn back onto the map in WGS84.
+  const MTILE = 256;
+  function lonToX(lon, z) { return (lon + 180) / 360 * Math.pow(2, z); }
+  function latToY(lat, z) { const r = lat * Math.PI / 180; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * Math.pow(2, z); }
+  function xToLon(x, z) { return x / Math.pow(2, z) * 360 - 180; }
+  function yToLat(y, z) { const n = Math.PI - 2 * Math.PI * y / Math.pow(2, z); return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))); }
+  const M = { open: true, provider: 'bing', z: 4.2, cx: 0, cy: 0, box: null, drag: null, draw: false, pin: null,
+              tiles: new Map(), seq: new Map(), coverage: true, rapidOnly: true, style: 'lines', overview: null, overviewTimer: null,
+              features: null, featVersion: 0, featAt: 0, hover: null, raf: 0, saveTimer: null,
+              layer: null, layerTimer: null, seqGen: 0, db: null, dbStatus: null, dbTimer: null };
+  M.cx = lonToX(-97, M.z); M.cy = latToY(38.5, M.z);
+  const mapCanvas = $('map-canvas');
+  try {
+    const v = JSON.parse(localStorage.getItem('rapidtools-gui-map') || 'null');
+    if (v && Number.isFinite(v.z)) { Object.assign(M, { z: v.z, cx: v.cx, cy: v.cy, provider: v.provider || 'bing', coverage: v.coverage !== false, rapidOnly: v.rapidOnly !== false, style: v.style || 'lines' }); }
+  } catch (e) { /* ignore */ }
+  function saveMapView() { clearTimeout(M.saveTimer); M.saveTimer = setTimeout(() => { try { localStorage.setItem('rapidtools-gui-map', JSON.stringify({ z: M.z, cx: M.cx, cy: M.cy, provider: M.provider, coverage: M.coverage, rapidOnly: M.rapidOnly, style: M.style })); } catch (e) { /* ignore */ } }, 400); }
+  function maxZoom() { return (S.state && S.state.options.basemaps[M.provider] && S.state.options.basemaps[M.provider].max_zoom) || 19; }
+  function mapSize() { const r = mapCanvas.getBoundingClientRect(); return [Math.max(1, Math.round(r.width)), Math.max(1, Math.round(r.height))]; }
+  function pxToGeo(px, py) { const [W, H] = mapSize(); return [xToLon(M.cx + (px - W / 2) / MTILE, M.z), yToLat(M.cy + (py - H / 2) / MTILE, M.z)]; }
+  function geoToPx(lon, lat) { const [W, H] = mapSize(); return [(lonToX(lon, M.z) - M.cx) * MTILE + W / 2, (latToY(lat, M.z) - M.cy) * MTILE + H / 2]; }
+  function fitBox(b, pad) {
+    const [W, H] = mapSize(); let z = maxZoom();
+    while (z > 1) { const w = (lonToX(b[2], z) - lonToX(b[0], z)) * MTILE, h = (latToY(b[1], z) - latToY(b[3], z)) * MTILE; if (w <= W * (pad || 0.7) && h <= H * (pad || 0.7)) break; z -= 0.25; }
+    M.z = z; M.cx = (lonToX(b[0], z) + lonToX(b[2], z)) / 2; M.cy = (latToY(b[1], z) + latToY(b[3], z)) / 2;
+    scheduleMap(); saveMapView();
+  }
+  function setZoom(z, px, py) {
+    z = Math.max(2, Math.min(maxZoom(), z)); if (z === M.z) return;
+    const [W, H] = mapSize();
+    const ax = px === undefined ? W / 2 : px, ay = py === undefined ? H / 2 : py;
+    const [lon, lat] = pxToGeo(ax, ay);
+    M.z = z; M.cx = lonToX(lon, z) - (ax - W / 2) / MTILE; M.cy = latToY(lat, z) - (ay - H / 2) / MTILE;
+    scheduleMap(); saveMapView();
+  }
+  function tileImage(z, x, y) {
+    const n = Math.pow(2, z); x = ((x % n) + n) % n; if (y < 0 || y >= n) return null;
+    const key = `${M.provider}/${z}/${x}/${y}`;
+    let img = M.tiles.get(key);
+    if (!img) {
+      img = new Image(); img.decoding = 'async';
+      img.onload = () => scheduleMap(); img.onerror = () => { img.failed = true; };
+      img.src = `/api/basemap_tile/${key}.jpg`;
+      M.tiles.set(key, img);
+      if (M.tiles.size > 1500) M.tiles.delete(M.tiles.keys().next().value);
+    }
+    return img;
+  }
+  function scheduleMap() { if (!M.open || M.raf) return; M.raf = requestAnimationFrame(() => { M.raf = 0; drawMap(); }); }
+  function drawMap() {
+    if (!M.open) return;
+    const [W, H] = mapSize(); const dpr = window.devicePixelRatio || 1;
+    if (mapCanvas.width !== W * dpr || mapCanvas.height !== H * dpr) { mapCanvas.width = W * dpr; mapCanvas.height = H * dpr; }
+    const ctx = mapCanvas.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#0c1620'; ctx.fillRect(0, 0, W, H);
+    // Satellite tiles from the nearest integer level, scaled for fractional zoom:
+    const L = Math.min(maxZoom(), Math.max(1, Math.round(M.z))), k = Math.pow(2, M.z - L), size = MTILE * k;
+    const x0 = Math.floor((M.cx - W / 2 / MTILE) / k), x1 = Math.ceil((M.cx + W / 2 / MTILE) / k), y0 = Math.floor((M.cy - H / 2 / MTILE) / k), y1 = Math.ceil((M.cy + H / 2 / MTILE) / k);
+    ctx.imageSmoothingEnabled = true;
+    // One ring of tiles beyond the view is requested too, so a pan finds them ready.
+    for (let ty = y0 - 1; ty <= y1 + 1; ty++) for (let tx = x0 - 1; tx <= x1 + 1; tx++) {
+      const img = tileImage(L, tx, ty); if (!img) continue;
+      const px = (tx * k - M.cx) * MTILE + W / 2, py = (ty * k - M.cy) * MTILE + H / 2;
+      if (img.complete && img.naturalWidth) ctx.drawImage(img, px, py, size + 0.6, size + 0.6);
+      else { ctx.fillStyle = '#16232f'; ctx.fillRect(px, py, size - 1, size - 1); }
+    }
+    drawLayer(ctx, W, H, dpr);
+    if (M.pin) { const [px, py] = geoToPx(M.pin[0], M.pin[1]); ctx.fillStyle = '#ff3b3b'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(px, py - 9, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(px - 5, py - 5); ctx.lineTo(px, py + 4); ctx.lineTo(px + 5, py - 5); ctx.closePath(); ctx.fill(); }
+    const box = M.drag && M.drag.kind === 'box' ? M.drag.box : M.box;
+    if (box) {
+      const [ax, ay] = geoToPx(box[0], box[3]), [bx, by] = geoToPx(box[2], box[1]);
+      ctx.fillStyle = 'rgba(47,111,237,.16)'; ctx.fillRect(ax, ay, bx - ax, by - ay);
+      ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 2; ctx.strokeRect(ax, ay, bx - ax, by - ay);
+    }
+    $('map-zoom-label').textContent = 'z' + M.z.toFixed(1);
+    updateReadout();
+    $('map-help').style.display = M.box || M.drag ? 'none' : '';
+  }
+  function updateReadout() {
+    const [W, H] = mapSize(); const c = pxToGeo(W / 2, H / 2);
+    $('map-readout').textContent = `center ${c[1].toFixed(5)}, ${c[0].toFixed(5)}` + (M.hover ? `\ncursor ${M.hover[1].toFixed(5)}, ${M.hover[0].toFixed(5)}` : '');
+  }
+  // The coverage and result layers are the expensive part, so they are drawn
+  // into an offscreen canvas once per view and only translated (or scaled)
+  // while the user pans, zooms or hovers; a fresh render follows when the view
+  // settles or new data arrives.
+  function layerKey() { return [M.coverage, M.rapidOnly, M.style, seqParams(), M.featVersion, M.seqGen, M.features ? M.features.length : 0].join('|'); }
+  function scheduleLayer(delay) {
+    clearTimeout(M.layerTimer);
+    M.layerTimer = setTimeout(() => { M.layerTimer = null; renderLayer(); scheduleMap(); }, delay === undefined ? 90 : delay);
+  }
+  function renderLayer() {
+    const [W, H] = mapSize(); const dpr = window.devicePixelRatio || 1;
+    const c = (M.layer && M.layer.canvas) || document.createElement('canvas');
+    if (c.width !== W * dpr || c.height !== H * dpr) { c.width = W * dpr; c.height = H * dpr; }
+    const ctx = c.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    drawCoverage(ctx, W, H);
+    drawFeatures(ctx, W, H);
+    M.layer = { canvas: c, z: M.z, cx: M.cx, cy: M.cy, W, H, key: layerKey() };
+  }
+  function drawLayer(ctx, W, H, dpr) {
+    const lc = M.layer, key = layerKey();
+    if (!lc || lc.W !== W || lc.H !== H) { renderLayer(); ctx.drawImage(M.layer.canvas, 0, 0, W, H); return; }
+    const s = Math.pow(2, M.z - lc.z);
+    // Where the cached view's centre lands on the current screen:
+    const dx = (lc.cx * s - M.cx) * MTILE + W / 2, dy = (lc.cy * s - M.cy) * MTILE + H / 2;
+    ctx.drawImage(lc.canvas, dx - W / 2 * s, dy - H / 2 * s, W * s, H * s);
+    const moved = Math.abs(dx - W / 2) > 1 || Math.abs(dy - H / 2) > 1 || s !== 1;
+    if (lc.key !== key || moved) scheduleLayer(M.drag ? 160 : 90);
+  }
+  // ---- survey coverage (Mapillary sequences)
+  function seqParams() { return `rapid_only=${M.rapidOnly ? 1 : 0}&token=${encodeURIComponent($('street-token').value || $('mly-token').value || '')}&start_date=${encodeURIComponent($('street-start').value)}&end_date=${encodeURIComponent($('street-end').value)}`; }
+  function seqTile(z, x, y) {
+    const key = `${z}/${x}/${y}?${seqParams()}`;
+    if (M.seq.has(key)) return M.seq.get(key);
+    M.seq.set(key, null);
+    api(`/api/street/sequences/${key}`).then(d => { d.bb = d.lines.map(flatBBox); M.seq.set(key, d); M.seqGen++; scheduleMap(); }).catch(() => { M.seq.set(key, { lines: [], bb: [], extent: 4096, count: 0 }); });
+    if (M.seq.size > 900) M.seq.delete(M.seq.keys().next().value);
+    return null;
+  }
+  function requestOverview() {
+    if (M.overview && M.overview.status !== 'building') return;
+    if (M.overviewTimer) return;
+    M.overviewTimer = setTimeout(async () => {
+      M.overviewTimer = null;
+      try {
+        const d = await api(`/api/street/overview?rapid_only=${M.rapidOnly ? 1 : 0}`);
+        if (d.lines) { d.uv = d.lines.map(l => { const out = new Float64Array(l.length); for (let i = 0; i < l.length; i += 2) { out[i] = lonToX(l[i], 0); out[i + 1] = latToY(l[i + 1], 0); } return out; }); d.bb = d.uv.map(flatBBox); }
+        M.overview = d; M.seqGen++; scheduleMap();
+        if (d.status === 'building') requestOverview();
+      } catch (e) { M.overview = { status: 'error', error: e.message }; scheduleMap(); }
+    }, M.overview ? 2500 : 0);
+  }
+  function flatBBox(l) { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (let i = 0; i < l.length; i += 2) { if (l[i] < x0) x0 = l[i]; if (l[i] > x1) x1 = l[i]; if (l[i + 1] < y0) y0 = l[i + 1]; if (l[i + 1] > y1) y1 = l[i + 1]; } return [x0, y0, x1, y1]; }
+  // The RAPID route database: one gzipped download, then everything is drawn
+  // from memory with no per-view requests. Built once by the server and
+  // cached on disk; the panel shows its age and offers a rebuild.
+  function requestRoutes() {
+    if (M.dbTimer || M.db) return;
+    M.dbTimer = setTimeout(async () => {
+      M.dbTimer = null;
+      try {
+        const st = await api('/api/street/routes'); M.dbStatus = st; updateRoutesInfo();
+        if (st.status === 'ready') {
+          const d = await api('/api/street/routes.json');
+          const uv = d.lines.map(l => { const out = new Float64Array(l.length); for (let i = 0; i < l.length; i += 2) { out[i] = lonToX(l[i], 0); out[i + 1] = latToY(l[i + 1], 0); } return out; });
+          M.db = { uv, bb: uv.map(flatBBox), dates: d.dates || [], n: d.n_routes };
+          M.seqGen++; scheduleMap(); updateRoutesInfo();
+        } else if (st.status === 'building') requestRoutes();
+        else if (st.status === 'error') { M.dbTimer = setTimeout(() => { M.dbTimer = null; M.dbStatus = null; requestRoutes(); }, 65000); }
+      } catch (e) { M.dbStatus = { status: 'error', error: e.message }; updateRoutesInfo(); M.dbTimer = setTimeout(() => { M.dbTimer = null; M.dbStatus = null; requestRoutes(); }, 15000); }
+    }, M.dbStatus ? 2500 : 0);
+  }
+  function updateRoutesInfo() {
+    const el = $('map-db-info'), st = M.dbStatus; if (!st) return;
+    if (st.status === 'ready') el.innerHTML = `${(st.n_routes || 0).toLocaleString()} RAPID routes · built ${esc((st.built_at || '').slice(0, 10))} · <a href="#" id="map-db-rebuild">refresh</a>`;
+    else if (st.status === 'building') el.textContent = `building route database… ${st.done}/${st.total || '?'} tiles`;
+    else el.innerHTML = `route database failed: ${esc(st.error || '')} <a href="#" id="map-db-rebuild">retry</a>`;
+    const link = $('map-db-rebuild'); if (link) link.addEventListener('click', async (e) => { e.preventDefault(); try { await api('/api/street/routes/rebuild', {}); M.db = null; M.dbStatus = null; requestRoutes(); toast('Rebuilding the route database from Mapillary…'); } catch (err) { toast(err.message, 'error'); } });
+  }
+  function drawRoutesDB(ctx, W, H, heat, passes) {
+    const db = M.db, s = Math.pow(2, M.z);
+    const u0 = (M.cx - W / 2 / MTILE - 1) / s, u1 = (M.cx + W / 2 / MTILE + 1) / s, v0 = (M.cy - H / 2 / MTILE - 1) / s, v1 = (M.cy + H / 2 / MTILE + 1) / s;
+    const start = $('street-start').value, end = $('street-end').value;
+    const visible = [];
+    for (let n = 0; n < db.uv.length; n++) {
+      const b = db.bb[n]; if (b[2] < u0 || b[0] > u1 || b[3] < v0 || b[1] > v1) continue;
+      const d = db.dates[n]; if ((start || end) && !d) continue; if (start && d < start) continue; if (end && d > end) continue;
+      visible.push(db.uv[n]);
+    }
+    if (M.z < 6) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = heat ? 'rgba(255,140,0,.12)' : 'rgba(0,229,255,.10)';
+      const r = M.z < 4 ? 9 : 12;
+      for (const l of visible) { const px = (l[0] * s - M.cx) * MTILE + W / 2, py = (l[1] * s - M.cy) * MTILE + H / 2; ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill(); }
+      ctx.restore();
+    }
+    // Vertices sit about a metre apart; skip the ones that fall on the same pixel.
+    const step = 2 * Math.max(1, Math.floor(Math.pow(2, 13 - M.z)));
+    for (let pass = 0; pass < passes; pass++) { strokeStyle(ctx, heat, pass); ctx.beginPath();
+      for (const l of visible) {
+        const last = l.length - 2;
+        for (let i = 0; i <= last; i += step) { const px = (l[i] * s - M.cx) * MTILE + W / 2, py = (l[i + 1] * s - M.cy) * MTILE + H / 2; if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); }
+        if (step > 2) ctx.lineTo((l[last] * s - M.cx) * MTILE + W / 2, (l[last + 1] * s - M.cy) * MTILE + H / 2);
+      }
+      ctx.stroke(); }
+    return visible.length;
+  }
+  function strokeStyle(ctx, heat, pass) {
+    if (!heat) { ctx.strokeStyle = 'rgba(0,229,255,.9)'; ctx.lineWidth = M.z >= 14 ? 3 : M.z >= 9 ? 2 : 1.5; return; }
+    if (pass === 0) { ctx.strokeStyle = 'rgba(255,110,0,.10)'; ctx.lineWidth = 16; } else { ctx.strokeStyle = 'rgba(255,225,60,.45)'; ctx.lineWidth = 4; }
+  }
+  function drawCoverage(ctx, W, H) {
+    if (!M.coverage) { $('map-cov-info').textContent = ''; return; }
+    const heat = M.style === 'heat'; let info = '';
+    ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; if (heat) ctx.globalCompositeOperation = 'lighter';
+    const passes = heat ? 2 : 1;
+    const Ls = Math.round(M.z);
+    if (M.rapidOnly && !M.db) requestRoutes();
+    if (M.rapidOnly && M.db) {
+      const n = drawRoutesDB(ctx, W, H, heat, passes);
+      ctx.restore();
+      $('map-cov-info').textContent = `${n.toLocaleString()} RAPID survey routes in view`;
+      return;
+    }
+    if (Ls < 6) {
+      const ov = M.overview; if (!ov || ov.status === 'building') requestOverview();
+      if (ov && ov.status === 'ready') {
+        const s = Math.pow(2, M.z);
+        // Routes are hairlines at country scale: glow each survey site first so
+        // it can be spotted, then draw the routes on top.
+        ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = heat ? 'rgba(255,140,0,.12)' : 'rgba(0,229,255,.10)';
+        const r = M.z < 4 ? 9 : 12;
+        // View in unit coordinates, padded by a tile, for culling:
+        const u0 = (M.cx - W / 2 / MTILE - 1) / s, u1 = (M.cx + W / 2 / MTILE + 1) / s, v0 = (M.cy - H / 2 / MTILE - 1) / s, v1 = (M.cy + H / 2 / MTILE + 1) / s;
+        const visible = []; for (let n = 0; n < ov.uv.length; n++) { const b = ov.bb[n]; if (b[2] < u0 || b[0] > u1 || b[3] < v0 || b[1] > v1) continue; visible.push(ov.uv[n]); }
+        for (const l of visible) { const px = (l[0] * s - M.cx) * MTILE + W / 2, py = (l[1] * s - M.cy) * MTILE + H / 2; ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill(); }
+        ctx.restore();
+        const step = M.z < 4.5 ? 4 : 2;  // routes are hairlines here: fewer vertices look identical
+        for (let pass = 0; pass < passes; pass++) { strokeStyle(ctx, heat, pass); ctx.beginPath();
+          for (const l of visible) { for (let i = 0; i < l.length; i += step) { const px = (l[i] * s - M.cx) * MTILE + W / 2, py = (l[i + 1] * s - M.cy) * MTILE + H / 2; if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); } }
+          ctx.stroke(); }
+        info = `${ov.lines.length.toLocaleString()} survey routes (country-wide index)`;
+      } else if (ov && ov.status === 'building') info = `indexing survey coverage… ${ov.done}/${ov.total || '?'} tiles`;
+      if (M.rapidOnly && M.dbStatus && M.dbStatus.status === 'building') info = `building the route database… ${M.dbStatus.done}/${M.dbStatus.total || '?'} tiles`;
+      else if (ov && ov.status === 'error') info = 'coverage index failed: ' + ov.error;
+      else info = 'loading survey coverage…';
+    } else {
+      const Lz = Math.min(14, Ls), ks = Math.pow(2, M.z - Lz), size = MTILE * ks;
+      const x0 = Math.floor((M.cx - W / 2 / MTILE) / ks), x1 = Math.ceil((M.cx + W / 2 / MTILE) / ks), y0 = Math.floor((M.cy - H / 2 / MTILE) / ks), y1 = Math.ceil((M.cy + H / 2 / MTILE) / ks);
+      const n = (x1 - x0 + 1) * (y1 - y0 + 1);
+      if (n > 64) info = 'zoom in to see survey coverage';
+      else {
+        let routes = 0, pending = 0;
+        for (let pass = 0; pass < passes; pass++) { strokeStyle(ctx, heat, pass); ctx.beginPath();
+          for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
+            const d = seqTile(Lz, tx, ty); if (!d) { if (pass === 0) pending++; continue; }
+            const ox = (tx * ks - M.cx) * MTILE + W / 2, oy = (ty * ks - M.cy) * MTILE + H / 2, f = size / (d.extent || 4096);
+            for (let n = 0; n < d.lines.length; n++) {
+              const b = d.bb ? d.bb[n] : null;
+              if (b && (ox + b[2] * f < -4 || ox + b[0] * f > W + 4 || oy + b[3] * f < -4 || oy + b[1] * f > H + 4)) continue;
+              const l = d.lines[n]; if (pass === 0) routes++;
+              for (let i = 0; i < l.length; i += 2) { const px = ox + l[i] * f, py = oy + l[i + 1] * f; if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); }
+            }
+          }
+          ctx.stroke(); }
+        info = `${routes.toLocaleString()} survey routes in view` + (pending ? ` (loading ${pending} tiles…)` : '');
+      }
+    }
+    ctx.restore();
+    $('map-cov-info').textContent = info;
+  }
+  function resetCoverage() { M.seq.clear(); M.overview = null; clearTimeout(M.overviewTimer); M.overviewTimer = null; $('map-legend-who').textContent = M.rapidOnly ? '(RAPID surveys)' : '(all Mapillary)'; scheduleMap(); saveMapView(); }
+  // ---- results drawn on the map
+  async function refreshGeoOverlay(version) {
+    M.featVersion = version; M.featAt = Date.now();
+    try {
+      const d = await api('/api/geo_overlay');
+      const first = !M.features; M.features = d.features;
+      if (first && d.features.length && !(S.state && S.state.raster)) {
+        const b = [Infinity, Infinity, -Infinity, -Infinity];
+        for (const f of d.features) { b[0] = Math.min(b[0], f.bbox[0]); b[1] = Math.min(b[1], f.bbox[1]); b[2] = Math.max(b[2], f.bbox[2]); b[3] = Math.max(b[3], f.bbox[3]); }
+        if (b[0] < b[2] || b[1] < b[3]) fitBox([b[0] - 0.0005, b[1] - 0.0005, b[2] + 0.0005, b[3] + 0.0005], 0.8);
+      }
+      scheduleMap();
+    } catch (e) { /* the raster overlay reports errors */ }
+  }
+  function drawFeatures(ctx, W, H) {
+    const feats = M.features; if (!feats || !feats.length) return;
+    ctx.save(); ctx.lineWidth = 2;
+    for (const f of feats) {
+      if (f.kind === 'point') { const [px, py] = geoToPx(f.coords[0], f.coords[1]); if (px < -10 || py < -10 || px > W + 10 || py > H + 10) continue; ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fillStyle = '#2f6fed'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.stroke(); continue; }
+      const [bx0, by0] = geoToPx(f.bbox[0], f.bbox[3]), [bx1, by1] = geoToPx(f.bbox[2], f.bbox[1]);
+      if (bx1 < 0 || by1 < 0 || bx0 > W || by0 > H) continue;
+      ctx.strokeStyle = '#2f6fed'; ctx.fillStyle = 'rgba(47,111,237,.18)';
+      for (const ring of f.coords) { ctx.beginPath(); ring.forEach((c, i) => { const [px, py] = geoToPx(c[0], c[1]); if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); }); if (f.kind === 'polygon') { ctx.closePath(); ctx.fill(); } ctx.stroke(); }
+    }
+    ctx.restore();
+  }
+  // ---- the selected area
+  function boxSizeText(b) { const km = 111.32; const w = (b[2] - b[0]) * km * Math.cos((b[1] + b[3]) / 2 * Math.PI / 180), h = (b[3] - b[1]) * km; return `${w.toFixed(2)} × ${h.toFixed(2)} km`; }
+  function normBox(a, b) { return [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])]; }
+  function readBox(prefix) { const v = ['min-lon', 'min-lat', 'max-lon', 'max-lat'].map(k => parseFloat($(`${prefix}-${k}`).value)); return v.every(Number.isFinite) && v[0] < v[2] && v[1] < v[3] ? v : null; }
+  function writeBox(prefix, b) { ['min-lon', 'min-lat', 'max-lon', 'max-lat'].forEach((k, i) => { $(`${prefix}-${k}`).value = b ? b[i].toFixed(6) : ''; }); }
+  function setBox(b, fromInputs) {
+    M.box = b;
+    if (b && startMode !== 'area') setStart('area');
+    if (!fromInputs) { writeBox('bbox', b); writeBox('sbox', b); saveForm(); }
+    updateAreaCard(); updateRunButtons(); scheduleMap();
+  }
+  function estimateTiles(b, z) {
+    const n = Math.pow(2, z);
+    const tx = lon => Math.min(n - 1, Math.max(0, Math.floor((lon + 180) / 360 * n)));
+    const ty = lat => { const r = lat * Math.PI / 180; return Math.min(n - 1, Math.max(0, Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n))); };
+    return (tx(b[2]) - tx(b[0]) + 1) * (ty(b[1]) - ty(b[3]) + 1);
+  }
+  function zoomInfo(b, z) {
+    const mpp = 156543.03 * Math.cos((b[1] + b[3]) / 2 * Math.PI / 180) / Math.pow(2, z);
+    return `Zoom ${z} · about ${estimateTiles(b, z).toLocaleString()} tiles · ${mpp.toFixed(2)} m/px`;
+  }
+  function autoZoom() {
+    const b = M.box, info = $('region-zoom-info'), max = (S.state && S.state.options.basemaps[regionProvider] && S.state.options.basemaps[regionProvider].max_zoom) || 20;
+    if (!b) { info.textContent = 'Resolution is chosen from the area size.'; return; }
+    if (!$('zoom-adv').open) {
+      let z = Math.min(19, max);
+      while (z > 10 && estimateTiles(b, z) > 2500) z--;
+      $('region-zoom').value = z;
+    }
+    info.textContent = zoomInfo(b, num('region-zoom'));
+  }
+  $('region-zoom').addEventListener('input', () => { if (M.box) $('region-zoom-info').textContent = zoomInfo(M.box, num('region-zoom')); });
+  $('zoom-adv').addEventListener('toggle', autoZoom);
+  function updateAreaCard() {
+    autoZoom();
+    const b = M.box, info = $('area-info');
+    if (!b) info.textContent = 'No area yet: hold Shift and drag on the map, or press Draw box.';
+    else info.textContent = `${boxSizeText(b)}\n${b[1].toFixed(5)}, ${b[0].toFixed(5)}  →  ${b[3].toFixed(5)}, ${b[2].toFixed(5)}`;
+    const busy = !!(S.state && S.state.busy);
+    $('btn-download-region').disabled = busy || (regionMode === 'bbox' && !b);
+    $('btn-area-street').disabled = !b || busy;
+  }
+  ['bbox', 'sbox'].forEach(prefix => ['min-lon', 'min-lat', 'max-lon', 'max-lat'].forEach(k => $(`${prefix}-${k}`).addEventListener('change', () => {
+    const b = readBox(prefix); if (!b) return; M.box = b; writeBox(prefix === 'bbox' ? 'sbox' : 'bbox', b); updateAreaCard(); updateRunButtons(); if (M.open) fitBox(b, 0.6);
+  })));
+  function setDrawMode(on) { M.draw = on; $('map-draw').classList.toggle('on', on); mapCanvas.classList.toggle('draw', on); }
+  $('btn-area-draw').addEventListener('click', () => { setPreview('map'); setDrawMode(true); toast('Drag on the map to draw the area.'); });
+  $('btn-map-region').addEventListener('click', () => { setPreview('map'); if (M.box) fitBox(M.box, 0.6); else setDrawMode(true); });
+  $('btn-map-street').addEventListener('click', () => { setPreview('map'); if (M.box) fitBox(M.box, 0.6); else setDrawMode(true); });
+  $('btn-area-clear').addEventListener('click', () => setBox(null));
+  $('btn-area-street').addEventListener('click', () => {
+    if (!M.box) return;
+    unlock(2); goto(2);
+    $('asset-mode').querySelector('[data-mode=street]').click();
+    $('street-area').querySelector('[data-area=box]').click();
+    toast('Street discovery will search the selected area. Set the objects and token, then Discover.', 'ok');
+  });
+  // ---- toolbar
+  $('map-zoom-in').addEventListener('click', () => setZoom(Math.round(M.z) + 1));
+  $('map-zoom-out').addEventListener('click', () => setZoom(Math.round(M.z) - 1));
+  $('map-draw').addEventListener('click', () => setDrawMode(!M.draw));
+  $('map-clear').addEventListener('click', () => setBox(null));
+  $('map-provider').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    M.provider = b.dataset.provider;
+    $('map-provider').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    $('map-attrib').textContent = (M.provider === 'bing' ? 'Imagery © Microsoft Bing' : 'Imagery © Google') + ' · Coverage © Mapillary · Search © OpenStreetMap';
+    if (M.z > maxZoom()) M.z = maxZoom();
+    scheduleMap(); saveMapView();
+  }));
+  $('map-coverage').addEventListener('change', () => { M.coverage = $('map-coverage').checked; scheduleMap(); saveMapView(); });
+  $('map-rapid').addEventListener('change', () => { M.rapidOnly = $('map-rapid').checked; resetCoverage(); });
+  $('map-style').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { M.style = b.dataset.style; $('map-style').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); scheduleMap(); saveMapView(); }));
+  ['street-start', 'street-end', 'street-token'].forEach(id => $(id).addEventListener('change', () => { M.seq.clear(); scheduleMap(); }));
+  // ---- address search
+  async function searchPlace() {
+    const q = $('geo-q').value.trim(); if (!q) return;
+    const m = q.match(/^(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)$/);
+    if (m) { goToMatch({ lon: parseFloat(m[2]), lat: parseFloat(m[1]), bbox: null, name: q }); return; }
+    $('geo-results').innerHTML = '<div class="none">Searching…</div>'; $('geo-results').style.display = 'block';
+    try { const r = await api('/api/geocode?q=' + encodeURIComponent(q)); showGeoResults(r.matches); }
+    catch (e) { $('geo-results').innerHTML = `<div class="none">${esc(e.message)}</div>`; }
+  }
+  function showGeoResults(list) {
+    const box = $('geo-results'); box.innerHTML = '';
+    if (!list.length) box.innerHTML = '<div class="none">No match. Try a city and state, or "lat, lon".</div>';
+    list.forEach(m => { const d = document.createElement('div'); d.textContent = m.name; d.addEventListener('click', () => { goToMatch(m); box.style.display = 'none'; }); box.appendChild(d); });
+    box.style.display = 'block';
+  }
+  function goToMatch(m) {
+    setPreview('map'); M.pin = [m.lon, m.lat];
+    const b = m.bbox;
+    if (b && ((b[2] - b[0]) > 0.01 || (b[3] - b[1]) > 0.01)) fitBox(b, 0.85);
+    else { M.z = 16; M.cx = lonToX(m.lon, 16); M.cy = latToY(m.lat, 16); scheduleMap(); saveMapView(); }
+  }
+  $('geo-go').addEventListener('click', searchPlace);
+  $('geo-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); searchPlace(); } if (e.key === 'Escape') $('geo-results').style.display = 'none'; });
+  document.addEventListener('click', (e) => { if (!e.target.closest('.geo-wrap')) $('geo-results').style.display = 'none'; });
+  // ---- mouse
+  mapCanvas.addEventListener('mousedown', (e) => {
+    const r = mapCanvas.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+    if (M.draw || e.shiftKey) M.drag = { kind: 'box', start: pxToGeo(px, py), box: null };
+    else { M.drag = { kind: 'pan', px, py, cx: M.cx, cy: M.cy }; mapCanvas.classList.add('panning'); }
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!M.open) return;
+    const r = mapCanvas.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+    M.hover = (px >= 0 && py >= 0 && px <= r.width && py <= r.height) ? pxToGeo(px, py) : null;
+    if (!M.drag) { updateReadout(); return; }
+    if (M.drag.kind === 'pan') { M.cx = M.drag.cx - (px - M.drag.px) / MTILE; M.cy = M.drag.cy - (py - M.drag.py) / MTILE; }
+    else if (M.drag.kind === 'box') M.drag.box = normBox(M.drag.start, pxToGeo(px, py));
+    scheduleMap();
+  });
+  window.addEventListener('mouseup', () => {
+    if (!M.open || !M.drag) return;
+    const d = M.drag; M.drag = null; mapCanvas.classList.remove('panning');
+    if (d.kind === 'box' && d.box && d.box[2] > d.box[0] && d.box[3] > d.box[1]) { setDrawMode(false); setBox(d.box); toast(`Area selected: ${boxSizeText(d.box)}.`, 'ok'); }
+    if (d.kind === 'pan') saveMapView();
+    scheduleMap();
+  });
+  mapCanvas.addEventListener('wheel', (e) => { e.preventDefault(); const r = mapCanvas.getBoundingClientRect(); setZoom(M.z - e.deltaY * 0.003, e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+  mapCanvas.addEventListener('dblclick', (e) => { const r = mapCanvas.getBoundingClientRect(); setZoom(M.z + 1, e.clientX - r.left, e.clientY - r.top); });
+  window.addEventListener('resize', () => scheduleMap());
+  document.addEventListener('keydown', (e) => { if (M.open && e.key === 'Escape' && M.draw) setDrawMode(false); });
+  // Initial state: the box typed or restored in step 1, the saved view, the toggles.
+  $('map-coverage').checked = M.coverage; $('map-rapid').checked = M.rapidOnly;
+  $('map-style').querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.style === M.style));
+  $('map-provider').querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.provider === M.provider));
+  $('map-legend-who').textContent = M.rapidOnly ? '(RAPID surveys)' : '(all Mapillary)';
+  setPreview('map');
+  setTimeout(() => { const b = readBox('bbox'); if (b) { setBox(b, true); fitBox(b, 0.6); } }, 50);
+
   // ------------------------------------------------------------ boot
-  window.__rapidtools = { state: S, featureAt, draw, fit };  // debugging handle
+  window.__rapidtools = { state: S, featureAt, draw, fit, builder: B, map: M, notifyBar: updateNotifyBar, notify: N, setPreview, setBox, fitBox, drawMap, renderLayer };  // debugging handle
   resize();
   poll();
   setInterval(poll, 1000);
