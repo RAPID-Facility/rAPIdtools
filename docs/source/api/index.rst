@@ -19,6 +19,7 @@ Core objects
    ImageCollection
    BoundingBox
    PolygonRegion
+   Observation
    OperationCancelled
    is_cancelled
    raise_if_cancelled
@@ -50,6 +51,7 @@ Imagery extractors
    GoogleOrthomosaicExtractor
    GoogleStreetViewImageExtractor
    MapillaryImageExtractor
+   MapillaryObjectImageExtractor
    MapillaryLabelMapper
 
 Detection, segmentation and regularization
@@ -60,6 +62,7 @@ Detection, segmentation and regularization
    :nosignatures:
 
    SAM3OrthoFeatureExtractor
+   MapillaryFeatureExtractor
    SAM3ImageSegmenter
    BuildingRegularizer
    RoadwayRegularizer
@@ -180,4 +183,15 @@ Graphical interface
    launch_asset_analysis_app
    AssetAnalysisWorkflow
    DetectionSettings
+   StreetDetectionSettings
+   RegionImagerySettings
    InferenceSettings
+   AssistSettings
+   NotificationConfig
+   Notifier
+   JobSummary
+   PromptSpec
+   OutputField
+   RubricEntry
+   assemble_prompt
+   PromptAssistant

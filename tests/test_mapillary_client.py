@@ -1009,3 +1009,121 @@ def test_fetch_images_in_bbox_split_quadrants_cover_parent(client, requests_mock
 
     assert len(parent) == len(parent_tiles)
     assert sorted(merged.get_ids()) == sorted(parent.get_ids())
+
+
+# ==========================================
+# Detection metadata (street-level object discovery)
+# ==========================================
+def test_fetch_detections_filters_values(client, requests_mock):
+    """Detections come back as value/geometry pairs, filtered by label."""
+    payload = {
+        'id': '42',
+        'detections': {
+            'data': [
+                {'value': 'object--vehicle--car', 'geometry': 'AAA='},
+                {'value': 'nature--sky', 'geometry': 'BBB='},
+                {'value': 'object--vehicle--truck'},  # no geometry: dropped
+            ]
+        },
+    }
+    requests_mock.get(f'{BASE_URL}/42', **_json_response(payload))
+    cars = client.fetch_detections('42', values=['object--vehicle--car'])
+    assert cars == [{'value': 'object--vehicle--car', 'geometry': 'AAA='}]
+    assert requests_mock.last_request.qs['fields'] == [
+        'detections.value,detections.geometry'
+    ]
+    everything = client.fetch_detections('42')
+    assert [d['value'] for d in everything] == ['object--vehicle--car', 'nature--sky']
+
+
+def test_fetch_detections_handles_failures(client, requests_mock, no_sleep):
+    """A failing request or an image without detections yields an empty list."""
+    requests_mock.get(f'{BASE_URL}/1', status_code=500)
+    assert client.fetch_detections('1') == []
+    requests_mock.get(f'{BASE_URL}/2', **_json_response({'id': '2'}))
+    assert client.fetch_detections('2') == []
+
+
+def test_decode_detection_polygons_normalises_and_flips():
+    """Tile coordinates map to [0, 1] with y growing downwards."""
+    b64 = _b64_polygon('POLYGON((0 0, 4096 0, 4096 2048, 0 2048, 0 0))')
+    rings = MapillaryClient.decode_detection_polygons(b64)
+    assert len(rings) == 1
+    xs = {round(x, 3) for x, _ in rings[0]}
+    ys = {round(y, 3) for _, y in rings[0]}
+    assert xs == {0.0, 1.0}
+    assert ys == {0.5, 1.0}  # tile y=2048 (top half) becomes image y=0.5
+
+
+def test_decode_detection_polygons_multipolygon_and_garbage():
+    """Multi-polygons yield one ring per part; garbage yields nothing."""
+    b64 = _b64_polygon(
+        'MULTIPOLYGON(((0 0, 100 0, 100 100, 0 0)), '
+        '((200 200, 300 200, 300 300, 200 200)))'
+    )
+    assert len(MapillaryClient.decode_detection_polygons(b64)) == 2
+    assert MapillaryClient.decode_detection_polygons('not base64!') == []
+
+
+def test_get_image_url(client, requests_mock):
+    """The thumbnail URL for the requested size is returned; bad sizes raise."""
+    requests_mock.get(
+        f'{BASE_URL}/42',
+        **_json_response({'id': '42', 'thumb_1024_url': 'https://x/1024'}),
+    )
+    assert client.get_image_url('42', size='1024') == 'https://x/1024'
+    assert requests_mock.last_request.qs['fields'] == ['thumb_1024_url']
+    with pytest.raises(ValueError):
+        client.get_image_url('42', size='4096')
+
+
+# ==========================================
+# Coverage tiles (survey sequences for the map)
+# ==========================================
+def _sequence_tile(features):
+    return mapbox_vector_tile.encode([{'name': 'sequence', 'features': features}])
+
+
+def test_fetch_sequence_lines_filters_and_flips(client, requests_mock):
+    ms = 1_760_000_000_000  # 2025-10-09
+    rapid = {
+        'geometry': 'LINESTRING(0 4096, 100 4000, 200 3900)',
+        'properties': {'creator_id': RAPID_CREATOR_ID, 'captured_at': ms},
+    }
+    other = {
+        'geometry': 'LINESTRING(0 0, 10 10)',
+        'properties': {'creator_id': 1, 'captured_at': ms},
+    }
+    multi = {
+        'geometry': 'MULTILINESTRING((0 0, 1 1), (5 5, 6 6, 7 7))',
+        'properties': {'creator_id': RAPID_CREATOR_ID, 'captured_at': ms + 86_400_000},
+    }
+    undated = {
+        'geometry': 'LINESTRING(3 3, 4 4)',
+        'properties': {'creator_id': RAPID_CREATOR_ID},
+    }
+    requests_mock.get(
+        _tile_url(178, 365, 10), content=_sequence_tile([rapid, other, multi, undated])
+    )
+    data = client.fetch_sequence_lines(10, 178, 365)
+    assert data['extent'] == 4096 and data['count'] == 4
+    assert data['lines'][0] == [0, 0, 100, 96, 200, 196]  # y flipped to grow downwards
+    assert data['lines'][1] == [0, 4096, 1, 4095]
+    assert (data['first'], data['last']) == ('2025-10-09', '2025-10-10')
+    everyone = client.fetch_sequence_lines(10, 178, 365, filter_rapid_only=False)
+    assert everyone['count'] == 5
+    dated = client.fetch_sequence_lines(10, 178, 365, start_date='2025-10-10')
+    assert dated['count'] == 2 and dated['first'] == '2025-10-10'  # undated dropped
+    with pytest.raises(ValueError):
+        client.fetch_sequence_lines(15, 0, 0)
+
+
+def test_fetch_sequence_lines_handles_empty_and_failed_tiles(
+    client, requests_mock, caplog
+):
+    requests_mock.get(_tile_url(1, 1, 8), content=_image_tile([]))
+    assert client.fetch_sequence_lines(8, 1, 1)['lines'] == []
+    requests_mock.get(_tile_url(2, 2, 8), status_code=500)
+    with caplog.at_level(logging.WARNING):
+        assert client.fetch_sequence_lines(8, 2, 2)['count'] == 0
+    assert 'Could not read coverage tile 8/2/2' in caplog.text

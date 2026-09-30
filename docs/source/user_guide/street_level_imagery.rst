@@ -87,6 +87,89 @@ letting a language model translate plain English with
        strict_content_filter=True, label_mapper=mapper,
    )
 
+Discovering objects along a survey
+----------------------------------
+
+The extractors above start from an inventory you already have. When the
+question is "where are all the vehicles, poles or hydrants along this
+survey", :class:`~rapidtools.processing.MapillaryFeatureExtractor` builds the
+inventory from the imagery itself, mirroring what
+:class:`~rapidtools.processing.SAM3OrthoFeatureExtractor` does for rasters.
+
+.. code-block:: python
+
+   from rapidtools import (
+       BoundingBox, MapillaryFeatureExtractor, MapillaryObjectImageExtractor,
+       PhysicalAssetCollection, Pipeline,
+   )
+
+   spokane = BoundingBox(-117.5358, 47.6885, -117.4426, 47.7378)
+   pipeline = Pipeline([
+       MapillaryFeatureExtractor(
+           classes=['vehicles', 'utility poles'],
+           access_token='MLY|...',
+           region=spokane,
+           start_date='2025-08-01',
+           frame_spacing_m=3,        # one frame every 3 m is enough
+           min_observations=2,       # drop single-frame sightings
+       ),
+       MapillaryObjectImageExtractor(
+           'output/crops', access_token='MLY|...',
+           max_images_per_asset=2, overlay_asset_outline=True, outline_shape='corners',
+       ),
+   ])
+   objects = pipeline.run(PhysicalAssetCollection())
+   objects[0].attributes['localization']      # 'triangulated' or 'single_view'
+
+How it works:
+
+1. **Detections are metadata.** Mapillary segments every image it hosts.
+   The extractor reads those polygons for the requested classes through the
+   Graph API, so discovering objects across a city costs a few kilobytes per
+   image and downloads no pixels. Plain-English class names such as
+   ``'cars'`` or ``'utility poles'`` are translated to Mapillary labels; a
+   :class:`~rapidtools.processing.MapillaryLabelMapper` can be supplied for
+   names the built-in aliases miss.
+2. **The survey vehicle is removed.** The camera car appears at the same
+   place in every frame of a sequence, while a parked car drifts across the
+   frame. Detections that recur at the same position in most frames are
+   dropped before anything else happens.
+3. **Each sighting is placed.** The polygon's horizontal centre gives the
+   bearing from the camera; its lowest point gives the elevation of the
+   ground contact, which with the camera height gives a range. Sightings
+   closer than ``min_range_m`` or farther than ``max_range_m`` are discarded.
+4. **Sightings become objects.** Sightings within ``cluster_radius_m`` are one
+   object. Objects seen from two or more camera positions are triangulated
+   by intersecting the bearings, which is far more accurate than any single
+   view; the rest keep the single-view estimate and are labelled
+   ``localization='single_view'`` so you can filter them.
+
+Every object is a point :class:`~rapidtools.core.PhysicalAsset` whose
+attributes include the class, the most common label, the number of
+sightings and images, and the sightings themselves as
+:class:`~rapidtools.core.Observation` records. Those records are what lets
+:class:`~rapidtools.processing.MapillaryObjectImageExtractor` fetch only the
+closest one or two views of each object, at thumbnail resolution, and crop the
+detection with a margin. From there,
+:class:`~rapidtools.processing.AssetAnalyzer` works exactly as it does for
+aerial crops.
+
+A city-wide survey has tens of thousands of frames, and each frame's
+Mapillary payload lists every label it contains. The extractor therefore
+fetches frames in batches of ``frame_batch_size`` (200 by default), keeps
+only the requested classes and drops the rest before the next batch, and
+simplifies every outline with ``simplify_tolerance`` (about four pixels of a
+2048-wide image by default, capped at 1 % of the outline's size so distant
+objects keep their detail) so memory stays flat however large the region.
+The cropper likewise downloads each source image once, serves every object
+seen in it and releases it, holding at most ``max_workers`` images at a time.
+
+Classes Mapillary does not segment, such as debris piles, can be detected
+with SAM 3 on the same thumbnails: with ``detection_source='auto'`` (the
+default) unresolved classes go to SAM 3, and the SAM 3 sightings enter the
+same localisation and clustering. Use ``frame_spacing_m`` generously in that
+mode, since each frame then costs an inference call.
+
 Bing Streetside
 ---------------
 

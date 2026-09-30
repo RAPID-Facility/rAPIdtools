@@ -70,6 +70,7 @@ import gzip
 import json
 import logging
 import time
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 from pathlib import Path
@@ -390,6 +391,242 @@ class MapillaryClient:
 
         return image_asset
 
+    def fetch_detections(
+        self, image_id: str, values: Iterable[str] | None = None
+    ) -> list[dict[str, Any]]:
+        """
+        Fetch Mapillary's segmentation detections for one image as metadata.
+
+        No pixels are downloaded: each detection is a label and a
+        base64-encoded vector-tile polygon, decodable with
+        :meth:`decode_detection_polygons`. This is what makes region-scale
+        object discovery cheap.
+
+        Args:
+            image_id (str):
+                The Mapillary image key.
+            values (Iterable[str] | None):
+                Labels to keep (exact matches, e.g.
+                ``['object--vehicle--car']``). ``None`` keeps every detection.
+
+        Returns:
+            list[dict[str, Any]]:
+                ``{'value': label, 'geometry': base64_mvt}`` entries, or an
+                empty list when the request fails or nothing matches.
+
+        Example:
+            >>> client = MapillaryClient('MLY|123|abc')
+            >>> cars = client.fetch_detections(
+            ...     '1234567890', values=['object--vehicle--car']
+            ... )  # doctest: +SKIP
+            >>> cars[0]['value']  # doctest: +SKIP
+            'object--vehicle--car'
+        """
+        props = self._get_image_metadata(
+            image_id, ['detections.value', 'detections.geometry']
+        )
+        if not props:
+            return []
+        data = (props.get('detections') or {}).get('data') or []
+        wanted = set(values) if values is not None else None
+        return [
+            {'value': item.get('value'), 'geometry': item.get('geometry')}
+            for item in data
+            if item.get('geometry') and (wanted is None or item.get('value') in wanted)
+        ]
+
+    @staticmethod
+    def decode_detection_polygons(b64_geometry: str) -> list[list[tuple[float, float]]]:
+        """
+        Decode a detection's vector-tile geometry into normalised polygons.
+
+        Args:
+            b64_geometry (str):
+                The base64-encoded Mapbox Vector Tile carried by a detection.
+
+        Returns:
+            list[list[tuple[float, float]]]:
+                Exterior rings with ``x`` and ``y`` in ``[0, 1]``, ``y``
+                growing downwards like image pixels. Multi-polygons yield one
+                ring per part; malformed geometry yields an empty list.
+
+        Example:
+            >>> import base64, mapbox_vector_tile
+            >>> tile = mapbox_vector_tile.encode([{
+            ...     'name': 'mpy-or',
+            ...     'features': [{
+            ...         'geometry': 'POLYGON((0 0, 2048 0, 2048 2048, 0 2048, 0 0))',
+            ...         'properties': {},
+            ...     }],
+            ... }])
+            >>> rings = MapillaryClient.decode_detection_polygons(
+            ...     base64.encodebytes(tile).decode()
+            ... )
+            >>> sorted(rings[0])[:2]
+            [(0.0, 0.5), (0.0, 1.0)]
+        """
+        try:
+            decoded = mapbox_vector_tile.decode(
+                base64.decodebytes(b64_geometry.encode('utf-8'))
+            )
+        except Exception as exc:  # noqa: BLE001 - provider data can be malformed
+            logger.debug(f'Could not decode detection geometry: {exc}')
+            return []
+        polygons: list[list[tuple[float, float]]] = []
+        for layer in decoded.values():
+            extent = float(layer.get('extent', 4096))
+            for feature in layer.get('features', []):
+                geom = feature.get('geometry', {})
+                if geom.get('type') == 'Polygon':
+                    parts = [geom['coordinates']]
+                elif geom.get('type') == 'MultiPolygon':
+                    parts = geom['coordinates']
+                else:
+                    continue
+                for rings in parts:
+                    if not rings:
+                        continue
+                    exterior = rings[0]
+                    ring = [(x / extent, 1.0 - y / extent) for x, y in exterior]
+                    if len(ring) >= 3:
+                        polygons.append(ring)
+        return polygons
+
+    def fetch_sequence_lines(
+        self,
+        z: int,
+        x: int,
+        y: int,
+        filter_rapid_only: bool = True,
+        start_date: str = '',
+        end_date: str = '',
+    ) -> dict[str, Any]:
+        """
+        Read the survey sequences drawn in one Mapillary coverage tile.
+
+        Mapillary's coverage tiles carry a ``sequence`` layer at zoom 6 to
+        14 (the routes driven, as polylines) so a map can show where
+        street-level imagery exists without listing images. Coordinates are
+        returned in the tile's own pixel space, ``y`` growing downwards, so
+        a client can draw them straight onto the tile.
+
+        Args:
+            z (int): Tile zoom, 6 to 14.
+            x (int): Tile column.
+            y (int): Tile row.
+            filter_rapid_only (bool): Keep only sequences uploaded by the
+                RAPID Facility. Defaults to ``True``.
+            start_date (str): Inclusive lower bound on the capture date
+                (``YYYY-MM-DD``); empty for none.
+            end_date (str): Inclusive upper bound; empty for none.
+
+        Returns:
+            dict[str, Any]: ``extent`` (tile size in local units, normally
+                4096), ``lines`` as flat ``[x0, y0, x1, y1, ...]`` lists,
+                ``count`` of sequences kept, ``first`` / ``last`` capture
+                dates and ``ok``. A tile that cannot be read after three
+                attempts returns ``ok=False`` with an ``error`` message and
+                no lines, so callers can tell a failure from an empty tile.
+
+        Example:
+            >>> client = MapillaryClient('MLY|123|abc')
+            >>> tile = client.fetch_sequence_lines(10, 178, 365)  # doctest: +SKIP
+            >>> tile['count'], tile['lines'][0][:4]  # doctest: +SKIP
+            (12, [2048, 102, 2051, 130])
+        """
+        if not 6 <= z <= 14:
+            raise ValueError('Coverage tiles exist for zoom levels 6 to 14.')
+        empty: dict[str, Any] = {
+            'extent': 4096,
+            'lines': [],
+            'count': 0,
+            'first': None,
+            'last': None,
+            'ok': True,
+        }
+        tile_url = TILE_URL_TEMPLATE.format(z=z, x=x, y=y, token=self.access_token)
+        decoded = None
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                response = requests.get(tile_url, timeout=30)
+                response.raise_for_status()
+                raw = response.content
+                if raw.startswith(b'\x1f\x8b'):
+                    raw = gzip.decompress(raw)
+                decoded = mapbox_vector_tile.decode(raw)
+                break
+            except Exception as exc:  # noqa: BLE001 - retried, then reported
+                last_error = exc
+                time.sleep(0.5 * (attempt + 1))
+        if decoded is None:
+            logger.warning(f'Could not read coverage tile {z}/{x}/{y}: {last_error}')
+            return {**empty, 'ok': False, 'error': str(last_error)}
+        layer = decoded.get('sequence')
+        if not layer:
+            return empty
+        extent = int(layer.get('extent', 4096))
+        lines: list[list[int]] = []
+        dates: list[str] = []
+        for feature in layer.get('features', []):
+            props = feature.get('properties', {})
+            if filter_rapid_only and props.get('creator_id') != RAPID_CREATOR_ID:
+                continue
+            timestamp_ms = props.get('captured_at')
+            if timestamp_ms:
+                date = TileUtils.ms_to_date_utc(timestamp_ms)
+                if not self._is_date_in_range(date, start_date, end_date):
+                    continue
+                dates.append(date)
+            elif start_date or end_date:
+                continue
+            geom = feature.get('geometry', {})
+            if geom.get('type') == 'LineString':
+                parts = [geom['coordinates']]
+            elif geom.get('type') == 'MultiLineString':
+                parts = geom['coordinates']
+            else:
+                continue
+            for part in parts:
+                flat: list[int] = []
+                for px, py in part:
+                    flat.append(int(px))
+                    flat.append(int(extent - py))
+                if len(flat) >= 4:
+                    lines.append(flat)
+        return {
+            'extent': extent,
+            'lines': lines,
+            'count': len(lines),
+            'first': min(dates) if dates else None,
+            'last': max(dates) if dates else None,
+            'ok': True,
+        }
+
+    def get_image_url(self, image_id: str, size: str = '2048') -> str | None:
+        """
+        Return a (time-limited) download URL for an image at a given size.
+
+        Args:
+            image_id (str):
+                The Mapillary image key.
+            size (str):
+                ``'256'``, ``'1024'``, ``'2048'`` or ``'original'``.
+
+        Returns:
+            str | None: The URL, or ``None`` when the request fails.
+
+        Example:
+            >>> client = MapillaryClient('MLY|123|abc')
+            >>> client.get_image_url('1234567890', size='1024')  # doctest: +SKIP
+            'https://scontent.../1234567890_1024.jpg'
+        """
+        field = f'thumb_{size}_url'
+        if field not in self.AVAILABLE_IMAGE_FIELDS:
+            raise ValueError(f"Unsupported image size '{size}'.")
+        props = self._get_image_metadata(image_id, [field])
+        return props.get(field) if props else None
+
     def fetch_images_by_ids(
         self,
         image_ids: list[str],
@@ -397,6 +634,7 @@ class MapillaryClient:
         save_to_disk: bool = True,
         process_masks: list[Literal['semantic', 'instance']] | None = None,
         max_workers: int = 10,
+        show_progress: bool = True,
     ) -> ImageCollection:
         """
         Get multiple images by ID and return them as a collection.
@@ -425,6 +663,9 @@ class MapillaryClient:
             max_workers (int):
                 Maximum number of parallel worker threads used for fetching
                 images. Defaults to ``10``.
+            show_progress (bool):
+                Show a progress bar. Callers that fetch in batches pass
+                ``False`` to keep their own bar. Defaults to ``True``.
 
         Returns:
             ImageCollection:
@@ -462,6 +703,7 @@ class MapillaryClient:
                 total=len(image_ids),
                 desc='Downloading Images',
                 unit='img',
+                disable=not show_progress,
             ):
                 img_id = future_to_id[future]
                 try:
@@ -804,9 +1046,12 @@ class MapillaryClient:
                 elif start_date or end_date:
                     continue
 
-                # Remove 'organization_id' and 'sequence_id' from image props:
-                for key in ['organization_id', 'sequence_id']:
-                    props.pop(key, None)
+                # Drop the organization; keep the sequence id under the same
+                # name the Graph API uses so tile and API metadata line up:
+                props.pop('organization_id', None)
+                sequence_id = props.pop('sequence_id', None)
+                if sequence_id is not None:
+                    props['sequence'] = str(sequence_id)
 
                 # Create and ImageAsset and add it to the list output:
                 asset = ImageAsset(

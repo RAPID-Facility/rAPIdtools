@@ -66,6 +66,7 @@ Example:
 from .bounding_box import BoundingBox
 from .cancellation import OperationCancelled, is_cancelled, raise_if_cancelled
 from .image_asset import ImageAsset, ImageCollection
+from .observation import Observation
 from .physical_asset import PhysicalAsset, PhysicalAssetCollection
 from .polygon_region import PolygonRegion
 
@@ -73,6 +74,7 @@ __all__ = [
     'BoundingBox',
     'ImageAsset',
     'ImageCollection',
+    'Observation',
     'OperationCancelled',
     'PhysicalAsset',
     'PhysicalAssetCollection',

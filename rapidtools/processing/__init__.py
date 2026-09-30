@@ -108,6 +108,7 @@ from .pipeline import Pipeline
 from .postprocessing.buildings import BuildingRegularizer
 from .postprocessing.roads import RoadwayRegularizer
 from .step import PipelineStep, Stage
+from .street_objects import MapillaryFeatureExtractor, MapillaryObjectImageExtractor
 
 # Explicitly define what is available when a user types:
 __all__ = [
@@ -125,7 +126,9 @@ __all__ = [
     'HFVisionAssetAnalyzer',
     'LlamaVisionAssetAnalyzer',
     'MapillaryLabelMapper',
+    'MapillaryFeatureExtractor',
     'MapillaryImageExtractor',
+    'MapillaryObjectImageExtractor',
     'MuseGlimmerAssetAnalyzer',
     'MuseSparkAssetAnalyzer',
     'OpenAIAssetAnalyzer',

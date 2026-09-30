@@ -83,11 +83,14 @@ and declares a :class:`~rapidtools.processing.Stage`:
      - Components
    * - ``DETECT``
      - :class:`~rapidtools.processing.SAM3OrthoFeatureExtractor` discovers
-       new assets in a raster.
+       new assets in a raster;
+       :class:`~rapidtools.processing.MapillaryFeatureExtractor` discovers
+       them along a street-level survey.
    * - ``EXTRACT_IMAGERY``
      - :class:`~rapidtools.processing.AerialImageryExtractor`,
        :class:`~rapidtools.processing.GoogleStreetViewImageExtractor`,
-       :class:`~rapidtools.processing.MapillaryImageExtractor` attach
+       :class:`~rapidtools.processing.MapillaryImageExtractor`,
+       :class:`~rapidtools.processing.MapillaryObjectImageExtractor` attach
        imagery to assets.
    * - ``REGULARIZE``
      - :class:`~rapidtools.processing.BuildingRegularizer`,

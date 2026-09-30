@@ -114,6 +114,7 @@ is archived on Zenodo with a DOI.
 
    examples/eaton_fire_aerial
    examples/street_level_recovery
+   examples/vehicle_detection_from_street
    examples/building_footprints_from_bing
    examples/road_centerlines
    examples/single_image_inference

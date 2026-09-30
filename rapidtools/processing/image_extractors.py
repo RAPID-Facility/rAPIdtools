@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 09-28-2026
+# 09-29-2026
 
 """
 Imagery extraction components for ``rapidtools`` pipelines.
@@ -69,7 +69,6 @@ Example:
 import concurrent.futures
 import logging
 import math
-import re
 import threading
 from io import BytesIO
 from pathlib import Path
@@ -78,17 +77,12 @@ from typing import Any
 import numpy as np
 import rasterio
 import requests
-from PIL import Image, ImageColor, ImageDraw
+from PIL import Image
 from rasterio.transform import from_bounds
-from shapely.geometry import LineString, Point, Polygon
 from tqdm import tqdm
 
 from rapidtools.config import REQUESTS_TIMEOUT_VAL, get_configured_session
-from rapidtools.constants import (
-    LATITUDE_SPACING_KM,
-    METERS_CONVERSION_FACTORS,
-    UNIT_ALIASES,
-)
+from rapidtools.constants import LATITUDE_SPACING_KM
 from rapidtools.core import (
     BoundingBox,
     ImageAsset,
@@ -111,6 +105,7 @@ from rapidtools.data_sources.google_aerial_image_extractor import (
 )
 from rapidtools.data_sources.google_streetview import haversine_m
 
+from . import outlines
 from .pano_utils import (
     build_footprint_index,
     crop_panorama_to_asset,
@@ -122,7 +117,7 @@ from .step import Stage
 logger = logging.getLogger(__name__)
 
 # Accepted values for ``AerialImageryExtractor(outline_shape=...)``:
-OUTLINE_SHAPES = ('geometry', 'bbox', 'rotated_bbox', 'convex_hull', 'corners')
+OUTLINE_SHAPES = outlines.OUTLINE_SHAPES
 
 
 class AerialImageryExtractor:
@@ -313,8 +308,7 @@ class AerialImageryExtractor:
         self._outline_width_spec = self._parse_outline_width(outline_width)
         self.outline_buffer = outline_buffer
         self.outline_width = outline_width
-        if isinstance(outline_color, str):
-            ImageColor.getrgb(outline_color)  # Raises ValueError for unknown names
+        outlines.validate_outline_color(outline_color)
         self.outline_color = outline_color
         self.image_prefix = image_prefix
         self.keep_multiple_copies = keep_multiple_copies
@@ -356,102 +350,13 @@ class AerialImageryExtractor:
         return list(set(paths))
 
     # ------------------------------------------------------------ outlines
-    @staticmethod
-    def _parse_outline_buffer(buffer: float | str) -> tuple[float, str]:
-        """
-        Parse an ``outline_buffer`` specification into a magnitude and a kind.
-
-        Args:
-            buffer (float | str):
-                A bare number or ``'12 px'`` (pixels), a percentage such as
-                ``'10%'`` of the asset's longest pixel extent, or a
-                real-world distance such as ``'2 m'`` or ``'5 ft'``.
-
-        Returns:
-            tuple[float, str]:
-                The non-negative magnitude and its kind: ``'px'``, ``'%'`` or
-                ``'m'`` (the magnitude is then in metres).
-
-        Raises:
-            ValueError: If the value cannot be parsed, uses an unsupported
-                unit, or is negative.
-
-        Example:
-            >>> value, kind = AerialImageryExtractor._parse_outline_buffer('5 ft')
-            >>> round(value, 3), kind
-            (1.524, 'm')
-            >>> AerialImageryExtractor._parse_outline_buffer('10%')
-            (10.0, '%')
-        """
-        if isinstance(buffer, bool):
-            raise ValueError(f'Could not parse outline buffer: {buffer!r}')
-        try:
-            if isinstance(buffer, (int, float)):
-                value, kind = float(buffer), 'px'
-            else:
-                text = str(buffer).strip().lower()
-                if text.endswith('%'):
-                    value, kind = float(text[:-1]), '%'
-                elif match := re.match(r'^([\d.]+)\s*([a-z]+)$', text):
-                    value, unit = float(match.group(1)), match.group(2)
-                    standard_unit = UNIT_ALIASES.get(unit)
-                    if standard_unit == 'pixels':
-                        kind = 'px'
-                    elif standard_unit in METERS_CONVERSION_FACTORS:
-                        value /= METERS_CONVERSION_FACTORS[standard_unit]
-                        kind = 'm'
-                    else:
-                        raise ValueError(f"Unsupported outline buffer unit '{unit}'.")
-                elif re.match(r'^[\d.]+$', text):
-                    value, kind = float(text), 'px'
-                else:
-                    raise ValueError(f'Could not parse outline buffer: {buffer!r}')
-        except ValueError as exc:
-            # Re-raise float() failures such as '1.2.3' with a clearer message:
-            if 'outline buffer' in str(exc):
-                raise
-            raise ValueError(f'Could not parse outline buffer: {buffer!r}') from exc
-        if value < 0:
-            raise ValueError('outline_buffer must not be negative.')
-        return value, kind
-
-    @classmethod
-    def _parse_outline_width(cls, width: int | float | str) -> tuple[float, str]:
-        """
-        Parse an ``outline_width`` specification into a magnitude and a kind.
-
-        Args:
-            width (int | float | str):
-                Pixels (``6``, ``'6'``, ``'6 px'``) or a percentage of the
-                shorter image side (``'1.5%'``).
-
-        Returns:
-            tuple[float, str]:
-                The positive magnitude and ``'px'`` or ``'%'``.
-
-        Raises:
-            ValueError: If the value cannot be parsed, is not positive, or
-                uses a real-world unit.
-
-        Example:
-            >>> AerialImageryExtractor._parse_outline_width('1.5%')
-            (1.5, '%')
-        """
-        try:
-            value, kind = cls._parse_outline_buffer(width)
-        except ValueError as exc:
-            raise ValueError(
-                f'Could not parse outline width: {width!r} (use pixels or a '
-                'percentage of the shorter image side).'
-            ) from exc
-        if kind == 'm':
-            raise ValueError(
-                'outline_width must be in pixels or a percentage, not a '
-                'real-world distance.'
-            )
-        if value <= 0:
-            raise ValueError('outline_width must be positive.')
-        return value, kind
+    # Thin wrappers around :mod:`rapidtools.processing.outlines`, kept so the
+    # outline options behave identically for every imagery extractor.
+    _parse_outline_buffer = staticmethod(outlines.parse_outline_buffer)
+    _parse_outline_width = staticmethod(outlines.parse_outline_width)
+    _outline_geometry = staticmethod(outlines.outline_geometry)
+    _draw_geometry = staticmethod(outlines.draw_geometry)
+    _draw_corner_brackets = staticmethod(outlines.draw_corner_brackets)
 
     @staticmethod
     def _meters_per_pixel(
@@ -482,83 +387,14 @@ class AerialImageryExtractor:
         return (max_lat - min_lat) * LATITUDE_SPACING_KM * 1000.0 / height_px
 
     def _outline_buffer_px(self, extent_px: float, meters_per_pixel: float) -> float:
-        """
-        Resolve the configured outline buffer to pixels for one crop.
-
-        Args:
-            extent_px: Longest side of the outline shape's bounds, in pixels
-                (the reference for percentage buffers).
-            meters_per_pixel: Ground sampling distance of the crop.
-
-        Returns:
-            float: The buffer distance in pixels (``0.0`` when disabled).
-        """
-        value, kind = self._outline_buffer_spec
-        if kind == '%':
-            return extent_px * value / 100.0
-        if kind == 'm':
-            return value / meters_per_pixel if meters_per_pixel > 0 else 0.0
-        return value
+        """Resolve the configured outline buffer to pixels for one crop."""
+        return outlines.resolve_buffer_px(
+            self._outline_buffer_spec, extent_px, meters_per_pixel
+        )
 
     def _outline_width_px(self, image_size: tuple[int, int]) -> int:
-        """
-        Resolve the configured stroke width to whole pixels for one crop.
-
-        Args:
-            image_size: ``(width, height)`` of the crop in pixels.
-
-        Returns:
-            int: The stroke width, never smaller than one pixel.
-        """
-        value, kind = self._outline_width_spec
-        if kind == '%':
-            value = min(image_size) * value / 100.0
-        return max(1, int(round(value)))
-
-    @staticmethod
-    def _outline_geometry(
-        pixel_coords: list[tuple[float, float]], is_closed: bool, shape: str
-    ):
-        """
-        Build the pixel-space shapely geometry that the outline traces.
-
-        Args:
-            pixel_coords: The asset's vertices in crop pixel coordinates.
-            is_closed: Whether the vertices describe a polygon ring.
-            shape: One of :data:`OUTLINE_SHAPES` (``'corners'`` uses the
-                rotated rectangle).
-
-        Returns:
-            shapely.geometry.base.BaseGeometry: A ``Point``, ``LineString``
-            or ``Polygon`` in pixel coordinates (multi-part for self-crossing
-            rings that had to be repaired).
-
-        Example:
-            >>> geom = AerialImageryExtractor._outline_geometry(
-            ...     [(0, 0), (10, 0), (10, 10), (0, 10), (0, 0)], True, 'bbox'
-            ... )
-            >>> geom.bounds
-            (0.0, 0.0, 10.0, 10.0)
-        """
-        if len(pixel_coords) == 1:
-            base = Point(pixel_coords[0])
-        elif is_closed and len(pixel_coords) >= 3:
-            base = Polygon(pixel_coords)
-            if not base.is_valid:
-                # Self-crossing or zero-area rings (tiny assets collapse to a
-                # few pixels): repair, or fall back to the hull of the points.
-                repaired = base.buffer(0)
-                base = repaired if not repaired.is_empty else base.convex_hull
-        else:
-            base = LineString(pixel_coords)
-
-        if shape == 'bbox':
-            return base.envelope
-        if shape in ('rotated_bbox', 'corners'):
-            return base.minimum_rotated_rectangle
-        if shape == 'convex_hull':
-            return base.convex_hull
-        return base
+        """Resolve the configured stroke width to whole pixels for one crop."""
+        return outlines.resolve_width_px(self._outline_width_spec, image_size)
 
     def _draw_outline(
         self,
@@ -577,87 +413,16 @@ class AerialImageryExtractor:
             wgs84_bounds: The crop's WGS84 bounds, used to convert real-world
                 buffer distances to pixels.
         """
-        if not pixel_coords:
-            return
-        geom = self._outline_geometry(pixel_coords, is_closed, self.outline_shape)
-        minx, miny, maxx, maxy = geom.bounds
-        buffer_px = self._outline_buffer_px(
-            max(maxx - minx, maxy - miny),
-            self._meters_per_pixel(wgs84_bounds, image.size),
-        )
-        if buffer_px > 0:
-            # Mitred joins keep rectangles rectangular; points become rings.
-            geom = geom.buffer(buffer_px, join_style='mitre')
-        self._draw_geometry(
-            ImageDraw.Draw(image),
-            geom,
-            width=self._outline_width_px(image.size),
+        outlines.draw_outline(
+            image,
+            pixel_coords,
+            is_closed,
+            shape=self.outline_shape,
+            buffer=self._outline_buffer_spec,
+            width=self._outline_width_spec,
             color=self.outline_color,
-            brackets=self.outline_shape == 'corners',
+            meters_per_pixel=self._meters_per_pixel(wgs84_bounds, image.size),
         )
-
-    @classmethod
-    def _draw_geometry(cls, draw, geom, width: int, color, brackets: bool) -> None:
-        """
-        Trace a pixel-space geometry with PIL.
-
-        Args:
-            draw: A :class:`PIL.ImageDraw.ImageDraw` bound to the crop.
-            geom: The geometry to trace; multi-part geometries are drawn
-                part by part.
-            width: Stroke width in pixels.
-            color: PIL colour of the stroke.
-            brackets: Draw four-cornered polygons as corner brackets instead
-                of a closed ring.
-        """
-        if geom.is_empty:
-            return
-        if geom.geom_type.startswith('Multi') or geom.geom_type == 'GeometryCollection':
-            for part in geom.geoms:
-                cls._draw_geometry(draw, part, width, color, brackets)
-        elif geom.geom_type == 'Point':
-            x, y, r = geom.x, geom.y, 5
-            draw.ellipse((x - r, y - r, x + r, y + r), fill=color)
-        elif geom.geom_type == 'LineString':
-            draw.line(list(geom.coords), fill=color, width=width)
-        elif geom.geom_type == 'Polygon':
-            coords = list(geom.exterior.coords)
-            if brackets and len(coords) == 5:
-                cls._draw_corner_brackets(draw, coords[:4], width, color)
-            else:
-                draw.line(coords, fill=color, width=width)
-
-    @staticmethod
-    def _draw_corner_brackets(draw, corners, width: int, color) -> None:
-        """
-        Draw an L-shaped bracket at each corner of a quadrilateral.
-
-        Each arm runs a quarter of the shorter side (at least twice the
-        stroke width) towards the neighbouring corner, leaving the asset's
-        edges uncovered.
-
-        Args:
-            draw: A :class:`PIL.ImageDraw.ImageDraw` bound to the crop.
-            corners: The four corner points in ring order.
-            width: Stroke width in pixels.
-            color: PIL colour of the stroke.
-        """
-        n = len(corners)
-        sides = [math.dist(corners[i], corners[(i + 1) % n]) for i in range(n)]
-        arm = max(2.0 * width, 0.25 * min(sides))
-        for i, (cx, cy) in enumerate(corners):
-            ends = []
-            for nx, ny in (corners[i - 1], corners[(i + 1) % n]):
-                length = math.hypot(nx - cx, ny - cy)
-                if length == 0:
-                    continue
-                t = min(arm, length / 2.0) / length
-                ends.append((cx + (nx - cx) * t, cy + (ny - cy) * t))
-            if len(ends) == 2:
-                draw.line([ends[0], (cx, cy), ends[1]], fill=color, width=width)
-                # Fill the notch a thick polyline leaves at its corner:
-                r = width / 2.0
-                draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=color)
 
     def __call__(
         self, asset_collection: PhysicalAssetCollection

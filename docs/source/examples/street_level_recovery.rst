@@ -65,6 +65,5 @@ Notes
 - Both extractor runs attach images to the same assets; the analyzer's
   ``image_filter`` decides which survey each pass sees.
 - The same model instance serves both passes, so the weights load once.
-- ``examples/mapillary_vehicle_detection.py`` goes further with Mapillary's
-  own detections: it triangulates vehicle positions from panorama geometry,
-  clusters repeated sightings, and classifies each vehicle's condition.
+- :doc:`vehicle_detection_from_street` builds the inventory from the
+  imagery itself instead of starting from footprints.
