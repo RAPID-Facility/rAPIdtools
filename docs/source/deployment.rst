@@ -98,6 +98,81 @@ Day to day
 - **Rotating the token**: change it in ``deploy/.env`` and restart the
   ``gui`` service.
 
+A Windows machine in the lab
+----------------------------
+
+On a Windows workstation that colleagues reach over the local network, skip
+Docker and Caddy: run the console script in a conda environment, keep it
+alive with Task Scheduler, and open the port in the Windows firewall.
+
+1. Install, in an Anaconda Prompt (the CUDA build of PyTorch is picked up
+   automatically on a machine with an NVIDIA driver):
+
+   .. code-block:: bat
+
+      conda create -n rapidtools python=3.11 -y
+      conda activate rapidtools
+      pip install "git+https://github.com/RAPID-Facility/rAPIdtools.git@main"
+      mkdir D:\rapidtools\data D:\rapidtools\output
+
+2. Try it once by hand, with a token you generate:
+
+   .. code-block:: bat
+
+      python -c "import secrets; print(secrets.token_urlsafe(18))"
+      set RAPIDTOOLS_GUI_TOKEN=<paste the token>
+      rapidtools-gui --host 0.0.0.0 --port 8765 --no-browser ^
+          --data-root D:\rapidtools\data --output-dir D:\rapidtools\output
+
+   The window prints share links such as ``http://LAB-PC-07:8765/?token=...``
+   using the machine name and its LAN address. Open one from another
+   computer on the network to check it works. The first request builds the
+   RAPID route database from Mapillary (two to three minutes, then cached
+   under ``%USERPROFILE%\.cache\rapidtools``).
+
+3. Open the port: in *Windows Defender Firewall with Advanced Security*
+   add an inbound rule for TCP port 8765, restricted to the *Domain* and
+   *Private* profiles so it is not reachable from a public network, or in
+   an administrator prompt:
+
+   .. code-block:: bat
+
+      netsh advfirewall firewall add rule name="rapidtools GUI" dir=in action=allow protocol=TCP localport=8765 profile=domain,private
+
+4. Keep it running: save a batch file such as
+   ``D:\rapidtools\start-gui.bat``:
+
+   .. code-block:: bat
+
+      @echo off
+      call %USERPROFILE%\anaconda3\Scripts\activate.bat rapidtools
+      set RAPIDTOOLS_GUI_TOKEN=<token>
+      set RAPIDTOOLS_SMTP_HOST=smtp.example.edu
+      set RAPIDTOOLS_SMTP_USER=me@example.edu
+      set RAPIDTOOLS_SMTP_PASSWORD=<password>
+      set RAPIDTOOLS_SMTP_FROM=me@example.edu
+      rapidtools-gui --host 0.0.0.0 --port 8765 --no-browser --data-root D:\rapidtools\data --output-dir D:\rapidtools\output >> D:\rapidtools\gui.log 2>&1
+
+   then in Task Scheduler create a task that runs it *At startup* (or *At
+   log on*), with *Run whether user is logged on or not* and *Restart the
+   task if it fails* enabled. Under *Power Options* set the machine never
+   to sleep, or the server disappears with it. The SMTP lines are optional.
+
+Notes for this setup:
+
+- Colleagues connect over plain HTTP on the intranet. The token still
+  protects the app, but browser alerts need HTTPS, so users get email or
+  webhook notifications instead. To add HTTPS, install the Windows build
+  of Caddy with a Caddyfile of ``LAB-PC-07 { tls internal reverse_proxy
+  127.0.0.1:8765 }``; colleagues then trust Caddy's local certificate
+  once.
+- Paths in the GUI are Windows paths under the data folder, for example
+  ``D:\rapidtools\data\eaton\ortho.tif``. Colleagues can drop files in
+  through a network share of that folder.
+- One job at a time, as on any other server. The GPU is shared with
+  whatever else runs on the workstation, so close other GPU work before
+  large inference runs.
+
 Running without Docker
 ----------------------
 
