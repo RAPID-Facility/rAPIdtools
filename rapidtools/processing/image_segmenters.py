@@ -64,6 +64,7 @@ Example:
 import logging
 import threading
 from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from tqdm import tqdm
 
@@ -73,11 +74,37 @@ from rapidtools.core import (
     PhysicalAssetCollection,
     raise_if_cancelled,
 )
-from rapidtools.models import SAM3Inference
 
 from .step import Stage
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from rapidtools.models import SAM3Inference
+
+
+def _sam3_inference_class() -> 'type[SAM3Inference]':
+    """
+    Return :class:`~rapidtools.models.SAM3Inference`, importing it on first use.
+
+    The SAM 3 wrapper pulls in PyTorch and Transformers, so it is not imported
+    with the module; ``import rapidtools.processing`` stays light and the GUI
+    can validate settings without loading the model stack. Tests may inject a
+    stand-in by setting ``SAM3Inference`` on this module.
+    """
+    injected = globals().get('SAM3Inference')
+    if injected is not None:
+        return injected
+    from rapidtools.models import SAM3Inference
+
+    return SAM3Inference
+
+
+def __getattr__(name: str) -> Any:
+    """Expose ``SAM3Inference`` lazily so ``monkeypatch.setattr`` finds it."""
+    if name == 'SAM3Inference':
+        return _sam3_inference_class()
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
 
 
 class SAM3ImageSegmenter:
@@ -192,7 +219,7 @@ class SAM3ImageSegmenter:
         self.mask_threshold = mask_threshold
 
         # Instantiate the underlying inference model ONCE to save load time:
-        self.model = SAM3Inference(
+        self.model = _sam3_inference_class()(
             model_id=model_id,
             device=device,
             load_in_4bit=load_in_4bit,

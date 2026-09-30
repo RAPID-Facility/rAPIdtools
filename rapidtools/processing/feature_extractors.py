@@ -75,6 +75,7 @@ import tempfile
 import threading
 import uuid
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import rasterio.features
@@ -86,11 +87,38 @@ from tqdm import tqdm
 
 from rapidtools.core import PhysicalAsset, PhysicalAssetCollection, raise_if_cancelled
 from rapidtools.data_sources import OrthomosaicReader
-from rapidtools.models import SAM3Inference
 
 from .step import Stage
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from rapidtools.models import SAM3Inference
+
+
+def _sam3_inference_class() -> 'type[SAM3Inference]':
+    """
+    Return :class:`~rapidtools.models.SAM3Inference`, importing it on first use.
+
+    The SAM 3 wrapper pulls in PyTorch and Transformers, so it is not imported
+    with the module; ``import rapidtools.processing`` stays light and the GUI
+    can validate settings without loading the model stack. Tests may inject a
+    stand-in by setting ``SAM3Inference`` on this module.
+    """
+    injected = globals().get('SAM3Inference')
+    if injected is not None:
+        return injected
+    from rapidtools.models import SAM3Inference
+
+    return SAM3Inference
+
+
+def __getattr__(name: str) -> Any:
+    """Expose ``SAM3Inference`` lazily so ``monkeypatch.setattr`` finds it."""
+    if name == 'SAM3Inference':
+        return _sam3_inference_class()
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
+
 
 # With merge_overlaps=False, a detection is treated as a duplicate of a
 # higher-scoring one when this fraction of the smaller polygon is covered:
@@ -248,7 +276,7 @@ class SAM3OrthoFeatureExtractor:
             f'{self.threshold}...'
         )
 
-        self.model = SAM3Inference(
+        self.model = _sam3_inference_class()(
             model_id=model_id, device=device, load_in_4bit=load_in_4bit
         )
 
