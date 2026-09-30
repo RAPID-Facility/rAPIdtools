@@ -1,0 +1,12 @@
+# Caddy obtains and renews the TLS certificate for the domain by itself.
+# The domain must already point at this machine, with ports 80 and 443 open.
+{$RAPIDTOOLS_DOMAIN} {
+    reverse_proxy gui:8765 {
+        # Long-running downloads and inference: keep the connection open.
+        transport http {
+            read_timeout 10m
+            write_timeout 10m
+        }
+    }
+    encode gzip
+}

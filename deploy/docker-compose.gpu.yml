@@ -1,0 +1,11 @@
+# Override that hands the host's NVIDIA GPU to the GUI container.
+# Needs the NVIDIA driver and the NVIDIA Container Toolkit on the host.
+services:
+  gui:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

@@ -218,7 +218,9 @@ the app. ``--data-root`` confines the file browser and every path to one
 directory, and ``RAPIDTOOLS_GUI_TOKEN`` can supply the token instead of the
 flag. Everyone connected shares one workspace and one job queue, which suits
 a small team taking turns. Keep the server on your institution's network or
-a VPN: the token protects the app, not the transport.
+a VPN: the token protects the app, not the transport. For a server that
+colleagues reach over HTTPS, with Docker, notifications and a GPU, see
+:doc:`deployment`.
 
 Scripting the same workflow
 ---------------------------

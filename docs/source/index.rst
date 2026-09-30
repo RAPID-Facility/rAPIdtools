@@ -124,6 +124,7 @@ is archived on Zenodo with a DOI.
    :caption: Graphical Interface
 
    gui
+   deployment
 
 .. toctree::
    :hidden:

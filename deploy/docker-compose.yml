@@ -1,0 +1,43 @@
+# Shared rapidtools GUI behind Caddy (automatic HTTPS).
+#   cp deploy/.env.example deploy/.env   # then edit it
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+# For a GPU machine add the override:
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.gpu.yml --env-file deploy/.env up -d --build
+services:
+  gui:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        BASE_IMAGE: ${BASE_IMAGE:-pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime}
+        TORCH_INDEX: ${TORCH_INDEX:-}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      RAPIDTOOLS_PUBLIC_URL: https://${RAPIDTOOLS_DOMAIN}/
+    volumes:
+      - ${DATA_DIR:-./data}:/data
+      - ${OUTPUT_DIR:-./output}:/output
+      - rapidtools-cache:/cache
+    expose:
+      - "8765"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      RAPIDTOOLS_DOMAIN: ${RAPIDTOOLS_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - gui
+
+volumes:
+  rapidtools-cache:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,25 @@
+# Keep the Docker build context to the package sources.
+.git
+.gitignore
+docs/build
+examples/*.tif
+examples/*.tiff
+examples/*.aux.xml
+examples/*.geojson
+examples/output
+examples/eaton_fire_aerial_feb25
+asset_analysis_output
+out
+*.png
+*.jpg
+*.html
+!rapidtools/gui/static/index.html
+*.geojson
+*.ipynb_checkpoints
+__pycache__
+*.egg-info
+build
+dist
+htmlcov
+.pytest_cache
+.ruff_cache
