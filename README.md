@@ -31,6 +31,9 @@ Run deployments tailored to your resources. Deploy powerful local vision-languag
 **Keyless Aerial and Street-Level Imagery**
 Pull imagery for any footprint without provider API keys. `GoogleAerialImageExtractor` and `BingAerialImageExtractor` stitch satellite tiles for GeoJSON polygons (or yield raw tiles for ML pipelines), `GoogleOrthomosaicExtractor` / `BingOrthomosaicExtractor` synthesize georeferenced GeoTIFFs for a region, and `GoogleStreetViewImageExtractor` locates the nearest Google Street View panorama for each asset, downloads it, crops the field of view that covers the asset footprint (optionally with the decoded depth map) and attaches the result to the asset. Mapillary street-level imagery remains available through `MapillaryImageExtractor`.
 
+**Street-Level Object Discovery**
+Build an inventory from the survey itself. `MapillaryFeatureExtractor` reads Mapillary's segmentation detections as metadata (no image downloads), drops the survey vehicle, places every sighting from the camera geometry and triangulates objects seen from several positions; `MapillaryObjectImageExtractor` then crops the closest views of each object for a vision-language model. Classes outside Mapillary's vocabulary fall back to SAM 3 on thumbnails.
+
 **Intelligent Feature Regularization**
 Move beyond raw AI pixel masks. The toolkit includes sophisticated geometric regularizers that instantly translate semantic segmentations into usable, GIS-ready asset geometries.
 
@@ -165,7 +168,7 @@ final_collection.to_geojson(
 
 ## Graphical Interface: Detect Assets and Run Inference Without Code
 
-`rapidtools` ships with a local web application that wraps the end-to-end workflow from `examples/asset_analysis_example_generalized.ipynb`. It runs on the Python standard library (no extra dependencies) and opens in your browser.
+`rapidtools` ships with a local web application that wraps the end-to-end detect / extract / analyze workflow, for aerial imagery and for street-level surveys. It runs on the Python standard library (no extra dependencies) and opens in your browser.
 
 ```bash
 rapidtools-gui            # console script installed with the package
@@ -182,8 +185,12 @@ launch_asset_analysis_app()
 
 The app walks through three steps while the aerial image stays on screen and is updated with every result:
 
-1. **Imagery**: load a GeoTIFF from your computer, download a UW RAPID sample, or (coming soon) fetch it from TACC.
-2. **Detect & analyze**: type the assets you want extracted (for example `building, tree, swimming pool`) or load a file with their locations, then pick the model and write the prompt applied to every asset. Every analysis model in `rapidtools` is available: Google Gemini, Anthropic Claude, OpenAI, Meta Muse Spark, and Qwen through their APIs; Gemma-4, Llama Vision, Muse Glimmer, and Qwen locally; and, under *Other open models*, any Hugging Face vision-language checkpoint (Gemma 3, LLaVA, InternVL, Pixtral, Granite Vision, ...) with optional 4-bit loading. *Fetch models* lists the model IDs your API key can access, or the most downloaded open checkpoints on the Hub. Detection settings such as asset size, imagery source, and thresholds live under *Advanced options*.
+1. **Imagery**: find the place on the map (satellite basemap, RAPID survey coverage, address search) and draw a box, then stitch a Bing or Google basemap over it (no API key), load a GeoTIFF from your computer, download a UW RAPID sample, or (coming soon) fetch it from TACC. Street-level discovery can start from the box alone.
+2. **Detect & analyze**: find the assets, choose where their imagery comes from, and pick the model and prompt.
+   - *Assets*: detect them in the image with SAM 3 (on a Bing or Google basemap, or the image itself, with an option to keep every instance of countable objects such as vehicles separate), **discover objects along a Mapillary street survey** (`vehicles, utility poles, fire hydrants` are located from Mapillary's own detections within the image extent, with the survey vehicle removed and sightings triangulated), or load a file with their locations.
+   - *Imagery for analysis*: aerial crops from the loaded image (with edge handling), Google Street View panoramas cropped to each footprint (no key), Mapillary panoramas of each footprint, or the closest Mapillary views of each discovered object. The asset can be marked on every crop with an outline, bounding box or corner brackets.
+   - *Model*: every analysis model in `rapidtools` is available: Google Gemini, Anthropic Claude, OpenAI, Meta Muse Spark, and Qwen through their APIs; Gemma-4, Llama Vision, Muse Glimmer, and Qwen locally; and, under *Other open models*, any Hugging Face vision-language checkpoint with optional 4-bit loading. *Fetch models* lists the model IDs your API key can access. Temperature, output length and JSON mode live under *Advanced options*.
+   - *Prompt*: load one of the sample prompts (aerial CHS, street-level CHS, street-level recovery), a file, or open the **prompt builder**. The builder walks through task and role, output fields (which become the asset attributes), visual indicators for every class, analysis steps and edge cases, and assembles a prompt in the layout of the sample prompts. Its **assistant** uses any of the same model backends (the analysis model, or a local Gemma-4 / Qwen) to draft the whole specification from a one-line description, refine it on request, suggest indicators for a class, review the finished prompt, or import an existing prompt into the builder.
 3. **Results**: hover over assets to inspect their attributes, click one to see the exact image crops the model analyzed, colour the overlay by any inferred attribute, browse the attribute table, and download the GeoJSON outputs.
 
 ### Sharing the app with colleagues
@@ -198,7 +205,7 @@ The terminal prints a share link of the form `http://<host>:8765/?token=...`. An
 
 The image panel streams the original pixels when you zoom in (toggle *Full resolution* to fall back to the lightweight preview), so multi-gigabyte orthomosaics can be inspected at native resolution without loading them into the browser.
 
-Progress and log output stream into the page while the heavy lifting runs on a background thread, and **Cancel** stops detection or inference at the next tile or batch, keeping any results produced so far. The same workflow is available headlessly through `rapidtools.gui.AssetAnalysisWorkflow` for scripting.
+Bounding boxes can be drawn on a satellite map that also shows where the RAPID street survey has images. Progress and log output stream into the page while the heavy lifting runs on a background thread, and **Cancel** stops detection or inference at the next tile or batch, keeping any results produced so far. Long runs offer to send an email or webhook message (or a browser alert) when they finish, and the tab can be closed and reopened in the meantime. The same workflow is available headlessly through `rapidtools.gui.AssetAnalysisWorkflow` for scripting, and the prompt builder through `rapidtools.gui.PromptSpec`, `assemble_prompt` and `PromptAssistant`.
 
 ## Supported Models
 

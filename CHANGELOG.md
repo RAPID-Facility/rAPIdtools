@@ -5,6 +5,120 @@ All notable changes to rAPIdtools are documented here. The format follows
 [Semantic Versioning](https://semver.org/) with the usual 0.x caveat that
 minor releases may change public APIs.
 
+## [Unreleased]
+
+### Added
+
+- **Street-level object discovery.** `MapillaryFeatureExtractor` (a `DETECT`
+  step) finds objects of the requested classes in every Mapillary image of a
+  region from Mapillary's own segmentation detections, read as metadata with
+  no image downloads. Plain-English class names (`'vehicles'`, `'utility
+  poles'`) are translated to Mapillary labels; classes outside the vocabulary
+  can be detected with SAM 3 on thumbnails. Detections of the survey vehicle
+  are removed by their recurrence across a sequence, each sighting is placed
+  from the camera pose and the detection's position in the frame, and objects
+  seen from two or more cameras are triangulated. Results are point assets
+  with `localization`, `n_observations`, `confidence` and the sightings as
+  `Observation` records.
+- `MapillaryObjectImageExtractor` (an `EXTRACT_IMAGERY` step) crops the
+  closest distinct views of each discovered object from thumbnail-size
+  downloads, with the same `outline_*` options as the aerial extractor.
+- `rapidtools.core.Observation`, the record linking an asset to one sighting
+  in a street-level image, and `rapidtools.processing.street_localization`
+  with the bearing, range, triangulation, ego-mask, frame-thinning and
+  clustering functions.
+- `MapillaryClient.fetch_detections()`, `decode_detection_polygons()` and
+  `get_image_url()`.
+- `rapidtools.processing.outlines`, the outline-drawing helpers shared by the
+  imagery extractors.
+- Example `examples/vehicle_detection_from_street.py`: vehicles along the
+  RAPID survey of Spokane, WA, with optional condition grading.
+- **GUI: the newer components are now in the interface.** Step 1 can stitch
+  a Bing or Google satellite basemap over a bounding box or a GeoJSON extent
+  (`RegionImagerySettings`, `AssetAnalysisWorkflow.download_basemap`).
+  Step 2 gains a third asset mode, *Discover along a street survey*, which
+  runs `MapillaryFeatureExtractor` over the loaded image's extent
+  (`StreetDetectionSettings`, `AssetAnalysisWorkflow.discover_street`); SAM 3
+  detection can use a Google basemap and keep every instance separate
+  (`merge_overlaps`); an *Imagery for analysis* card picks aerial crops
+  (with `min_footprint_coverage` / `pad_edges`), Google Street View,
+  Mapillary panoramas or Mapillary object crops (`InferenceSettings.imagery`
+  and the street options); temperature, output length and JSON mode are
+  exposed; and the sample-prompt button became a library of the three
+  registry prompts. The results view hides observation records and counts
+  analysed assets by the analyzer's marker attribute.
+- **GUI: prompt builder and assistant.** `rapidtools.gui.prompt_builder`
+  holds `PromptSpec` (task, output fields, per-class indicators, steps, edge
+  cases, context), `assemble_prompt()` which renders it in the layout of the
+  sample prompts (or as a JSON schema), and `PromptAssistant`, which uses any
+  rapidtools model backend text-only to draft a specification from a brief,
+  refine it, suggest indicators for a class, review a prompt or import an
+  existing one. The GUI's *Build a prompt* dialog walks through those parts,
+  previews the assembled prompt and the attribute names it will produce, and
+  runs the assistant as a cancellable job (`AssistSettings`,
+  `AssetAnalysisWorkflow.assist`); local assistant models are released before
+  detection or inference needs the GPU. New endpoints: `/api/imagery/region`,
+  `/api/street/discover`, `/api/prompt/assemble`, `/api/prompt/example`,
+  `/api/prompt/assist`, `/api/mapillary_token`; `/api/prompt/sample` takes a
+  `name`; `/api/detect` takes `basemap` and `merge_overlaps`.
+
+- **GUI: the map comes first.** The interface opens on a streaming
+  satellite map (Bing or Google tiles proxied by `GET /api/basemap_tile/...`)
+  with Mapillary's street-level survey routes drawn on top, RAPID-only by
+  default, as lines or a heat style: a country-wide index of RAPID routes
+  at low zoom (`GET /api/street/overview`, built once from the zoom-6
+  coverage tiles and cached under `~/.cache/rapidtools`) and the exact
+  streets from the coverage tiles when zoomed in
+  (`GET /api/street/sequences/<z>/<x>/<y>`,
+  `MapillaryClient.fetch_sequence_lines()`). An address search
+  (`GET /api/geocode`, OpenStreetMap Nominatim) jumps to a place. Drawing a
+  box fills a *Selected area* card that downloads satellite imagery for it
+  or goes straight to street discovery with the box as the survey area, so
+  no aerial image is needed; the box is also mirrored into the coordinate
+  fields of both steps. Assets are drawn on the map in WGS84
+  (`GET /api/geo_overlay`). The RAPID and rapidtools logos sit in the
+  header. `GET /api/street/coverage` returns image positions in a box.
+- **GUI: RAPID route database.** The server builds a local database of
+  every RAPID survey route at zoom-13 detail from Mapillary's coverage
+  tiles (`GET /api/street/routes`, `GET /api/street/routes.json`, gzipped,
+  `POST /api/street/routes/rebuild`), cached as
+  `~/.cache/rapidtools/survey_routes_z13.json.gz`; the map draws from it
+  at every zoom with no per-view requests. Step 1 asks how to start (map
+  area, own imagery, or a sample) and shows one panel; the satellite tile
+  zoom is chosen automatically from the area size. In step 2 the model ID
+  is a dropdown of the backend's catalogue (with a custom entry), the
+  imagery options sit under *Advanced options*, and the prompt builder
+  can start from any sample prompt and repurpose it for another task,
+  with Gemma 4 as the default assistant.
+- **GUI: notifications for long runs.** A bar under the header offers to
+  send one message (email through an SMTP relay, or any webhook such as
+  Slack or Teams) when the running job ends, or to raise a browser alert;
+  the page can be closed and reopened meanwhile. `rapidtools.gui.notify`
+  (`NotificationConfig`, `Notifier`, `JobSummary`), `POST /api/notify`, the
+  `notify` block of `/api/state`, and the `--smtp-host`, `--smtp-port`,
+  `--smtp-user`, `--smtp-from`, `--smtp-ssl` and `--public-url` options of
+  `rapidtools-gui` (also `RAPIDTOOLS_SMTP_*` / `RAPIDTOOLS_PUBLIC_URL`).
+
+### Changed
+
+- `MapillaryFeatureExtractor` reads frames in batches (`frame_batch_size`,
+  default 200) and discards each image's full detection payload once the
+  requested classes are read, and simplifies detection outlines on arrival
+  (`simplify_tolerance`, default 0.002, capped at 1 % of each outline's
+  size). `MapillaryObjectImageExtractor`
+  downloads each source image once, crops every object seen in it and
+  releases it instead of caching every image for the whole run. A city-wide
+  run previously grew to tens of gigabytes of RAM; memory now stays flat.
+- `DetectionSettings.detect_in_recon_imagery` is kept in sync with the new
+  `basemap` field (`'bing'`, `'google'` or `'recon'`); `DetectionResult`
+  reports which `basemap` was used.
+
+### Removed
+
+- `examples/mapillary_vehicle_detection.py`, superseded by the example above.
+  Its geometry lives on in `street_localization`; its main flaw, counting the
+  survey vehicle as a detection in every frame, is fixed by the ego filter.
+
 ## [0.2.0] - 2026-09-28
 
 ### Added
