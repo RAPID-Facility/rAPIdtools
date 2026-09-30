@@ -42,3 +42,12 @@ docs/source/api/generated/
 examples/api_key.txt
 examples/*token*.txt
 .coverage
+
+# GUI and example outputs, downloaded rasters and their sidecars
+asset_analysis_output/
+examples/output/
+out/
+examples/*.tif
+examples/*.tiff
+examples/*.aux.xml
+examples/eaton_fire_aerial_feb25/
