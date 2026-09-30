@@ -37,7 +37,9 @@ from rapidtools.models import GenerationConfig, load
 
 # --------------------------------------------------------------- Configuration
 # A neighbourhood of Spokane, WA, inside the UW RAPID street-level survey:
-# about 1 km across, some 4,000 survey frames, a few minutes end to end.
+# about 1 km across. Expect roughly 20 minutes end to end and 1.5 GB of RAM:
+# a few minutes to read the detections, then about ten to download the two
+# thousand images the vehicle crops are cut from. Around 1,300 vehicles.
 REGION = rt.BoundingBox(min_x=-117.495, min_y=47.708, max_x=-117.482, max_y=47.717)
 # The whole survey is the box below: 116,000 frames after thinning, which
 # takes about 75 minutes just to read the detections (one Graph API request
