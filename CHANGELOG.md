@@ -150,6 +150,10 @@ minor releases may change public APIs.
   dropped as moving only when the object is fully visible. On a sample of
   Spokane frames the old filters discarded four in five vehicle sightings
   before localisation, which is why driveway cars went missing.
+- Track classification is vectorised and samples at most 48 ray pairs per
+  track, so a 150-frame track takes milliseconds instead of seconds; the
+  range bound now applies to the final position, so a track seen mostly
+  from far-away cameras is no longer mistaken for a moving vehicle.
 - `MapillaryFeatureExtractor` reads frames in batches (`frame_batch_size`,
   default 200) and discards each image's full detection payload once the
   requested classes are read, and simplifies detection outlines on arrival

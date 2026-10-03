@@ -76,6 +76,7 @@ from __future__ import annotations
 
 import logging
 import math
+import random
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -106,6 +107,8 @@ STATIC_INLIER_FRACTION = 0.6
 #: ground-contact range before a range disagreement is blamed on motion
 #: rather than on something hiding the object's lower part.
 MIN_VISIBLE_FRACTION = 0.9
+#: Ray pairs tried per track when searching for the static consensus.
+RANSAC_MAX_PAIRS = 48
 
 Project = Callable[[float, float], tuple[float, float]]
 Unproject = Callable[[float, float], tuple[float, float]]
@@ -204,53 +207,67 @@ def single_view_covariance(
     return along**2 * np.outer(d, d) + across**2 * np.outer(n, n)
 
 
+def _ray_arrays(
+    rays: Sequence[tuple[float, float, float]],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Camera positions, unit directions and unit normals as arrays."""
+    arr = np.asarray(rays, dtype=float).reshape(-1, 3)
+    cams = arr[:, :2]
+    b = np.radians(arr[:, 2])
+    dirs = np.column_stack([np.sin(b), np.cos(b)])
+    normals = np.column_stack([dirs[:, 1], -dirs[:, 0]])
+    return cams, dirs, normals
+
+
+def _solve_intersection(
+    cams: np.ndarray, normals: np.ndarray, weights: np.ndarray
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Solve the weighted normal equations of a ray intersection."""
+    # sum_i w_i n_i n_i^T  and  sum_i w_i n_i n_i^T c_i, vectorised:
+    wn = normals * weights[:, None]
+    a = wn.T @ normals
+    b = np.einsum('ij,ik,ik->j', wn, normals, cams)
+    try:
+        point = np.linalg.solve(a, b)
+        cov = np.linalg.inv(a)
+    except np.linalg.LinAlgError:
+        return None
+    return point, cov
+
+
 def _weighted_intersection(
     rays: Sequence[tuple[float, float, float]],
     sigma_rad: float,
 ) -> tuple[np.ndarray, np.ndarray] | None:
     """Weighted least-squares ray intersection: ``(point, covariance)``."""
-    cams = np.array([[x, y] for x, y, _ in rays])
-    dirs = np.array([_unit(b) for _, _, b in rays])
-    normals = np.column_stack([dirs[:, 1], -dirs[:, 0]])
-    point = None
+    cams, _, normals = _ray_arrays(rays)
+    weights = np.ones(len(cams))
+    fit = None
     for _ in range(3):
-        if point is None:
-            weights = np.ones(len(rays))
-        else:
-            dist = np.linalg.norm(point - cams, axis=1)
-            weights = 1.0 / np.maximum(sigma_rad * dist, 0.05) ** 2
-        a = np.zeros((2, 2))
-        b = np.zeros(2)
-        for n, c, w in zip(normals, cams, weights, strict=True):
-            m = w * np.outer(n, n)
-            a += m
-            b += m @ c
-        try:
-            point = np.linalg.solve(a, b)
-        except np.linalg.LinAlgError:
+        fit = _solve_intersection(cams, normals, weights)
+        if fit is None:
             return None
-    try:
-        cov = np.linalg.inv(a)
-    except np.linalg.LinAlgError:
-        return None
-    if point is None:
-        return None
-    return point, cov
+        dist = np.linalg.norm(fit[0] - cams, axis=1)
+        weights = 1.0 / np.maximum(sigma_rad * dist, 0.05) ** 2
+    return fit
+
+
+def _residuals(
+    point: np.ndarray, cams: np.ndarray, dirs: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Perpendicular and along-ray distances of ``point`` from array rays."""
+    rel = point[None, :] - cams
+    along = np.einsum('ij,ij->i', rel, dirs)
+    perp = np.linalg.norm(rel - along[:, None] * dirs, axis=1)
+    return perp, along
 
 
 def _ray_residuals(
     point: np.ndarray, rays: Sequence[tuple[float, float, float]]
 ) -> tuple[np.ndarray, np.ndarray]:
     """Perpendicular distance and along-ray distance of ``point`` per ray."""
-    perp = []
-    along = []
-    for x, y, b in rays:
-        d = _unit(b)
-        rel = point - np.array([x, y])
-        s = float(rel @ d)
-        along.append(s)
-        perp.append(float(np.hypot(*(rel - s * d))))
-    return np.array(perp), np.array(along)
+    cams, dirs, _ = _ray_arrays(rays)
+    return _residuals(point, cams, dirs)
 
 
 def _lon_lat(obs: Observation) -> tuple[float, float]:
@@ -546,29 +563,38 @@ def classify_track(
     if len(rays) < 2 or _max_separation(b for _, _, b in rays) < min_parallax_deg:
         return single_view()
 
-    # RANSAC over ray pairs with enough separation:
-    best: tuple[int, list[int]] = (0, [])
+    # RANSAC over ray pairs with enough separation. Every pair is tried for
+    # short tracks; long tracks sample a fixed number of well-separated pairs
+    # (a 150-frame track has 11,000 pairs, and a handful already finds the
+    # consensus), which keeps the cost linear in the track length.
     n = len(rays)
-    for i in range(n):
-        for j in range(i + 1, n):
-            if _angle_diff(rays[i][2], rays[j][2]) < min_parallax_deg:
-                continue
-            fit = _weighted_intersection([rays[i], rays[j]], sigma_rad)
-            if fit is None:
-                continue
-            perp, along = _ray_residuals(fit[0], rays)
-            dist = np.hypot(
-                fit[0][0] - np.array([r[0] for r in rays]),
-                fit[0][1] - np.array([r[1] for r in rays]),
-            )
-            tol = 2.5 * sigma_rad * dist + 0.3
-            inliers = [
-                k
-                for k in range(n)
-                if perp[k] <= tol[k] and 0.0 < along[k] <= max_range_m
-            ]
-            if len(inliers) > best[0]:
-                best = (len(inliers), inliers)
+    cams, dirs, normals = _ray_arrays(rays)
+    bearings = np.asarray([b for _, _, b in rays], dtype=float)
+    pairs = [
+        (i, j)
+        for i in range(n)
+        for j in range(i + 1, n)
+        if _angle_diff(float(bearings[i]), float(bearings[j])) >= min_parallax_deg
+    ]
+    if len(pairs) > RANSAC_MAX_PAIRS:
+        pairs = random.Random(n).sample(pairs, RANSAC_MAX_PAIRS)
+    best: tuple[int, list[int]] = (0, [])
+    unit = np.ones(2)
+    for i, j in pairs:
+        fit = _solve_intersection(cams[[i, j]], normals[[i, j]], unit)
+        if fit is None:
+            continue
+        perp, along = _residuals(fit[0], cams, dirs)
+        dist = np.linalg.norm(fit[0] - cams, axis=1)
+        tol = 2.5 * sigma_rad * dist + 0.3
+        # Rays from far-away cameras still vote; the range bound is applied
+        # to the final position, not to individual rays.
+        mask = (perp <= tol) & (along > 0.0)
+        count = int(mask.sum())
+        if count > best[0]:
+            best = (count, [int(k) for k in np.flatnonzero(mask)])
+            if count == n:
+                break
     count, inliers = best
     if count < 2 or _max_separation(rays[k][2] for k in inliers) < min_parallax_deg:
         return single_view()
@@ -582,7 +608,9 @@ def classify_track(
         return single_view()
     point, cov = fit
     perp, along = _ray_residuals(point, [rays[k] for k in inliers])
-    if np.any(along <= 0) or np.any(along > max_range_m):
+    if np.any(along <= 0) or float(np.min(along)) > max_range_m:
+        # Behind a camera, or farther than max_range_m from every camera
+        # that saw it: not a position worth reporting.
         return single_view()
     rms = float(math.sqrt(float(np.mean(perp**2))))
 

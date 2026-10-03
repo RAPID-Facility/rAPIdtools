@@ -415,3 +415,19 @@ def test_fragment_narrower_than_an_object_is_dropped():
     assert est is None and reason == 'fragment'
     estimates, counts, _ = discover_objects(obs, camera_height_m=CAM_H)
     assert estimates == [] and counts['fragment'] == 1
+
+
+def test_long_track_seen_mostly_from_far_away_is_static():
+    """Rays from cameras beyond the range bound still vote for the consensus."""
+    from rapidtools.processing.street_localization import localize
+    from rapidtools.processing.street_tracking import classify_track
+
+    # 150 frames along 450 m of road; the car at (60, 12) is within 60 m of
+    # only a third of them, yet all of them see it.
+    obs, project, _ = _survey([(60.0, 12.0)], n_frames=150, max_range=500.0)
+    for o in obs:
+        localize(o, camera_height_m=CAM_H, max_range_m=60)
+    est, reason = classify_track(obs, project, max_range_m=60.0, camera_height_m=CAM_H)
+    assert reason == 'ok' and est is not None
+    assert est.localization == 'triangulated'
+    assert math.hypot(est.x - 60.0, est.y - 12.0) < 0.5
