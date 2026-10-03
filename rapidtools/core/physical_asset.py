@@ -2929,14 +2929,14 @@ class PhysicalAssetCollection:
 
         sidecar_path = self._shapefile_sidecar_path(path)
         if sidecar_images or renamed_fields:
-            with sidecar_path.open('w', encoding='utf-8') as f:
+            with sidecar_path.open('w', encoding='utf-8') as fh:
                 json.dump(
                     {
                         'version': 1,
                         'fields': renamed_fields,
                         'images': sidecar_images,
                     },
-                    f,
+                    fh,
                     indent=2,
                     default=str,
                 )

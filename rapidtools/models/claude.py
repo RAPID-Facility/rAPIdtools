@@ -243,8 +243,8 @@ class ClaudeInference(BaseAPIInferenceModel):
     def _build_payload(
         self,
         user_content: list[dict[str, Any]],
-        temperature: float,
-        max_tokens: int,
+        temperature: float | None,
+        max_tokens: int | None,
         json_mode: bool,
         system_instruction: str | None = None,
     ) -> dict[str, Any]:
@@ -252,9 +252,10 @@ class ClaudeInference(BaseAPIInferenceModel):
         payload: dict[str, Any] = {
             'model': self.model_id,
             'messages': [{'role': 'user', 'content': user_content}],
-            'max_tokens': max_tokens,
         }
-        if self.supports_temperature(self.model_id):
+        if max_tokens is not None:
+            payload['max_tokens'] = max_tokens
+        if temperature is not None and self.supports_temperature(self.model_id):
             payload['temperature'] = temperature
 
         # Anthropic puts the system prompt at the root, not in messages.
@@ -298,6 +299,7 @@ class ClaudeInference(BaseAPIInferenceModel):
         temperature: float | None = None,
         max_tokens: int | None = None,
         config: GenerationConfig | None = None,
+        **kwargs: Any,
     ) -> ModelOutput | None:
         """
         Send images and a prompt to the Messages API.
@@ -313,6 +315,7 @@ class ClaudeInference(BaseAPIInferenceModel):
             max_tokens: Per-call output-token limit override.
             config: A :class:`~rapidtools.models.GenerationConfig`; explicit
                 keyword arguments take precedence over it.
+            **kwargs: Ignored; accepted for interface compatibility.
 
         Returns:
             ModelOutput | None: The response text and raw JSON, or ``None``

@@ -507,8 +507,9 @@ class SAM3OrthoFeatureExtractor:
                 mask_threshold=self.mask_threshold,
             )
 
-            if not outputs or getattr(outputs, 'masks', None) is None:
+            if outputs is None or outputs.masks is None:
                 return
+            output_masks = outputs.masks
 
             raw_response = getattr(outputs, 'raw_response', None)
             scores_per_image = (
@@ -517,7 +518,7 @@ class SAM3OrthoFeatureExtractor:
 
             # 3. Translate pixel masks to geographic polygons
             for image_index, (image_masks, bounds) in enumerate(
-                zip(outputs.masks, batch_bounds, strict=False)
+                zip(output_masks, batch_bounds, strict=False)
             ):
                 if image_masks is None or len(image_masks) == 0:
                     continue

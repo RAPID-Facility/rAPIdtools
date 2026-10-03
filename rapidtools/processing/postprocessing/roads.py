@@ -63,7 +63,7 @@ import logging
 import math
 import statistics
 import uuid
-from typing import Any
+from typing import Any, Generic, Literal, TypeVar, cast, overload
 
 import networkx as nx
 import pyproj
@@ -77,6 +77,11 @@ from rapidtools.core import PhysicalAsset, PhysicalAssetCollection
 from rapidtools.processing.step import Stage
 
 logger = logging.getLogger(__name__)
+
+# What ``RoadwayRegularizer.__call__`` returns: a ``(centerlines, polygons)``
+# tuple for ``output='both'`` or a single collection otherwise.
+_OutT = TypeVar('_OutT')
+_Both = tuple[PhysicalAssetCollection, PhysicalAssetCollection]
 
 ASSET_TYPE = 'road'
 
@@ -117,7 +122,7 @@ MEASURING_TAPE_FACTOR = 5.0  # Multiplier of approx_width defining max sampling 
 OUTPUT_ROUNDING_DECIMALS = 2  # Decimals used when storing properties (width, azimuth)
 
 
-class RoadwayRegularizer:
+class RoadwayRegularizer(Generic[_OutT]):
     """
     Pipeline component to regularize jagged raster-to-vector road polygons.
 
@@ -152,6 +157,31 @@ class RoadwayRegularizer:
 
     stage = Stage.REGULARIZE
 
+    @overload
+    def __init__(
+        self: 'RoadwayRegularizer[_Both]',
+        min_width_ft: float = ...,
+        min_network_length_ft: float = ...,
+        output: Literal['both'] = ...,
+    ) -> None: ...
+
+    @overload
+    def __init__(
+        self: 'RoadwayRegularizer[PhysicalAssetCollection]',
+        min_width_ft: float = ...,
+        min_network_length_ft: float = ...,
+        *,
+        output: Literal['polygons', 'centerlines'],
+    ) -> None: ...
+
+    @overload
+    def __init__(
+        self: 'RoadwayRegularizer[Any]',
+        min_width_ft: float = ...,
+        min_network_length_ft: float = ...,
+        output: str = ...,
+    ) -> None: ...
+
     def __init__(
         self,
         min_width_ft: float = 22.0,
@@ -177,9 +207,7 @@ class RoadwayRegularizer:
         # the regularizer usable as a Pipeline step.
         self.output = output
 
-    def __call__(
-        self, input_assets: PhysicalAssetCollection
-    ) -> tuple[PhysicalAssetCollection, PhysicalAssetCollection]:
+    def __call__(self, input_assets: PhysicalAssetCollection) -> _OutT:
         """
         Allow the instance to be called directly like a function.
 
@@ -188,19 +216,22 @@ class RoadwayRegularizer:
                 The raw input road polygons (WGS84).
 
         Returns:
-            tuple[PhysicalAssetCollection, PhysicalAssetCollection]:
-                A tuple containing the centerlines collection and the
-                reconstructed polygons collection.
+            With ``output='both'`` (the default), a tuple containing the
+            centerlines collection and the reconstructed polygons collection;
+            with ``output='polygons'`` or ``output='centerlines'``, just that
+            collection.
 
         Example:
             >>> centerlines, polygons = RoadwayRegularizer()(raw_roads)
         """
         centerlines, polygons = self.process(input_assets)
+        # The casts are backed by the ``__init__`` overloads, which tie
+        # ``_OutT`` to the ``output`` mode:
         if self.output == 'polygons':
-            return polygons
+            return cast(_OutT, polygons)
         if self.output == 'centerlines':
-            return centerlines
-        return centerlines, polygons
+            return cast(_OutT, centerlines)
+        return cast(_OutT, (centerlines, polygons))
 
     def process(
         self, input_assets: PhysicalAssetCollection
@@ -799,7 +830,7 @@ class RoadwayRegularizer:
         )
         analyzed_segments.sort(key=lambda x: x['width'], reverse=True)
         collection = PhysicalAssetCollection()
-        placed_polys = []
+        placed_polys: list[tuple[BaseGeometry, tuple[float, float, float, float]]] = []
 
         for item in analyzed_segments:
             poly = item['geometry'].buffer(item['width'] / 2.0, cap_style=2)

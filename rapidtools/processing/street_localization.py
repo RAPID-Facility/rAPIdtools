@@ -527,6 +527,13 @@ def thin_frames(
     return keep
 
 
+def _ground_position(obs: Observation) -> tuple[float, float]:
+    """Return ``(lon, lat)`` of an observation that :func:`localize` accepted."""
+    if obs.lon is None or obs.lat is None:
+        raise ValueError(f'Observation {obs.image_id!r} has no ground position.')
+    return obs.lon, obs.lat
+
+
 def cluster_observations(
     observations: Sequence[Observation], radius_m: float
 ) -> list[list[Observation]]:
@@ -559,13 +566,13 @@ def cluster_observations(
     located = [o for o in observations if o.has_location]
     if not located:
         return []
-    project, _ = local_projection(located[0].lon, located[0].lat)
+    project, _ = local_projection(*_ground_position(located[0]))
     grid: dict[tuple[int, int], list[dict]] = defaultdict(list)
     clusters: list[dict] = []
     for obs in sorted(
         located, key=lambda o: o.range_m if o.range_m is not None else 1e9
     ):
-        x, y = project(obs.lon, obs.lat)
+        x, y = project(*_ground_position(obs))
         gx, gy = int(math.floor(x / radius_m)), int(math.floor(y / radius_m))
         target = None
         for dx in (-1, 0, 1):

@@ -65,9 +65,13 @@ get a second, lower-threshold pass to rescue buildings in shadow.
    )(buildings)
    final = BuildingRegularizer(prompt='building roof', batch_size=8)(with_crops)
 
-Every image the regularizer reads must carry ``wgs84_bounds`` in its
+Every image the regularizer reads must carry georeferencing in its
 properties, which :class:`~rapidtools.processing.AerialImageryExtractor`
-writes automatically.
+writes automatically: ``native_georef`` (the crop's affine transform and
+CRS, used to vectorize masks in the raster's own grid before reprojecting to
+WGS84) and ``wgs84_bounds``. Crops from older runs that only have
+``wgs84_bounds`` still work, but their polygons are mapped through the
+lon/lat envelope, which is exact only for north-up WGS84 rasters.
 
 Regularizing roads
 ------------------

@@ -98,7 +98,7 @@ class GenerationConfig:
             >>> GenerationConfig(temperature=0.4).merged(max_tokens=5).max_tokens
             5
         """
-        values = {
+        values: dict[str, Any] = {
             'temperature': self.temperature,
             'max_tokens': self.max_tokens,
             'json_mode': self.json_mode,

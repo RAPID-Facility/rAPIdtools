@@ -492,6 +492,11 @@ class OrthomosaicReader:
 
         # Build the Shapely geometry corresponding to the geometry input:
         num_coords = len(asset_geometry)
+        coords: (
+            tuple[float, float]
+            | list[tuple[float, float]]
+            | list[list[tuple[float, float]]]
+        )
         # Single coordinate pair:
         if num_coords == 1:
             geom_type = 'Point'
@@ -725,10 +730,10 @@ class OrthomosaicReader:
             if self._dataset.crs.is_geographic:
                 # Geographic CRS (degrees): dynamically calculate meters per
                 # degree:
-                center_lat = (
-                    self.dataset_extent[1]
-                    + (self.dataset_extent[3] - self.dataset_extent[1]) / 2.0
-                )
+                extent = self.dataset_extent
+                if extent is None:
+                    raise RuntimeError(_NOT_ENTERED_MSG)
+                center_lat = extent[1] + (extent[3] - extent[1]) / 2.0
                 cos_lat = max(0.00001, math.cos(math.radians(center_lat)))
 
                 m_per_deg_y = LATITUDE_SPACING_KM * 1000.0

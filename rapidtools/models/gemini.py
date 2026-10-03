@@ -229,20 +229,24 @@ class GeminiInference(BaseAPIInferenceModel):
     def _build_payload(
         self,
         contents_parts: list[dict[str, Any]],
-        temperature: float,
-        max_tokens: int,
+        temperature: float | None,
+        max_tokens: int | None,
         json_mode: bool,
         system_instruction: str | None = None,
     ) -> dict[str, Any]:
         """Construct the ``generateContent`` request body."""
+        generation_config: dict[str, Any] = {}
+        if temperature is not None:
+            generation_config['temperature'] = temperature
+        if max_tokens is not None:
+            generation_config['maxOutputTokens'] = max_tokens
+        generation_config['responseMimeType'] = (
+            'application/json' if json_mode else 'text/plain'
+        )
         payload: dict[str, Any] = {
             'contents': [{'parts': contents_parts}],
             'safetySettings': self.SAFETY_SETTINGS,
-            'generationConfig': {
-                'temperature': temperature,
-                'maxOutputTokens': max_tokens,
-                'responseMimeType': 'application/json' if json_mode else 'text/plain',
-            },
+            'generationConfig': generation_config,
         }
         system = system_instruction or self.system_instruction
         if system:
@@ -268,6 +272,7 @@ class GeminiInference(BaseAPIInferenceModel):
         temperature: float | None = None,
         max_tokens: int | None = None,
         config: GenerationConfig | None = None,
+        **kwargs: Any,
     ) -> ModelOutput | None:
         """
         Send images and a prompt to ``generateContent``.
@@ -283,6 +288,7 @@ class GeminiInference(BaseAPIInferenceModel):
             max_tokens: Per-call output-token limit override.
             config: A :class:`~rapidtools.models.GenerationConfig`; explicit
                 keyword arguments take precedence over it.
+            **kwargs: Ignored; accepted for interface compatibility.
 
         Returns:
             ModelOutput | None: The response text and raw JSON, or ``None``

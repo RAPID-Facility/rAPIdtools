@@ -73,7 +73,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 from rapidtools.core import OperationCancelled, PhysicalAssetCollection
 from rapidtools.gui.prompt_builder import ASSIST_ACTIONS, PromptAssistant
@@ -206,9 +206,12 @@ def list_available_models(backend: str, api_key: str = '') -> list[str]:
     if not api_key.strip():
         return static
     from rapidtools.models import get_model_class
+    from rapidtools.models.api_base import BaseAPIInferenceModel
 
     model_class = get_model_class(backend)
     try:
+        if not issubclass(model_class, BaseAPIInferenceModel):
+            raise TypeError(f'{model_class.__name__} cannot list remote models.')
         remote = model_class.list_available_models(api_key.strip())
     except Exception as exc:  # noqa: BLE001 - network errors degrade gracefully
         logger.warning(f'Could not list {spec["label"]} models: {exc}')
@@ -291,6 +294,16 @@ class DetectionSettings:
                 f'basemap must be one of {DETECTION_BASEMAPS}, got {self.basemap!r}.'
             )
         self.detect_in_recon_imagery = self.basemap == 'recon'
+
+
+class _OutlineKwargs(TypedDict):
+    """Outline keyword arguments shared by the image extractors."""
+
+    overlay_asset_outline: bool
+    outline_shape: str
+    outline_buffer: float | str
+    outline_width: int | float | str
+    outline_color: str
 
 
 @dataclass
@@ -456,14 +469,21 @@ class RegionImagerySettings:
         if self.geojson_path is not None:
             self.geojson_path = Path(self.geojson_path)
             return
-        bounds = (self.min_lon, self.min_lat, self.max_lon, self.max_lat)
-        if any(v is None for v in bounds):
+        if (
+            self.min_lon is None
+            or self.min_lat is None
+            or self.max_lon is None
+            or self.max_lat is None
+        ):
             raise ValueError(
                 'Give the region as min/max longitude and latitude, or as a '
                 'GeoJSON file.'
             )
         self.min_lon, self.min_lat, self.max_lon, self.max_lat = (
-            float(v) for v in bounds
+            float(self.min_lon),
+            float(self.min_lat),
+            float(self.max_lon),
+            float(self.max_lat),
         )
         if not (
             -180 <= self.min_lon < self.max_lon <= 180
@@ -933,7 +953,7 @@ class AssetAnalysisWorkflow:
             MapillaryObjectImageExtractor,
         )
 
-        outline = {
+        outline: _OutlineKwargs = {
             'overlay_asset_outline': settings.overlay_asset_outline,
             'outline_shape': settings.outline_shape,
             'outline_buffer': settings.outline_buffer,
@@ -1088,8 +1108,15 @@ class AssetAnalysisWorkflow:
             if not geojson.is_file():
                 raise FileNotFoundError(f'GeoJSON not found: {geojson}')
             region = BoundingBox.from_geojson(geojson)
-            bounds = tuple(region.bounds)
+            bounds = region.bounds
         else:
+            if (
+                settings.min_lon is None
+                or settings.min_lat is None
+                or settings.max_lon is None
+                or settings.max_lat is None
+            ):
+                raise ValueError('The region bounds are incomplete.')
             bounds = (
                 settings.min_lon,
                 settings.min_lat,
@@ -1169,6 +1196,10 @@ class AssetAnalysisWorkflow:
         output_dir.mkdir(parents=True, exist_ok=True)
         region = settings.region
         if region is None:
+            if settings.raster_path is None:
+                raise ValueError(
+                    'Load imagery (or give a region) to define the survey area.'
+                )
             raster_path = settings.raster_path.expanduser().resolve()
             if not raster_path.is_file():
                 raise FileNotFoundError(f'Raster not found: {raster_path}')

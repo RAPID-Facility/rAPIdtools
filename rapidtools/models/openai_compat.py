@@ -301,17 +301,18 @@ class BaseOpenAICompatibleInference(BaseAPIInferenceModel):
     def _build_payload(
         self,
         messages: list[dict[str, Any]],
-        temperature: float,
-        max_tokens: int,
+        temperature: float | None,
+        max_tokens: int | None,
         json_mode: bool,
     ) -> dict[str, Any]:
         """Build the JSON body for ``/chat/completions``."""
         payload: dict[str, Any] = {
             'model': self.model_id,
             'messages': messages,
-            self.MAX_TOKENS_FIELD: max_tokens,
         }
-        if self._supports_temperature(self.model_id):
+        if max_tokens is not None:
+            payload[self.MAX_TOKENS_FIELD] = max_tokens
+        if temperature is not None and self._supports_temperature(self.model_id):
             payload['temperature'] = temperature
         if json_mode:
             payload['response_format'] = {'type': 'json_object'}
@@ -359,6 +360,7 @@ class BaseOpenAICompatibleInference(BaseAPIInferenceModel):
         temperature: float | None = None,
         max_tokens: int | None = None,
         config: GenerationConfig | None = None,
+        **kwargs: Any,
     ) -> ModelOutput | None:
         """
         Send images and a prompt to ``/chat/completions``.
@@ -373,6 +375,7 @@ class BaseOpenAICompatibleInference(BaseAPIInferenceModel):
             max_tokens: Per-call output-token limit override.
             config: A :class:`~rapidtools.models.GenerationConfig`; explicit
                 keyword arguments take precedence over it.
+            **kwargs: Ignored; accepted for interface compatibility.
 
         Returns:
             ModelOutput | None: The response text and raw JSON, or ``None``

@@ -82,7 +82,7 @@ import requests
 from PIL import Image, ImageDraw
 from tqdm import tqdm
 
-from rapidtools.config import REQUESTS_TIMEOUT_VAL, get_configured_session
+from rapidtools.config import REQUESTS_TIMEOUT_VAL, MaskType, get_configured_session
 from rapidtools.core import BoundingBox, ImageAsset, ImageCollection
 
 from .tile_utils import TileUtils
@@ -347,14 +347,14 @@ class MapillaryClient:
 
         # Create the ImageAsset:
         image_asset = ImageAsset(
-            path=str(file_path),
+            path=file_path,
             id=prop_id,
             properties=props,
             allow_missing_file=allow_missing,
         )
 
-        # Process segmentation:
-        if should_process_masks:
+        # Process segmentation (``process_masks`` is a non-empty list here):
+        if process_masks:
             # Check if detections were returned from the API:
             detections_data = props.get('detections')
 
@@ -370,10 +370,10 @@ class MapillaryClient:
                             image_asset, merge_detections=True
                         )
                         image_asset.set_mask(
-                            sem_mask, mask_type='semantic', map_data=sem_map
+                            sem_mask, mask_type=MaskType.SEMANTIC, map_data=sem_map
                         )
                         if save_to_disk:
-                            image_asset.save_mask(mask_type='semantic')
+                            image_asset.save_mask(mask_type=MaskType.SEMANTIC)
 
                     # Instance mask:
                     if 'instance' in process_masks:
@@ -381,10 +381,10 @@ class MapillaryClient:
                             image_asset, merge_detections=False
                         )
                         image_asset.set_mask(
-                            inst_mask, mask_type='instance', map_data=inst_map
+                            inst_mask, mask_type=MaskType.INSTANCE, map_data=inst_map
                         )
                         if save_to_disk:
-                            image_asset.save_mask(mask_type='instance')
+                            image_asset.save_mask(mask_type=MaskType.INSTANCE)
 
                 except Exception as e:
                     logger.error(f'Failed to process segmentation for {prop_id}: {e}')
@@ -838,7 +838,7 @@ class MapillaryClient:
         # If we need specific metadata OR we need to save files to disk,
         # we must hit the API for the specific IDs found:
         if fields or save_to_disk:
-            ids = final_collection.get_ids()
+            ids = [str(i) for i in final_collection.get_ids() if i is not None]
 
             logger.info('Starting to download the data for detected images...')
 
@@ -1343,7 +1343,7 @@ class MapillaryClient:
             return np.zeros((img_height, img_width), dtype=np.uint8), {}
 
         # Initialize state:
-        label_to_id = {}
+        label_to_id: dict[str, int] = {}
         segmentation_map = {0: SegmentationLabels.VOID}
         next_id = 1
 

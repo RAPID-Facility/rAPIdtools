@@ -181,7 +181,7 @@ class Gemma4Inference(BaseLocalInferenceModel):
         return {
             'max_new_tokens': gen.max_tokens,
             'temperature': gen.temperature,
-            'do_sample': gen.temperature > 0.0,
+            'do_sample': gen.temperature is not None and gen.temperature > 0.0,
         }
 
     def _prompt_text(self, prompt: str | Path, kwargs: dict[str, Any]) -> str:

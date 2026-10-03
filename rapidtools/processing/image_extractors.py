@@ -79,6 +79,7 @@ import rasterio
 import requests
 from PIL import Image
 from rasterio.transform import from_bounds
+from requests.adapters import HTTPAdapter
 from tqdm import tqdm
 
 from rapidtools.config import REQUESTS_TIMEOUT_VAL, get_configured_session
@@ -871,6 +872,9 @@ class MapillaryImageExtractor:
 
         # 2. Fetch regional metadata
         collection_bbox = asset_collection.combined_bounding_box
+        if collection_bbox is None:
+            logger.warning('asset_collection is empty; nothing to extract.')
+            return asset_collection
         logger.info('Fetching regional Mapillary metadata...')
 
         regional_images = self.client.fetch_images_in_bbox(
@@ -1000,11 +1004,19 @@ class MapillaryImageExtractor:
         total_extracted = 0
         logger.info(f'Extracting panos using {self.max_workers} threads...')
 
+        # Pool sizes are fixed at construction, so mount a fresh adapter that
+        # keeps the configured retry strategy:
         for prefix in ('http://', 'https://'):
             adapter = self.client.session.adapters.get(prefix)
-            if adapter:
-                adapter.pool_connections = self.max_workers
-                adapter.pool_maxsize = self.max_workers * 2
+            if isinstance(adapter, HTTPAdapter):
+                self.client.session.mount(
+                    prefix,
+                    HTTPAdapter(
+                        pool_connections=self.max_workers,
+                        pool_maxsize=self.max_workers * 2,
+                        max_retries=adapter.max_retries,
+                    ),
+                )
 
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=self.max_workers
@@ -1210,10 +1222,19 @@ class TileOrthomosaicExtractor:
         # backoff
         with get_configured_session() as session:
             # Safely scale the connection pools for high-concurrency threading
+            # (pool sizes are fixed at construction, so mount a fresh adapter
+            # that keeps the configured retry strategy):
             for prefix in ('http://', 'https://'):
                 adapter = session.adapters[prefix]
-                adapter.pool_connections = self.max_workers
-                adapter.pool_maxsize = self.max_workers * 2
+                if isinstance(adapter, HTTPAdapter):
+                    session.mount(
+                        prefix,
+                        HTTPAdapter(
+                            pool_connections=self.max_workers,
+                            pool_maxsize=self.max_workers * 2,
+                            max_retries=adapter.max_retries,
+                        ),
+                    )
 
             def fetch_tile(
                 tile_info: tuple[int, int],
@@ -1666,14 +1687,15 @@ class GoogleStreetViewImageExtractor:
         """Decode and save the panorama depth map as ``<stem>_depth.npy``."""
         from rapidtools.data_sources.google_streetview import decode_depth_map
 
-        meta = pano
-        if meta.depth_map_b64 is None:
+        depth_b64 = pano.depth_map_b64
+        if depth_b64 is None:
             meta = self.client.get_panorama_metadata(pano.id)
-        if meta is None or meta.depth_map_b64 is None:
+            depth_b64 = meta.depth_map_b64 if meta is not None else None
+        if depth_b64 is None:
             logger.warning(f'No depth map available for panorama {pano.id}.')
             return None
         depth_path = self.save_directory / f'{stem}_depth.npy'
-        np.save(depth_path, decode_depth_map(meta.depth_map_b64))
+        np.save(depth_path, decode_depth_map(depth_b64))
         return depth_path
 
     def __call__(

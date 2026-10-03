@@ -57,6 +57,7 @@ from __future__ import annotations
 
 import logging
 import warnings
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -171,7 +172,7 @@ class SAM3Inference(BaseLocalInferenceModel):
 
     def run_inference(
         self,
-        image_inputs: str | Path | list[str | Path],
+        image_inputs: str | Path | Sequence[str | Path],
         prompt: str | Path | None = None,
         threshold: float | None = None,
         mask_threshold: float | None = None,
@@ -212,11 +213,14 @@ class SAM3Inference(BaseLocalInferenceModel):
         prompt_str = self._resolve_prompt(prompt) if prompt is not None else ''
         log_ctx = f"[Prompt: '{prompt_str[:30]}...']" if prompt_str else '[No prompt]'
 
-        if not isinstance(image_inputs, list):
-            image_inputs = [image_inputs]
+        image_list: list[str | Path] = (
+            [image_inputs]
+            if isinstance(image_inputs, (str, Path))
+            else list(image_inputs)
+        )
 
         loaded_images = []
-        for img_input in image_inputs:
+        for img_input in image_list:
             pil_img = self._load_image_as_pil(img_input)
             if pil_img:
                 loaded_images.append(pil_img)
@@ -251,7 +255,7 @@ class SAM3Inference(BaseLocalInferenceModel):
                 outputs,
                 threshold=threshold,
                 mask_threshold=mask_threshold,
-                target_sizes=inputs.get('original_sizes').tolist(),
+                target_sizes=inputs['original_sizes'].tolist(),
             )
 
             extracted_masks = []

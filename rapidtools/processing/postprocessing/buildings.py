@@ -644,6 +644,8 @@ class BuildingRegularizer:
             valid_instances = []
 
             for img_asset in asset.image_assets:
+                if img_asset.id is None:
+                    continue
                 masks = sam3_masks_dict.get(img_asset.id)
                 if masks is None or len(masks) == 0:
                     continue

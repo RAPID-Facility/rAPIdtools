@@ -314,7 +314,9 @@ class AssetAnalyzer:
     @property
     def attribute_prefix(self) -> str:
         """Prefix of the attributes written to each asset."""
-        return self.ATTRIBUTE_PREFIX
+        # ``__init__`` always stores a non-empty prefix; the class attribute
+        # is Optional only so subclasses may leave it unset.
+        return self.ATTRIBUTE_PREFIX or 'vlm'
 
     @property
     def cooldown_duration(self) -> float:
@@ -497,7 +499,8 @@ class AssetAnalyzer:
     # ----------------------------------------------------------- local mode
     def _run_local(self, assets: list[PhysicalAsset]) -> int:
         """Analyze assets sequentially or in batches; return the failures."""
-        batched = hasattr(self.model, 'run_inference_batch')
+        run_inference_batch = getattr(self.model, 'run_inference_batch', None)
+        batched = run_inference_batch is not None
         batch_size = self.batch_size if batched else 1
         total_batches = math.ceil(len(assets) / batch_size)
         logger.info(
@@ -514,9 +517,9 @@ class AssetAnalyzer:
             batch_assets = assets[i : i + batch_size]
             batch_images = [self._image_paths(a) for a in batch_assets]
 
-            if batched:
+            if run_inference_batch is not None:
                 kwargs = {'config': self.generation} if self.generation else {}
-                results = self.model.run_inference_batch(
+                results = run_inference_batch(
                     batch_images, [self.prompt] * len(batch_assets), **kwargs
                 )
             else:
@@ -841,7 +844,7 @@ class HFVisionAssetAnalyzer(BaseLocalAssetAnalyzer):
     Subclasses swap ``MODEL_CLASS`` for a family-specific wrapper.
     """
 
-    MODEL_CLASS: type = HFVisionInference
+    MODEL_CLASS: type[HFVisionInference] = HFVisionInference
     ATTRIBUTE_PREFIX = 'vlm'
     PROVIDER_NAME = 'Hugging Face VLM'
 
@@ -861,12 +864,8 @@ class HFVisionAssetAnalyzer(BaseLocalAssetAnalyzer):
         trust_remote_code: bool = False,
     ) -> None:
         """Build ``MODEL_CLASS`` and wrap it."""
-        _warn_deprecated(
-            type(self).__name__,
-            getattr(self.MODEL_CLASS, 'INFO', None).key
-            if getattr(self.MODEL_CLASS, 'INFO', None)
-            else 'hf',
-        )
+        info = getattr(self.MODEL_CLASS, 'INFO', None)
+        _warn_deprecated(type(self).__name__, info.key if info else 'hf')
         model = self.MODEL_CLASS(
             model_id=model_id or self.MODEL_CLASS.DEFAULT_MODEL,
             device=device,

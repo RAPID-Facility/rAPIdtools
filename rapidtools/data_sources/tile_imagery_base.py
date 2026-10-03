@@ -69,6 +69,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
+import requests
 from PIL import Image
 from requests.adapters import HTTPAdapter
 from shapely.geometry import box, shape
@@ -128,7 +129,7 @@ class WebMercatorTileExtractor(ABC):
         self.zoom_level = zoom_level
         self.max_workers = max_workers
 
-        self._session = None
+        self._session: requests.Session | None = None
         self._executor: concurrent.futures.ThreadPoolExecutor | None = None
 
     @property
@@ -178,13 +179,14 @@ class WebMercatorTileExtractor(ABC):
             self._executor.shutdown(wait=True)
             self._executor = None
 
-    def _require_session(self) -> None:
-        """Raise ``RuntimeError`` when used outside a ``with`` block."""
+    def _require_session(self) -> requests.Session:
+        """Return the open session; raise ``RuntimeError`` outside a ``with`` block."""
         if self._session is None:
             raise RuntimeError(
                 'Extractor must be used as a context manager (inside a "with" '
                 'block) before downloading tiles.'
             )
+        return self._session
 
     # ------------------------------------------------------ projection math
     @staticmethod
@@ -294,10 +296,10 @@ class WebMercatorTileExtractor(ABC):
         return (tile_x, tile_y, self.zoom_level)
 
     @abstractmethod
-    def _tile_url(self, tile_key: Hashable) -> str:
+    def _tile_url(self, tile_key: Any) -> str:
         """Return the download URL of the tile identified by ``tile_key``."""
 
-    def _download_tile(self, tile_key: Hashable) -> Image.Image | None:
+    def _download_tile(self, tile_key: Any) -> Image.Image | None:
         """
         Download a single tile using the active requests session.
 
@@ -313,9 +315,9 @@ class WebMercatorTileExtractor(ABC):
         Raises:
             RuntimeError: If called outside of a context manager block.
         """
-        self._require_session()
+        session = self._require_session()
         try:
-            response = self._session.get(
+            response = session.get(
                 self._tile_url(tile_key), timeout=REQUESTS_TIMEOUT_VAL
             )
             if response.status_code == 200:
