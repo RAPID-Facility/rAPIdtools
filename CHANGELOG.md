@@ -142,6 +142,9 @@ minor releases may change public APIs.
 
 ### Fixed
 
+- The two asset-analysis notebooks under `examples/` no longer contain a
+  hard-coded Gemini API key (the key has been revoked); they read
+  `GOOGLE_API_KEY` from the environment instead.
 - Image assets attached to a `PhysicalAsset` survive GeoJSON and shapefile
   round trips. `to_geojson_feature` serialized the private image caches, so
   `from_geojson_feature` rejected every image with a warning, and
