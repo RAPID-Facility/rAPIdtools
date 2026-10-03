@@ -1,0 +1,89 @@
+name: Bug report
+description: Something in rapidtools does not behave as documented.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. Before filing, please check the
+        [Troubleshooting and FAQ](https://github.com/RAPID-Facility/rAPIdtools/wiki/Troubleshooting-and-FAQ)
+        wiki page and search existing issues.
+
+        **Do not paste API keys, Mapillary tokens or Hugging Face tokens anywhere in this
+        report.** Redact them from commands and logs. Security problems should be reported
+        privately through the [security policy](https://github.com/RAPID-Facility/rAPIdtools/security/policy),
+        not here.
+  - type: input
+    id: version
+    attributes:
+      label: rapidtools version
+      description: Output of `python -c "import rapidtools; print(rapidtools.__version__)"`, or the commit hash for a source install.
+      placeholder: "0.2.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options:
+        - pip install rapidtools (PyPI)
+        - pip install -e . from a clone
+        - Docker image from deploy/
+        - Other (say which in the description)
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Operating system and Python version
+      placeholder: "Ubuntu 24.04, Python 3.12.3; GPU: RTX 4090 / CUDA 12.4 (or 'no GPU')"
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Where does the problem show up?
+      options:
+        - Assets and collections (PhysicalAsset, GeoJSON, Shapefile, DataFrame)
+        - Aerial imagery (OrthomosaicReader, AerialImageryExtractor, Bing/Google basemaps)
+        - Street-level imagery (Google Street View, Mapillary)
+        - Detection and regularization (SAM 3, BuildingRegularizer, RoadwayRegularizer)
+        - Vision-language models (AssetAnalyzer, a hosted provider, a local model)
+        - Graphical interface or shared server (rapidtools-gui, deploy/)
+        - Documentation or examples
+        - Installation or packaging
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: The smallest script or command that shows the problem. Use the sample datasets from `rapidtools.download_dataset()` if you can.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error output and logs
+      description: The full traceback, and the log output after `rapidtools.configure_logging('DEBUG')` if relevant. Keys and tokens redacted.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have removed all API keys and tokens from this report.
+          required: true
+        - label: I have searched existing issues for this problem.
+          required: true

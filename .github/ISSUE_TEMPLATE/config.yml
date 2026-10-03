@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/RAPID-Facility/rAPIdtools/security/advisories/new
+    about: Please report security problems privately here, not in a public issue.
+  - name: Documentation and API reference
+    url: https://rapid-facility.github.io/rAPIdtools/
+    about: User guide, worked examples and one page per class and function.
+  - name: Wiki
+    url: https://github.com/RAPID-Facility/rAPIdtools/wiki
+    about: Installation, concepts, workflows, the GUI, deployment and troubleshooting.

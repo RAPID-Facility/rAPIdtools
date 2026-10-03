@@ -13,6 +13,9 @@ minor releases may change public APIs.
   `SECURITY.md`, which asks for private vulnerability reports through GitHub
   Security Advisories (now enabled on the repository), plus a Contributing
   and Security section in the README.
+- Issue forms for bug reports and feature requests, contact links to the
+  security advisory form, docs and wiki, and a pull request template with the
+  `CONTRIBUTING.md` checklist (under `.github/`).
 - **Street-level object discovery.** `MapillaryFeatureExtractor` (a `DETECT`
   step) finds objects of the requested classes in every Mapillary image of a
   region from Mapillary's own segmentation detections, read as metadata with

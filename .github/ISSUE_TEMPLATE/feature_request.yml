@@ -1,0 +1,50 @@
+name: Feature request
+description: Propose a new capability or a change to an existing one.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the use case before the solution; it helps us find the right place for the
+        change. The [wiki](https://github.com/RAPID-Facility/rAPIdtools/wiki) describes how
+        the existing components fit together, and [CONTRIBUTING.md](https://github.com/RAPID-Facility/rAPIdtools/blob/main/CONTRIBUTING.md)
+        explains how to submit code if you would like to implement it yourself.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The task, dataset or workflow this would serve, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: What you would like rapidtools to do. A sketch of the API or GUI behaviour is welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you tried, or other designs and why they fall short.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Assets and collections
+        - Aerial imagery
+        - Street-level imagery
+        - Detection and regularization
+        - Vision-language models
+        - Graphical interface or shared server
+        - Documentation or examples
+        - Other
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I would be willing to open a pull request for this.
