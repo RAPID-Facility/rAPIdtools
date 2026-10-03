@@ -7,10 +7,11 @@ imagery of Spokane, Washington:
 
 1. Download the Mapillary access token used by the rapidtools examples.
 2. Discover vehicles in every RAPID panorama of the area from Mapillary's own
-   segmentation detections (metadata only, no images downloaded), estimate
-   where each vehicle stands from the camera geometry, and merge repeated
-   sightings into one asset per vehicle. Detections of the survey vehicle
-   itself are removed automatically.
+   segmentation detections (metadata only, no images downloaded). Each
+   sighting becomes a ray from the camera's full pose; sightings are tracked
+   from frame to frame, each track is triangulated, moving vehicles and the
+   survey vehicle itself are dropped, and repeated views of a parked vehicle
+   merge into one asset.
 3. Crop the two closest views of each vehicle, with corner brackets marking
    the detection, so a vision-language model can judge its condition.
 4. Optionally classify each vehicle as intact, damaged or debris with Gemini
@@ -39,7 +40,8 @@ from rapidtools.models import GenerationConfig, load
 # A neighbourhood of Spokane, WA, inside the UW RAPID street-level survey:
 # about 1 km across. Expect roughly 20 minutes end to end and 1.5 GB of RAM:
 # a few minutes to read the detections, then about ten to download the two
-# thousand images the vehicle crops are cut from. Around 1,300 vehicles.
+# thousand images the vehicle crops are cut from. Around 1,300 vehicles
+# (timed with the earlier radius clustering; tracking adds seconds).
 REGION = rt.BoundingBox(min_x=-117.495, min_y=47.708, max_x=-117.482, max_y=47.717)
 # The whole survey is the box below: 116,000 frames after thinning, which
 # takes about 75 minutes just to read the detections (one Graph API request
@@ -79,10 +81,15 @@ detector = rt.MapillaryFeatureExtractor(
     filter_rapid_only=True,  # only imagery uploaded by the RAPID Facility
     frame_spacing_m=3.0,  # one frame every 3 m is plenty for triangulation
     min_observations=2,  # ignore vehicles seen in a single frame
-    cluster_radius_m=4.0,  # sightings within 4 m are the same vehicle
-    camera_height_m=2.4,  # roof-mounted 360 camera on the RAPID vehicle
-    frame_batch_size=200,  # frames fetched and converted at a time (bounds RAM)
     save_directory=OUTPUT_DIR / 'detections',
+    # The geometry needs no tuning: each sighting becomes a ray from the
+    # camera pose Mapillary computed, sightings are tracked and triangulated,
+    # and moving vehicles are dropped. The only physical constant involved,
+    # the camera height above the road, defaults to the RAPID rig (2.4 m)
+    # and only shapes the single-view range prior; pass camera_height_m for
+    # a different vehicle. If the survey drove some streets twice, add
+    # reid=True to merge look-alike vehicles seen on separate passes (loads
+    # a small DINOv2 model and downloads one thumbnail per compared vehicle).
 )
 
 cropper = rt.MapillaryObjectImageExtractor(
@@ -124,6 +131,18 @@ for asset in vehicles:
     key = asset.attributes['localization']
     by_localization[key] = by_localization.get(key, 0) + 1
 print(f'Localization: {by_localization}')
+sigmas = sorted(
+    a.attributes['position_sigma_m']
+    for a in vehicles
+    if 'position_sigma_m' in a.attributes
+)
+if sigmas:
+    median_sigma = sigmas[len(sigmas) // 2]
+    well_seen = sum(1 for a in vehicles if a.attributes.get('n_images', 0) >= 3)
+    print(
+        f'Position uncertainty: median {median_sigma:.2f} m; '
+        f'{well_seen} vehicles seen from three or more frames.'
+    )
 if any('gemini_condition' in a.attributes for a in vehicles):
     conditions = {}
     for asset in vehicles:

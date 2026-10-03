@@ -49,12 +49,17 @@ Source: ``examples/vehicle_detection_from_street.py``.
 What to look at in the output
 -----------------------------
 
-- ``localization`` is ``'triangulated'`` for vehicles seen from two or more
-  camera positions and ``'single_view'`` otherwise. Triangulated positions
-  are typically within a metre; single-view ones depend on the camera height
-  and a flat road, so treat them as approximate.
-- ``n_images`` and ``position_rms_m`` tell you how well constrained each
-  position is.
+- ``localization`` is ``'triangulated'`` for vehicles whose track was
+  intersected from two or more camera positions and ``'single_view'`` for
+  vehicles seen without parallax. Triangulated positions are typically
+  within a metre; single-view ones depend on the camera height and a flat
+  road, so treat them as approximate.
+- ``position_sigma_m``, ``parallax_deg``, ``n_images`` and
+  ``position_rms_m`` tell you how well constrained each position is; filter
+  on ``position_sigma_m`` for a map you can trust.
+- Vehicles that were driving, and anything on the line the camera itself
+  drove, are dropped before the collection is built; the log reports how
+  many.
 - ``observations`` lists every sighting with its image ID, so the crops can be
   regenerated later without re-running detection.
 - Vehicles detected only in one frame are dropped by ``min_observations=2``;
