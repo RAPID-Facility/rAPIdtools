@@ -282,3 +282,129 @@ def test_estimate_ego_mask_scales_to_a_survey_length_sequence():
     elapsed = time.perf_counter() - t0
     assert flagged == ego_expected
     assert elapsed < 10, f'ego mask took {elapsed:.1f} s for 80k sightings'
+
+
+# ==========================================
+# Camera model (full pose)
+# ==========================================
+
+
+def _rotation_vector(yaw_deg, pitch_deg=0.0, roll_deg=0.0):
+    """OpenSfM world->camera axis-angle for a camera heading ``yaw_deg``."""
+    import numpy as np
+
+    def rz(a):
+        c, s = math.cos(a), math.sin(a)
+        return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
+
+    def rx(a):
+        c, s = math.cos(a), math.sin(a)
+        return np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
+
+    # Camera axes (right, down, forward) = (east, -up, north) before yaw:
+    base = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]])
+    r = base @ rz(math.radians(-yaw_deg)).T
+    r = rz(math.radians(roll_deg)) @ rx(math.radians(pitch_deg)) @ r
+    angle = math.acos(max(-1.0, min(1.0, (np.trace(r) - 1) / 2)))
+    if angle < 1e-9:
+        return [0.0, 0.0, 0.0]
+    axis = np.array([r[2, 1] - r[1, 2], r[0, 2] - r[2, 0], r[1, 0] - r[0, 1]])
+    return list(axis / (2 * math.sin(angle)) * angle)
+
+
+def _project_pano(point_enu, rotation_vector):
+    """Normalised pano pixel of a point given in camera-centred ENU metres."""
+    import numpy as np
+
+    from rapidtools.processing.street_localization import rotation_matrix
+
+    d = rotation_matrix(rotation_vector) @ np.asarray(point_enu, dtype=float)
+    d = d / np.linalg.norm(d)
+    lon = math.atan2(d[0], d[2])
+    lat = -math.asin(d[1])
+    return (0.5 + lon / (2 * math.pi)) % 1.0, 0.5 - lat / math.pi
+
+
+def test_rotation_matrix_identity_and_heading():
+    import numpy as np
+
+    from rapidtools.processing.street_localization import rotation_matrix
+
+    assert np.allclose(rotation_matrix([0, 0, 0]), np.eye(3))
+    # A camera heading 95 degrees: its forward axis points 95 deg from north.
+    r = rotation_matrix(_rotation_vector(95.0))
+    forward = r.T @ np.array([0.0, 0.0, 1.0])
+    heading = math.degrees(math.atan2(forward[0], forward[1])) % 360
+    assert heading == pytest.approx(95.0, abs=1e-6)
+    assert forward[2] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_pixel_bearing_models():
+    from rapidtools.processing.street_localization import pixel_bearing
+
+    assert pixel_bearing(0.5, 0.5) == pytest.approx([0, 0, 1], abs=1e-9)
+    assert pixel_bearing(0.75, 0.5) == pytest.approx([1, 0, 0], abs=1e-9)
+    assert pixel_bearing(0.5, 1.0) == pytest.approx([0, 1, 0], abs=1e-9)
+    # Perspective: the principal point looks straight ahead; a point one focal
+    # length to the right of it is 45 degrees off axis.
+    centre = pixel_bearing(0.5, 0.5, 'perspective', 4000, 3000, [0.9, 0, 0])
+    assert centre == pytest.approx([0, 0, 1], abs=1e-9)
+    right = pixel_bearing(0.5 + 0.9, 0.5, 'perspective', 4000, 3000, [0.9, 0, 0])
+    assert math.degrees(math.atan2(right[0], right[2])) == pytest.approx(45.0)
+    # Distortion is undone: a distorted point maps back to the ideal direction.
+    k1 = -0.1
+    xu = 0.3
+    xd = xu * (1 + k1 * xu * xu)
+    undone = pixel_bearing(0.5 + xd * 1.0, 0.5, 'brown', 4000, 4000, [1.0, k1, 0])
+    assert undone[0] / undone[2] == pytest.approx(xu, abs=1e-6)
+    # Fisheye: equidistant model, 0.5 rad off axis.
+    theta = 0.5
+    fish = pixel_bearing(0.5 + 0.3 * theta, 0.5, 'fisheye', 2000, 2000, [0.3, 0, 0])
+    assert math.atan2(fish[0], fish[2]) == pytest.approx(theta, abs=1e-6)
+
+
+def test_localize_with_full_pose_recovers_position_under_pitch_and_roll():
+    from rapidtools.processing.street_localization import haversine_m
+
+    cam_h = 2.4
+    for yaw, pitch, roll, bearing, rng in [
+        (95.0, -1.1, 0.5, 40.0, 12.0),
+        (330.0, 3.0, -2.0, 200.0, 20.0),
+        (10.0, -4.0, 4.0, 95.0, 6.0),
+    ]:
+        rv = _rotation_vector(yaw, pitch, roll)
+        target = destination_point(LON0, LAT0, bearing, rng)
+        e = rng * math.sin(math.radians(bearing))
+        n = rng * math.cos(math.radians(bearing))
+        x_c, y_c = _project_pano([e, n, -cam_h + 0.8], rv)
+        x_b, y_b = _project_pano([e, n, -cam_h], rv)
+        polygon = [
+            (x_c - 0.01, y_c - 0.01),
+            (x_c + 0.01, y_c - 0.01),
+            (x_c + 0.01, y_b),
+            (x_c - 0.01, y_b),
+        ]
+        posed = _obs(
+            polygon=polygon,
+            compass=yaw,
+            image_width=8192,
+            image_height=4096,
+            extra={'computed_rotation': rv, 'camera_type': 'spherical'},
+        )
+        level = _obs(polygon=polygon, compass=yaw, image_width=8192, image_height=4096)
+        assert localize(posed, camera_height_m=cam_h, max_range_m=60)
+        assert haversine_m(posed.lon, posed.lat, *target) < 0.1
+        assert posed.bearing == pytest.approx(bearing, abs=0.3)
+        assert posed.range_m == pytest.approx(rng, rel=0.01)
+        # The level-camera fallback is wrong by metres once the camera pitches:
+        if abs(pitch) >= 3.0:
+            assert localize(level, camera_height_m=cam_h, max_range_m=60)
+            assert haversine_m(level.lon, level.lat, *target) > 1.0
+
+
+def test_localize_without_rotation_uses_level_camera_fallback():
+    obs = _obs(polygon=_box(0.75, 0.6), compass=10.0)
+    assert localize(obs, camera_height_m=2.4)
+    expected_bearing, expected_elev = view_angles(obs.polygon, 10.0, True)
+    assert obs.bearing == pytest.approx(expected_bearing)
+    assert obs.elevation == pytest.approx(expected_elev)

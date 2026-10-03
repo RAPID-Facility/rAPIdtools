@@ -16,6 +16,35 @@ minor releases may change public APIs.
 - Issue forms for bug reports and feature requests, contact links to the
   security advisory form, docs and wiki, and a pull request template with the
   `CONTRIBUTING.md` checklist (under `.github/`).
+- **Street-level localisation rebuilt around tracking and triangulation.**
+  `MapillaryFeatureExtractor` now links detections frame to frame by bearing
+  (new module `rapidtools.processing.street_tracking`), triangulates each
+  track robustly, drops moving vehicles (rays that do not agree,
+  ground-contact ranges that contradict the intersection, or objects on the
+  line the camera itself drove) and merges tracks and single views with a
+  covariance-aware gate, instead of clustering noisy single-view ground
+  positions by a fixed radius, which scattered detections and split one car
+  into several. `localization_method` selects `'tracks'` (default), the
+  `'voting'` ray-accumulation baseline or the previous `'cluster'`
+  behaviour. Objects gain `position_sigma_m`, `parallax_deg` and `n_images`.
+- Full camera pose for street-level geometry: frames carry Mapillary's
+  `computed_rotation`, camera type and lens parameters, and
+  `street_localization` turns polygons into world rays through spherical,
+  perspective and fisheye camera models (`rotation_matrix`, `pixel_bearing`,
+  `world_ray`, `observation_angles`), so camera pitch and roll no longer
+  distort bearings and ranges. Frames without a rotation keep the
+  level-camera fallback.
+- `MapillaryClient.fetch_map_features()`, `MAP_FEATURE_VALUES` and
+  `is_map_feature_value()`. In `detection_source='auto'`, static point
+  classes (utility poles, hydrants, street lights, traffic signs, ...) now
+  come from Mapillary's pre-triangulated map features
+  (`localization='map_feature'`, with `aligned_direction`, `first_seen` and
+  `last_seen`); `detection_source='map_features'` uses them exclusively and
+  `'mapillary'` keeps everything on the image route.
+- `rapidtools.processing.reid`: appearance embeddings from a Hugging Face
+  vision backbone (DINOv2 by default) and `MapillaryFeatureExtractor(reid=True)`,
+  which merges look-alike objects from different sequences within
+  `reid_max_distance_m`, removing the double counts of a repeated pass.
 - **Street-level object discovery.** `MapillaryFeatureExtractor` (a `DETECT`
   step) finds objects of the requested classes in every Mapillary image of a
   region from Mapillary's own segmentation detections, read as metadata with
@@ -108,6 +137,8 @@ minor releases may change public APIs.
 
 ### Changed
 
+- `numpy` and `scipy` are declared dependencies (both were already required
+  transitively).
 - `MapillaryFeatureExtractor` reads frames in batches (`frame_batch_size`,
   default 200) and discards each image's full detection payload once the
   requested classes are read, and simplifies detection outlines on arrival

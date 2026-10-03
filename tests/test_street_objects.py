@@ -641,3 +641,211 @@ def test_cropper_skips_assets_without_observations(tmp_path, caplog):
     with caplog.at_level(logging.WARNING):
         assert cropper(col) is col
     assert 'No assets with street-level observations' in caplog.text
+
+
+# ==========================================
+# Localisation methods, map features and re-identification
+# ==========================================
+def test_feature_extractor_rejects_unknown_localization_method():
+    with pytest.raises(ValueError):
+        MapillaryFeatureExtractor(
+            classes=['cars'], access_token='t', localization_method='magic'
+        )
+
+
+@pytest.mark.parametrize(
+    'method,expected',
+    [('tracks', 'triangulated'), ('voting', 'voted'), ('cluster', 'triangulated')],
+)
+def test_localization_methods_agree_on_the_parked_car(
+    region, tmp_path, method, expected
+):
+    client = FakeClient(_survey())
+    extractor = MapillaryFeatureExtractor(
+        classes=['cars'],
+        client=client,
+        region=region,
+        camera_height_m=CAMERA_HEIGHT,
+        localization_method=method,
+        save_directory=tmp_path,
+    )
+    result = extractor()
+    assert len(result) == 1
+    asset = result[0]
+    assert asset.attributes['localization'] == expected
+    assert asset.attributes['n_observations'] == 5
+    tolerance = 1.5 if method == 'voting' else 0.5
+    assert haversine_m(asset.geometry.x, asset.geometry.y, *CAR_POSITION) < tolerance
+    if method != 'cluster':
+        assert 'position_sigma_m' in asset.attributes
+        assert asset.attributes['n_images'] == 5
+
+
+class MapFeatureClient(FakeClient):
+    """Fake client that also serves Mapillary map features."""
+
+    def __init__(self, images, features):
+        super().__init__(images)
+        self.features = features
+
+    def fetch_map_features(self, bbox, object_values, **kwargs):
+        self.calls.append(('map_features', bbox, list(object_values), kwargs))
+        return [f for f in self.features if f['object_value'] in object_values]
+
+
+POLE = {
+    'id': '2519029251914551',
+    'object_value': 'object--support--utility-pole',
+    'lon': ROAD_LON + 0.0005,
+    'lat': ROAD_LAT + 0.0003,
+    'aligned_direction': 69.79,
+    'first_seen_at': '2025-08-27T03:59:39+0000',
+    'last_seen_at': '2025-09-15T23:37:17+0000',
+    'image_ids': ['111', '222'],
+}
+
+
+def test_static_classes_come_from_map_features(region, tmp_path):
+    client = MapFeatureClient(_survey(), [POLE])
+    extractor = MapillaryFeatureExtractor(
+        classes=['utility poles', 'cars'],
+        client=client,
+        region=region,
+        camera_height_m=CAMERA_HEIGHT,
+        start_date='2025-08-01',
+        end_date='2025-09-30',
+        save_directory=tmp_path,
+    )
+    result = extractor()
+    kinds = [c[0] for c in client.calls]
+    assert kinds[0] == 'map_features'
+    _, bbox, values, kwargs = client.calls[0]
+    assert bbox is region and values == ['object--support--utility-pole']
+    assert kwargs == {'start_date': '2025-08-01', 'end_date': '2025-09-30'}
+    assert len(result) == 2
+    pole = result['street_utility_poles_00001']
+    assert pole.attributes['localization'] == 'map_feature'
+    assert pole.attributes['source'] == 'mapillary_map_features'
+    assert pole.attributes['label'] == 'object--support--utility-pole'
+    assert pole.attributes['n_images'] == 2
+    assert pole.attributes['aligned_direction'] == 69.8
+    assert pole.attributes['first_seen'] == '2025-08-27T03:59:39+0000'
+    assert pole.geometry.x == pytest.approx(POLE['lon'])
+    # Cars still come from the per-image detections:
+    car = result['street_cars_00001']
+    assert car.attributes['localization'] == 'triangulated'
+    # Objects without observations are skipped by the image extractor:
+    assert not pole.attributes.get('observations')
+
+
+def test_map_features_only_mode_skips_other_classes(region, tmp_path, caplog):
+    client = MapFeatureClient(_survey(), [POLE])
+    extractor = MapillaryFeatureExtractor(
+        classes=['utility poles', 'cars'],
+        client=client,
+        region=region,
+        detection_source='map_features',
+        save_directory=tmp_path,
+    )
+    with caplog.at_level('WARNING'):
+        result = extractor()
+    assert len(result) == 1
+    assert result[0].attributes['localization'] == 'map_feature'
+    assert all(c[0] == 'map_features' for c in client.calls)  # no image listing
+    assert "'cars'" in caplog.text
+
+
+def test_detections_mode_keeps_poles_on_the_image_route(region, tmp_path):
+    client = MapFeatureClient(_survey(), [POLE])
+    extractor = MapillaryFeatureExtractor(
+        classes=['utility poles'],
+        client=client,
+        region=region,
+        detection_source='mapillary',
+        save_directory=tmp_path,
+    )
+    extractor()
+    assert all(c[0] != 'map_features' for c in client.calls)
+
+
+def _second_pass(dx_m, sequence='seq2', prefix='p2_'):
+    """
+    The same street driven again. The car is seen ``dx_m`` further east than
+    in the first pass, as a GPS offset between surveys would make it appear.
+    """
+    shifted = destination_point(*CAR_POSITION, 90, dx_m)
+    frames = []
+    for i in range(5):
+        camera = destination_point(ROAD_LON, ROAD_LAT, 90, 4.0 * i)
+        detections = [
+            {'value': CAR, 'geometry': _b64_box(*_box_for(camera, 90.0, shifted))}
+        ]
+        frames.append(
+            _frame(
+                f'{prefix}img{i}',
+                camera,
+                90.0,
+                detections,
+                sequence=sequence,
+                captured=f'2025-09-0{i + 1}',
+            )
+        )
+    return frames
+
+
+class SameLookEmbedder:
+    """Every crop embeds to the same vector: everything looks alike."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def embed(self, images):
+        self.calls += 1
+        import numpy as np
+
+        return np.ones((len(images), 4), dtype='float32') / 2.0
+
+
+class DifferentLookEmbedder:
+    def embed(self, images):
+        import numpy as np
+
+        return np.eye(len(images), 4, dtype='float32')
+
+
+@pytest.mark.parametrize('alike,expected_objects', [(True, 1), (False, 2)])
+def test_reid_merges_duplicates_across_passes(
+    region, tmp_path, alike, expected_objects
+):
+    first = list(_survey(with_ego=False))
+    # The second pass places the car 4 m away (a GPS offset between surveys):
+    # beyond the geometric merge gate, inside the re-identification distance.
+    frames = first + _second_pass(dx_m=4.0)
+    client = FakeClient(ImageCollection(frames))
+    embedder = SameLookEmbedder() if alike else DifferentLookEmbedder()
+    without = MapillaryFeatureExtractor(
+        classes=['cars'],
+        client=client,
+        region=region,
+        camera_height_m=CAMERA_HEIGHT,
+        save_directory=tmp_path,
+    )()
+    assert len(without) == 2  # two passes, two objects before re-identification
+    with_reid = MapillaryFeatureExtractor(
+        classes=['cars'],
+        client=client,
+        region=region,
+        camera_height_m=CAMERA_HEIGHT,
+        reid=True,
+        reid_embedder=embedder,
+        reid_max_distance_m=8.0,
+        save_directory=tmp_path,
+    )()
+    assert len(with_reid) == expected_objects
+    if alike:
+        merged = with_reid[0]
+        assert merged.attributes['reid_merged'] == 2
+        assert merged.attributes['n_observations'] == 10
+        assert sorted(merged.attributes['sequence_ids']) == ['seq1', 'seq2']
+        assert embedder.calls >= 1
+        assert client.downloaded  # one thumbnail per compared object

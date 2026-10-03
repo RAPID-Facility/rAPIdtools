@@ -119,7 +119,7 @@ inventory from the imagery itself, mirroring what
        ),
    ])
    objects = pipeline.run(PhysicalAssetCollection())
-   objects[0].attributes['localization']      # 'triangulated' or 'single_view'
+   objects[0].attributes['localization']      # 'triangulated', 'single_view' or 'map_feature'
 
 How it works:
 
@@ -134,15 +134,47 @@ How it works:
    place in every frame of a sequence, while a parked car drifts across the
    frame. Detections that recur at the same position in most frames are
    dropped before anything else happens.
-3. **Each sighting is placed.** The polygon's horizontal centre gives the
-   bearing from the camera; its lowest point gives the elevation of the
-   ground contact, which with the camera height gives a range. Sightings
-   closer than ``min_range_m`` or farther than ``max_range_m`` are discarded.
-4. **Sightings become objects.** Sightings within ``cluster_radius_m`` are one
-   object. Objects seen from two or more camera positions are triangulated
-   by intersecting the bearings, which is far more accurate than any single
-   view; the rest keep the single-view estimate and are labelled
-   ``localization='single_view'`` so you can filter them.
+3. **Each sighting becomes a ray.** The polygon's centre column and the full
+   camera pose (Mapillary's ``computed_rotation``, camera type and lens
+   parameters, so pitch and roll are accounted for) give an accurate bearing
+   from the camera. The polygon's lowest point gives the elevation of the
+   ground contact and, with the camera height, a rough range; that range is
+   only a prior. Sightings closer than ``min_range_m`` or farther than
+   ``max_range_m`` are discarded.
+4. **Sightings are tracked, triangulated and merged.** Within each sequence,
+   detections are linked from frame to frame by bearing continuity, where the
+   data is precise, rather than by their noisy ground positions. Each track
+   is triangulated robustly from all its rays; a track whose rays do not
+   agree, or whose ground-contact ranges contradict the intersection, was a
+   moving vehicle and is dropped, as is anything on the line the camera
+   itself drove. Tracks and single views are then merged with a
+   covariance-aware gate (narrow across a ray, wide along it), so one car
+   seen from two passes becomes one object while two cars seen in the same
+   frame never do. Objects carry ``localization='triangulated'`` or
+   ``'single_view'`` (no parallax), plus ``position_sigma_m``,
+   ``parallax_deg`` and ``n_images`` so you can filter by quality.
+
+``localization_method='voting'`` swaps step 4 for a ray-voting baseline (rays
+deposit votes on a ground grid; objects are the peaks), and ``'cluster'``
+restores the earlier radius clustering, both useful to compare against.
+
+Two shortcuts sit on top of this:
+
+- **Static point classes come from Mapillary directly.** Utility poles, fire
+  hydrants, street lights, traffic signs and the other classes Mapillary
+  publishes as *map features* are already triangulated across every
+  contributor's imagery, so in ``detection_source='auto'`` the extractor
+  fetches them with :meth:`~rapidtools.data_sources.MapillaryClient.fetch_map_features`
+  instead of computing them (``localization='map_feature'``, with
+  ``aligned_direction``, ``first_seen`` and ``last_seen``). Vehicles are not
+  map features and always go through the image route;
+  ``detection_source='mapillary'`` forces the image route for everything.
+- **Repeated passes are reconciled by appearance.** With ``reid=True`` the
+  extractor crops the closest view of objects from different sequences that
+  lie within ``reid_max_distance_m`` of each other, embeds them with a
+  DINOv2 backbone and merges look-alikes, which removes the double counts a
+  second drive down the same street would otherwise leave
+  (``reid_merged`` on the merged asset).
 
 Every object is a point :class:`~rapidtools.core.PhysicalAsset` whose
 attributes include the class, the most common label, the number of

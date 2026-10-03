@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 09-28-2026
+# 10-03-2026
 
 """
 Client for retrieving street-level imagery and metadata from Mapillary.
@@ -47,6 +47,11 @@ This module wraps the two public Mapillary endpoints used by rapidtools:
        dimensions and download URLs.
     2. The vector tile API (``https://tiles.mapillary.com``), used to
        discover which images exist inside a geographic bounding box.
+
+The Graph API ``map_features`` endpoint is also wrapped
+(:meth:`MapillaryClient.fetch_map_features`) to retrieve Mapillary's
+pre-triangulated point features (utility poles, fire hydrants, street
+lights, traffic signs, ...) inside a bounding box.
 
 The main entry point is :class:`MapillaryClient`, which converts API
 responses into :class:`rapidtools.core.ImageAsset` and
@@ -70,7 +75,7 @@ import gzip
 import json
 import logging
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 from pathlib import Path
@@ -96,6 +101,75 @@ TILE_URL_TEMPLATE = (
     '{z}/{x}/{y}?access_token={token}'
 )
 RAPID_CREATOR_ID = 107708041466249
+
+MAP_FEATURE_VALUES: frozenset[str] = frozenset(
+    [
+        'object--banner',
+        'object--bench',
+        'object--bike-rack',
+        'object--catch-basin',
+        'object--cctv-camera',
+        'object--fire-hydrant',
+        'object--junction-box',
+        'object--mailbox',
+        'object--manhole',
+        'object--phone-booth',
+        'object--sign--advertisement',
+        'object--sign--information',
+        'object--sign--store',
+        'object--street-light',
+        'object--support--pole',
+        'object--support--traffic-sign-frame',
+        'object--support--utility-pole',
+        'object--traffic-light--general-single',
+        'object--traffic-light--pedestrians',
+        'object--traffic-light--general-upright',
+        'object--traffic-light--general-horizontal',
+        'object--traffic-light--cyclists',
+        'object--traffic-light--other',
+        'object--trash-can',
+        'object--water-valve',
+        'object--wire-group',
+    ]
+)
+"""
+Mapillary point-feature values served by the Graph API ``map_features``
+endpoint.
+
+The list follows Mapillary's point-features documentation. On top of these
+exact values, every ``object--traffic-sign--*`` value (one per sign type) is
+also served; use :func:`is_map_feature_value` to test for both. Vehicles,
+people and buildings are segmented in images but are **not** triangulated
+into map features, so they cannot be requested from this endpoint.
+"""
+
+MAP_FEATURE_TRAFFIC_SIGN_PREFIX = 'object--traffic-sign--'
+
+
+def is_map_feature_value(value: str) -> bool:
+    """
+    Tell whether ``value`` is a label the ``map_features`` endpoint serves.
+
+    Args:
+        value (str):
+            A Mapillary object label such as ``'object--fire-hydrant'``.
+
+    Returns:
+        bool:
+            ``True`` for exact members of :data:`MAP_FEATURE_VALUES` and for
+            any ``object--traffic-sign--*`` value, ``False`` otherwise.
+
+    Example:
+        >>> is_map_feature_value('object--support--utility-pole')
+        True
+        >>> is_map_feature_value('object--traffic-sign--stop--g1')
+        True
+        >>> is_map_feature_value('object--vehicle--car')
+        False
+    """
+    return value in MAP_FEATURE_VALUES or value.startswith(
+        MAP_FEATURE_TRAFFIC_SIGN_PREFIX
+    )
 
 
 class SegmentationLabels:
@@ -603,6 +677,244 @@ class MapillaryClient:
             'last': max(dates) if dates else None,
             'ok': True,
         }
+
+    def fetch_map_features(
+        self,
+        bbox: BoundingBox,
+        object_values: Sequence[str],
+        start_date: str = '',
+        end_date: str = '',
+        fields: Sequence[str] | None = None,
+        limit: int = 2000,
+        max_depth: int = 6,
+    ) -> list[dict[str, Any]]:
+        """
+        Fetch Mapillary's pre-triangulated point features inside a bounding box.
+
+        Map features are objects Mapillary has already located on the map
+        by triangulating detections across several images: utility poles,
+        fire hydrants, street lights, traffic signs, benches, trash cans,
+        manholes, catch basins and so on (see :data:`MAP_FEATURE_VALUES`).
+        Each comes back as a single WGS84 point, so no imagery has to be
+        downloaded or segmented to inventory them.
+
+        The endpoint caps the number of features per response at ``limit``
+        and offers no pagination for bounding-box queries, so whenever a
+        response is full the box is split into four quadrants that are
+        queried recursively (down to ``max_depth`` levels) and the results
+        are merged by feature id.
+
+        Args:
+            bbox (BoundingBox):
+                The area of interest in WGS84 coordinates.
+            object_values (Sequence[str]):
+                Mapillary feature values to request, e.g.
+                ``['object--support--utility-pole', 'object--fire-hydrant']``.
+            start_date (str):
+                Inclusive lower bound (``YYYY-MM-DD``) of the observation
+                window. A feature is kept when its ``[first_seen_at,
+                last_seen_at]`` span overlaps ``[start_date, end_date]``;
+                a missing date on either side counts as overlapping. Empty
+                for no bound.
+            end_date (str):
+                Inclusive upper bound of the observation window; empty for
+                no bound.
+            fields (Sequence[str] | None):
+                Graph API fields to request. Defaults to ``('id',
+                'object_value', 'geometry', 'aligned_direction',
+                'first_seen_at', 'last_seen_at')``. Add ``'images'`` to also
+                receive the ids of the images that saw each feature.
+            limit (int):
+                Maximum features per request. Mapillary documents 2000 as the
+                maximum for this endpoint. Defaults to ``2000``.
+            max_depth (int):
+                Maximum number of quadrant splits applied to a saturated
+                box. Defaults to ``6`` (4096 sub-boxes at most).
+
+        Returns:
+            list[dict[str, Any]]:
+                One dict per feature with the keys ``id``, ``object_value``,
+                ``lon``, ``lat``, ``aligned_direction`` (degrees or
+                ``None``), ``first_seen_at`` and ``last_seen_at`` (ISO
+                strings or ``None``) and ``image_ids`` (populated only when
+                ``'images'`` is requested, otherwise ``[]``), plus any other
+                requested field copied verbatim. HTTP errors on a (sub-)box
+                are logged as warnings and that box is skipped, so a partial
+                result is returned rather than an exception raised.
+
+        Example:
+            >>> from rapidtools.core import BoundingBox
+            >>> client = MapillaryClient('MLY|123|abc')
+            >>> bbox = BoundingBox(-117.50, 47.71, -117.49, 47.72)
+            >>> poles = client.fetch_map_features(
+            ...     bbox, ['object--support--utility-pole']
+            ... )  # doctest: +SKIP
+            >>> poles[0]['object_value'], poles[0]['lon']  # doctest: +SKIP
+            ('object--support--utility-pole', -117.49456)
+        """
+        if not object_values:
+            raise ValueError('At least one Mapillary object value is required.')
+        if limit < 1:
+            raise ValueError('limit must be a positive integer.')
+        requested = (
+            list(fields)
+            if fields is not None
+            else [
+                'id',
+                'object_value',
+                'geometry',
+                'aligned_direction',
+                'first_seen_at',
+                'last_seen_at',
+            ]
+        )
+        # The id and the point are what we key and locate features by:
+        for required in ('id', 'geometry'):
+            if required not in requested:
+                requested.append(required)
+        base_params: dict[str, Any] = {
+            'access_token': self.access_token,
+            'fields': ','.join(requested),
+            'object_values': ','.join(object_values),
+            'limit': limit,
+        }
+        found: dict[str, dict[str, Any]] = {}
+        min_lon, min_lat, max_lon, max_lat = bbox.bounds
+        self._fetch_map_features_box(
+            (min_lon, min_lat, max_lon, max_lat),
+            base_params,
+            requested,
+            start_date,
+            end_date,
+            max_depth,
+            found,
+        )
+        features = list(found.values())
+        logger.info(
+            f'Fetched {len(features)} Mapillary map features '
+            f'({", ".join(object_values)}).'
+        )
+        return features
+
+    def _fetch_map_features_box(
+        self,
+        box: tuple[float, float, float, float],
+        base_params: dict[str, Any],
+        requested: list[str],
+        start_date: str,
+        end_date: str,
+        depth_left: int,
+        found: dict[str, dict[str, Any]],
+    ) -> None:
+        """
+        Query ``map_features`` for one box, splitting it when the response is
+        full, and accumulate parsed features into ``found`` keyed by id.
+        """
+        min_lon, min_lat, max_lon, max_lat = box
+        bbox_str = f'{min_lon},{min_lat},{max_lon},{max_lat}'
+        params = {**base_params, 'bbox': bbox_str}
+        try:
+            response = self.session.get(
+                f'{BASE_URL}/map_features',
+                params=params,
+                timeout=REQUESTS_TIMEOUT_VAL,
+            )
+            response.raise_for_status()
+            data = response.json().get('data') or []
+        except (requests.RequestException, ValueError) as exc:
+            logger.warning(
+                f'Could not fetch map features for bbox {bbox_str}: {self._redact(exc)}'
+            )
+            return
+        for item in data:
+            parsed = self._parse_map_feature(item, requested)
+            if parsed is None:
+                continue
+            if not self._map_feature_in_window(parsed, start_date, end_date):
+                continue
+            found[parsed['id']] = parsed
+        limit = int(base_params['limit'])
+        if len(data) < limit:
+            return
+        if depth_left <= 0:
+            logger.warning(
+                f'Map feature response for bbox {bbox_str} hit the limit of '
+                f'{limit} and max_depth was reached; results may be incomplete.'
+            )
+            return
+        mid_lon = (min_lon + max_lon) / 2
+        mid_lat = (min_lat + max_lat) / 2
+        quadrants = (
+            (min_lon, min_lat, mid_lon, mid_lat),
+            (mid_lon, min_lat, max_lon, mid_lat),
+            (min_lon, mid_lat, mid_lon, max_lat),
+            (mid_lon, mid_lat, max_lon, max_lat),
+        )
+        for quadrant in quadrants:
+            self._fetch_map_features_box(
+                quadrant,
+                base_params,
+                requested,
+                start_date,
+                end_date,
+                depth_left - 1,
+                found,
+            )
+
+    @staticmethod
+    def _parse_map_feature(
+        item: dict[str, Any], requested: list[str]
+    ) -> dict[str, Any] | None:
+        """Flatten one ``map_features`` record; ``None`` if it has no point."""
+        geometry = item.get('geometry') or {}
+        coords = geometry.get('coordinates')
+        if geometry.get('type') != 'Point' or not coords or len(coords) < 2:
+            logger.debug(f'Map feature {item.get("id")} has no point geometry.')
+            return None
+        feature_id = item.get('id')
+        if feature_id is None:
+            return None
+        images = item.get('images')
+        if isinstance(images, dict):
+            images = images.get('data') or []
+        image_ids = [
+            str(img['id']) if isinstance(img, dict) else str(img)
+            for img in (images or [])
+        ]
+        parsed: dict[str, Any] = {
+            'id': str(feature_id),
+            'object_value': item.get('object_value'),
+            'lon': float(coords[0]),
+            'lat': float(coords[1]),
+            'aligned_direction': item.get('aligned_direction'),
+            'first_seen_at': item.get('first_seen_at'),
+            'last_seen_at': item.get('last_seen_at'),
+            'image_ids': image_ids,
+        }
+        for field in requested:
+            if field not in parsed and field not in ('geometry', 'images'):
+                parsed[field] = item.get(field)
+        return parsed
+
+    @classmethod
+    def _map_feature_in_window(
+        cls, feature: dict[str, Any], start_date: str, end_date: str
+    ) -> bool:
+        """
+        Tell whether ``[first_seen_at, last_seen_at]`` overlaps the window.
+
+        A missing bound on either side is treated as open, i.e. overlapping.
+        """
+        if not start_date and not end_date:
+            return True
+        first = feature.get('first_seen_at')
+        last = feature.get('last_seen_at')
+        # Overlap requires first <= end_date and last >= start_date:
+        if first and not cls._is_date_in_range(str(first)[:10], '', end_date):
+            return False
+        if last and not cls._is_date_in_range(str(last)[:10], start_date, ''):
+            return False
+        return True
 
     def get_image_url(self, image_id: str, size: str = '2048') -> str | None:
         """

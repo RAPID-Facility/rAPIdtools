@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 09-22-2026
+# 10-03-2026
 
 import base64
 import gzip
@@ -56,10 +56,12 @@ from rapidtools.core import BoundingBox, ImageAsset, ImageCollection
 from rapidtools.data_sources import mapillary_client as mc
 from rapidtools.data_sources.mapillary_client import (
     BASE_URL,
+    MAP_FEATURE_VALUES,
     RAPID_CREATOR_ID,
     TILE_URL_TEMPLATE,
     MapillaryClient,
     SegmentationLabels,
+    is_map_feature_value,
 )
 from rapidtools.data_sources.tile_utils import TileUtils
 
@@ -1127,3 +1129,253 @@ def test_fetch_sequence_lines_handles_empty_and_failed_tiles(
     with caplog.at_level(logging.WARNING):
         assert client.fetch_sequence_lines(8, 2, 2)['count'] == 0
     assert 'Could not read coverage tile 8/2/2' in caplog.text
+
+
+# ==========================================
+# Map features (pre-triangulated point objects)
+# ==========================================
+MAP_FEATURES_URL = f'{BASE_URL}/map_features'
+POLE = 'object--support--utility-pole'
+HYDRANT = 'object--fire-hydrant'
+
+
+def _feature(fid, lon, lat, value=POLE, first=None, last=None, **extra):
+    """Build one raw ``map_features`` record as the Graph API returns it."""
+    record = {
+        'id': fid,
+        'object_value': value,
+        'geometry': {'type': 'Point', 'coordinates': [lon, lat]},
+        'aligned_direction': 69.79,
+        'first_seen_at': first,
+        'last_seen_at': last,
+    }
+    record.update(extra)
+    return record
+
+
+def _bbox_of(request) -> tuple[float, ...]:
+    """Return the bbox query parameter of a recorded request as floats."""
+    return tuple(float(v) for v in request.qs['bbox'][0].split(','))
+
+
+def test_fetch_map_features_basic(client, requests_mock):
+    """Point coordinates and requested fields are flattened into dicts."""
+    requests_mock.get(
+        MAP_FEATURES_URL,
+        **_json_response(
+            {
+                'data': [
+                    _feature(
+                        2519029251914551,
+                        -117.49456,
+                        47.716953,
+                        first='2026-08-27T03:59:39+0000',
+                        last='2026-09-15T23:37:17+0000',
+                    ),
+                    _feature('7', -117.4, 47.7, value=HYDRANT, aligned_direction=None),
+                    # A record without a point is skipped:
+                    {'id': '8', 'object_value': HYDRANT, 'geometry': None},
+                ]
+            }
+        ),
+    )
+    bbox = BoundingBox(-117.50, 47.71, -117.49, 47.72)
+    out = client.fetch_map_features(bbox, [POLE, HYDRANT])
+    assert [f['id'] for f in out] == ['2519029251914551', '7']
+    first = out[0]
+    assert (first['lon'], first['lat']) == (-117.49456, 47.716953)
+    assert first['object_value'] == POLE
+    assert first['aligned_direction'] == 69.79
+    assert first['first_seen_at'] == '2026-08-27T03:59:39+0000'
+    assert first['last_seen_at'] == '2026-09-15T23:37:17+0000'
+    assert first['image_ids'] == []
+    assert out[1]['aligned_direction'] is None
+    # The token travels in the query string, never in the URL path:
+    sent = requests_mock.last_request
+    assert sent.qs['access_token'] == [TOKEN.lower()]
+    assert sent.qs['limit'] == ['2000']
+    assert sent.qs['fields'] == [
+        'id,object_value,geometry,aligned_direction,first_seen_at,last_seen_at'
+    ]
+
+
+def test_fetch_map_features_request_formatting(client, requests_mock):
+    """object_values are comma-joined and bbox is min_lon,min_lat,max_lon,max_lat."""
+    requests_mock.get(MAP_FEATURES_URL, **_json_response({'data': []}))
+    bbox = BoundingBox(-118.15, 34.18, -118.14, 34.19)
+    assert client.fetch_map_features(bbox, [POLE, HYDRANT], limit=50) == []
+    qs = requests_mock.last_request.qs
+    assert qs['object_values'] == [f'{POLE},{HYDRANT}']
+    assert qs['bbox'] == ['-118.15,34.18,-118.14,34.19']
+    assert qs['limit'] == ['50']
+
+
+def test_fetch_map_features_custom_fields_and_images(client, requests_mock):
+    """Extra fields are copied verbatim and image ids are extracted."""
+    requests_mock.get(
+        MAP_FEATURES_URL,
+        **_json_response(
+            {
+                'data': [
+                    _feature(
+                        '1',
+                        1.0,
+                        2.0,
+                        images={'data': [{'id': 11}, {'id': '12'}]},
+                        custom='x',
+                    ),
+                    _feature('2', 3.0, 4.0, images=['21', 22]),
+                ]
+            }
+        ),
+    )
+    out = client.fetch_map_features(
+        BoundingBox(0, 0, 5, 5), [POLE], fields=['object_value', 'images', 'custom']
+    )
+    # id and geometry are always requested so results can be keyed/located:
+    fields = requests_mock.last_request.qs['fields'][0].split(',')
+    assert set(fields) == {'object_value', 'images', 'custom', 'id', 'geometry'}
+    assert out[0]['image_ids'] == ['11', '12'] and out[0]['custom'] == 'x'
+    assert out[1]['image_ids'] == ['21', '22']
+    assert 'images' not in out[0] and 'geometry' not in out[0]
+
+
+def test_fetch_map_features_date_overlap(client, requests_mock):
+    """Features are kept when their seen-span overlaps the requested window."""
+    data = [
+        _feature('spans', 0, 0, first='2026-08-27T03:59:39+0000',
+                 last='2026-09-15T23:37:17+0000'),
+        _feature('before', 0, 0, first='2026-05-01T00:00:00+0000',
+                 last='2026-06-01T00:00:00+0000'),
+        _feature('after', 0, 0, first='2026-10-05T00:00:00+0000',
+                 last='2026-10-06T00:00:00+0000'),
+        _feature('undated', 0, 0),
+        _feature('last_only', 0, 0, last='2026-09-02T00:00:00+0000'),
+        _feature('covers', 0, 0, first='2026-01-01T00:00:00+0000',
+                 last='2026-12-31T00:00:00+0000'),
+    ]  # fmt: skip
+    requests_mock.get(MAP_FEATURES_URL, **_json_response({'data': data}))
+    bbox = BoundingBox(-1, -1, 1, 1)
+    kept = client.fetch_map_features(
+        bbox, [POLE], start_date='2026-09-01', end_date='2026-09-30'
+    )
+    assert [f['id'] for f in kept] == ['spans', 'undated', 'last_only', 'covers']
+    lower_only = client.fetch_map_features(bbox, [POLE], start_date='2026-09-01')
+    assert [f['id'] for f in lower_only] == [
+        'spans', 'after', 'undated', 'last_only', 'covers'
+    ]  # fmt: skip
+    unbounded = client.fetch_map_features(bbox, [POLE])
+    assert len(unbounded) == 6
+
+
+def test_fetch_map_features_splits_saturated_box(client, requests_mock):
+    """A full response triggers four quadrant queries, merged by id."""
+    parent = (0.0, 0.0, 2.0, 2.0)
+    quadrant_data = {
+        (0.0, 0.0, 1.0, 1.0): [_feature('a', 0.5, 0.5), _feature('d', 0.2, 0.2)],
+        (1.0, 0.0, 2.0, 1.0): [_feature('b', 1.5, 0.5)],
+        (0.0, 1.0, 1.0, 2.0): [],
+        (1.0, 1.0, 2.0, 2.0): [_feature('c', 1.5, 1.5), _feature('e', 1.9, 1.9)],
+    }
+
+    def respond(request, context):
+        box = _bbox_of(request)
+        if box == parent:  # exactly ``limit`` items -> saturated
+            return {
+                'data': [
+                    _feature('a', 0.5, 0.5),
+                    _feature('b', 1.5, 0.5),
+                    _feature('c', 1.5, 1.5),
+                ]
+            }
+        return {'data': quadrant_data[box]}
+
+    requests_mock.get(
+        MAP_FEATURES_URL, json=respond, headers={'Content-Type': 'application/json'}
+    )
+    out = client.fetch_map_features(BoundingBox(*parent), [POLE], limit=3)
+    assert sorted(f['id'] for f in out) == ['a', 'b', 'c', 'd', 'e']
+    assert len(out) == 5  # deduplicated by id
+    boxes = [_bbox_of(r) for r in requests_mock.request_history]
+    assert boxes[0] == parent
+    sub_boxes = boxes[1:]
+    assert len(sub_boxes) == 4 and set(sub_boxes) == set(quadrant_data)
+    # The four sub-boxes tile the parent exactly:
+    parent_area = (parent[2] - parent[0]) * (parent[3] - parent[1])
+    assert sum((b[2] - b[0]) * (b[3] - b[1]) for b in sub_boxes) == parent_area
+    assert min(b[0] for b in sub_boxes) == parent[0]
+    assert max(b[2] for b in sub_boxes) == parent[2]
+    assert min(b[1] for b in sub_boxes) == parent[1]
+    assert max(b[3] for b in sub_boxes) == parent[3]
+
+
+def test_fetch_map_features_respects_max_depth(client, requests_mock, caplog):
+    """Splitting stops after ``max_depth`` levels with a warning."""
+    always_full = {'data': [_feature('a', 0.5, 0.5), _feature('b', 0.6, 0.6)]}
+    requests_mock.get(MAP_FEATURES_URL, **_json_response(always_full))
+    with caplog.at_level(logging.WARNING):
+        out = client.fetch_map_features(
+            BoundingBox(0, 0, 2, 2), [POLE], limit=2, max_depth=1
+        )
+    assert requests_mock.call_count == 1 + 4  # parent + one level of quadrants
+    assert len(out) == 2
+    assert 'max_depth was reached' in caplog.text
+
+
+def test_fetch_map_features_http_error_on_sub_box(client, requests_mock, caplog):
+    """A failing sub-box is logged as a warning and skipped, not raised."""
+    parent = (0.0, 0.0, 2.0, 2.0)
+    bad = (1.0, 0.0, 2.0, 1.0)
+
+    def respond(request, context):
+        box = _bbox_of(request)
+        if box == parent:
+            return {'data': [_feature('a', 0.5, 0.5), _feature('c', 1.5, 1.5)]}
+        if box == bad:
+            context.status_code = 500
+            return {'error': 'boom'}
+        if box == (0.0, 0.0, 1.0, 1.0):
+            return {'data': [_feature('a', 0.5, 0.5), _feature('d', 0.1, 0.1)]}
+        return {'data': []}
+
+    requests_mock.get(
+        MAP_FEATURES_URL, json=respond, headers={'Content-Type': 'application/json'}
+    )
+    with caplog.at_level(logging.WARNING):
+        out = client.fetch_map_features(BoundingBox(*parent), [POLE], limit=2)
+    assert sorted(f['id'] for f in out) == ['a', 'c', 'd']
+    assert 'Could not fetch map features for bbox 1.0,0.0,2.0,1.0' in caplog.text
+    assert TOKEN not in caplog.text
+
+
+def test_fetch_map_features_top_level_error(client, requests_mock, caplog):
+    """A failing top-level request yields an empty list and a warning."""
+    requests_mock.get(MAP_FEATURES_URL, exc=requests.exceptions.ConnectionError)
+    with caplog.at_level(logging.WARNING):
+        assert client.fetch_map_features(BoundingBox(0, 0, 1, 1), [POLE]) == []
+    assert 'Could not fetch map features' in caplog.text
+
+
+def test_fetch_map_features_validates_arguments(client, requests_mock):
+    """Empty object_values and non-positive limits are rejected offline."""
+    with pytest.raises(ValueError):
+        client.fetch_map_features(BoundingBox(0, 0, 1, 1), [])
+    with pytest.raises(ValueError):
+        client.fetch_map_features(BoundingBox(0, 0, 1, 1), [POLE], limit=0)
+    assert requests_mock.call_count == 0
+
+
+def test_is_map_feature_value():
+    """Exact members and any traffic-sign value count as map features."""
+    assert isinstance(MAP_FEATURE_VALUES, frozenset)
+    assert POLE in MAP_FEATURE_VALUES and HYDRANT in MAP_FEATURE_VALUES
+    assert all(v.startswith('object--') for v in MAP_FEATURE_VALUES)
+    assert is_map_feature_value(POLE)
+    assert is_map_feature_value('object--traffic-light--pedestrians')
+    assert is_map_feature_value('object--traffic-sign--stop--g1')
+    assert is_map_feature_value('object--traffic-sign--regulatory--no-parking--g1')
+    assert not is_map_feature_value('object--traffic-sign')
+    assert not is_map_feature_value('object--vehicle--car')
+    assert not is_map_feature_value('human--person--individual')
+    assert not is_map_feature_value('construction--structure--building')
+    assert not is_map_feature_value('')

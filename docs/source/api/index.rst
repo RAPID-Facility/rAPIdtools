@@ -68,6 +68,36 @@ Detection, segmentation and regularization
    RoadwayRegularizer
    vectorize.mask_to_wgs84_polygons
 
+Street-level localisation
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+How sightings in street-level images become positioned objects: the camera
+model, tracking and triangulation, covariance-aware merging, the ray-voting
+baseline and appearance re-identification.
+
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+
+   street_localization.localize
+   street_localization.observation_angles
+   street_localization.pixel_bearing
+   street_localization.world_ray
+   street_localization.rotation_matrix
+   street_localization.intersect_bearings
+   street_localization.estimate_ego_mask
+   street_localization.thin_frames
+   street_tracking.discover_objects
+   street_tracking.track_sequence
+   street_tracking.triangulate_track
+   street_tracking.merge_estimates
+   street_tracking.vote_rays
+   street_tracking.ObjectEstimate
+   reid.AppearanceEmbedder
+   reid.merge_by_appearance
+   reid.pairs_to_compare
+   reid.crop_observation
+
 Provider-specific analyzers
 ---------------------------
 

@@ -145,7 +145,7 @@ def local_projection(
         >>> x, y = project(-117.4, 47.661)
         >>> round(y), round(x)
         (111, 0)
-        >>> [round(v, 4) for v in unproject(x, y)]
+        >>> [round(float(v), 4) for v in unproject(x, y)]
         [-117.4, 47.661]
     """
     cos_lat = math.cos(math.radians(lat0))
@@ -270,6 +270,10 @@ def localize(
     that are too small, have no ground contact, or fall outside the range
     window are left without a position and ``False`` is returned.
 
+    The bearing and elevation come from the full camera pose when the
+    observation carries Mapillary's ``computed_rotation`` in ``extra`` (see
+    :func:`observation_angles`); otherwise the camera is assumed level.
+
     Args:
         obs: The observation to update in place.
         camera_height_m: Height of the camera above the ground.
@@ -281,16 +285,7 @@ def localize(
     """
     if obs.area < min_area_fraction:
         return False
-    focal_norm = None
-    params = obs.extra.get('camera_parameters')
-    if params:
-        focal_norm = float(params[0])
-    aspect = 2.0
-    if obs.image_width and obs.image_height:
-        aspect = obs.image_width / obs.image_height
-    bearing, elevation = view_angles(
-        obs.polygon, obs.compass_angle, obs.is_pano, focal_norm, aspect
-    )
+    bearing, elevation = observation_angles(obs)
     obs.bearing, obs.elevation = bearing, elevation
     rng = ground_range(elevation, camera_height_m)
     if rng is None or not (min_range_m <= rng <= max_range_m):
@@ -298,6 +293,264 @@ def localize(
     obs.range_m = rng
     obs.lon, obs.lat = destination_point(obs.camera_lon, obs.camera_lat, bearing, rng)
     return True
+
+
+# --------------------------------------------------------------- camera model
+def rotation_matrix(rotation_vector: Sequence[float] | np.ndarray) -> np.ndarray:
+    """
+    Rotation matrix of an axis-angle vector (Rodrigues' formula).
+
+    Mapillary's ``computed_rotation`` is such a vector in OpenSfM's
+    convention: it rotates world coordinates (east, north, up) into camera
+    coordinates (x right, y down, z forward), so ``R.T`` maps camera rays
+    back into the world.
+
+    Example:
+        >>> import numpy as np
+        >>> R = rotation_matrix([0.0, 0.0, 0.0])
+        >>> bool(np.allclose(R, np.eye(3)))
+        True
+        >>> R = rotation_matrix([0.0, 0.0, np.pi / 2])   # quarter turn about z
+        >>> [round(float(v), 6) for v in R @ np.array([1.0, 0.0, 0.0])]
+        [0.0, 1.0, 0.0]
+    """
+    rv = np.asarray(rotation_vector, dtype=float)
+    theta = float(np.linalg.norm(rv))
+    if theta < 1e-12:
+        return np.eye(3)
+    kx, ky, kz = rv / theta
+    k = np.array([[0.0, -kz, ky], [kz, 0.0, -kx], [-ky, kx, 0.0]])
+    return np.eye(3) + math.sin(theta) * k + (1.0 - math.cos(theta)) * (k @ k)
+
+
+def pixel_bearing(
+    x: float,
+    y: float,
+    camera_type: str = 'spherical',
+    width: int | None = None,
+    height: int | None = None,
+    camera_parameters: Sequence[float] | None = None,
+) -> np.ndarray:
+    """
+    Unit direction in the camera frame of a normalised image point.
+
+    Follows OpenSfM's camera models, which is what Mapillary's
+    ``camera_type`` and ``camera_parameters`` describe. The camera frame has
+    ``x`` to the right, ``y`` down and ``z`` forward.
+
+    Args:
+        x: Column as a fraction of the image width (``0`` left, ``1`` right).
+        y: Row as a fraction of the image height (``0`` top, ``1`` bottom).
+        camera_type: ``'spherical'`` / ``'equirectangular'`` for panoramas,
+            ``'perspective'`` / ``'brown'`` for rectilinear images, or
+            ``'fisheye'``. Unknown types are treated as perspective.
+        width: Image width in pixels. Needed with ``height`` for the aspect
+            ratio; a 2:1 panorama or a 4:3 frame is assumed when unknown.
+        height: Image height in pixels.
+        camera_parameters: ``[focal, k1, k2]`` with the focal length
+            normalised by the larger image side (OpenSfM convention). Ignored
+            for spherical cameras; ``[0.85, 0, 0]`` is assumed when missing.
+
+    Returns:
+        numpy.ndarray: Unit vector ``(x, y, z)`` in the camera frame.
+
+    Example:
+        >>> [round(float(v), 3) for v in pixel_bearing(0.5, 0.5)]        # pano centre
+        [0.0, 0.0, 1.0]
+        >>> [round(float(v), 3) for v in pixel_bearing(0.75, 0.5)]       # 90 deg right
+        [1.0, 0.0, 0.0]
+        >>> [round(float(v), 3) for v in pixel_bearing(0.5, 1.0)]        # straight down
+        [0.0, 1.0, 0.0]
+        >>> b = pixel_bearing(0.5, 0.5, 'perspective', 4000, 3000, [0.9, 0, 0])
+        >>> [round(float(v), 3) for v in b]
+        [0.0, 0.0, 1.0]
+    """
+    kind = (camera_type or 'spherical').lower()
+    is_pano = kind in ('spherical', 'equirectangular')
+    if width and height:
+        w, h = float(width), float(height)
+    else:
+        w, h = (2.0, 1.0) if is_pano else (4.0, 3.0)
+    scale = max(w, h)
+    x_n = (x - 0.5) * w / scale
+    y_n = (y - 0.5) * h / scale
+
+    if is_pano:
+        lon = 2.0 * math.pi * x_n
+        lat = -2.0 * math.pi * y_n
+        return np.array(
+            [
+                math.cos(lat) * math.sin(lon),
+                -math.sin(lat),
+                math.cos(lat) * math.cos(lon),
+            ]
+        )
+
+    params = list(camera_parameters) if camera_parameters else []
+    focal = float(params[0]) if params and params[0] else 0.85
+    k1 = float(params[1]) if len(params) > 1 else 0.0
+    k2 = float(params[2]) if len(params) > 2 else 0.0
+
+    if kind in ('fisheye', 'fisheye_opencv', 'fisheye62'):
+        # Equidistant model: r_d / f = theta * (1 + k1 theta^2 + k2 theta^4).
+        r_d = math.hypot(x_n, y_n) / focal
+        theta = r_d
+        for _ in range(10):
+            theta = r_d / (1.0 + k1 * theta**2 + k2 * theta**4)
+        if r_d < 1e-12:
+            return np.array([0.0, 0.0, 1.0])
+        s = math.sin(theta) / math.hypot(x_n, y_n)
+        return np.array([x_n * s, y_n * s, math.cos(theta)])
+
+    # Perspective with Brown radial distortion: iterate the inverse mapping.
+    xd, yd = x_n / focal, y_n / focal
+    xu, yu = xd, yd
+    if k1 or k2:
+        for _ in range(10):
+            r2 = xu * xu + yu * yu
+            d = 1.0 + k1 * r2 + k2 * r2 * r2
+            xu, yu = xd / d, yd / d
+    v = np.array([xu, yu, 1.0])
+    return v / np.linalg.norm(v)
+
+
+def world_ray(
+    camera_bearing: Sequence[float] | np.ndarray,
+    rotation_vector: Sequence[float] | np.ndarray,
+) -> np.ndarray:
+    """
+    Rotate a camera-frame direction into the world (east, north, up) frame.
+
+    Example:
+        >>> ray = world_ray([0.0, 0.0, 1.0], [0.0, 0.0, 0.0])
+        >>> [round(float(v), 3) for v in ray]
+        [0.0, 0.0, 1.0]
+    """
+    r = rotation_matrix(rotation_vector)
+    ray = r.T @ np.asarray(camera_bearing, dtype=float)
+    return ray / np.linalg.norm(ray)
+
+
+def ray_angles(ray: Sequence[float] | np.ndarray) -> tuple[float, float]:
+    """
+    Compass bearing and elevation of a world-frame direction.
+
+    Args:
+        ray: ``(east, north, up)`` direction, not necessarily unit length.
+
+    Returns:
+        tuple[float, float]: ``(bearing_deg, elevation_deg)``; the bearing is
+        clockwise from north in ``[0, 360)``, the elevation is negative
+        below the horizon.
+
+    Example:
+        >>> ray_angles([1.0, 0.0, 0.0])
+        (90.0, 0.0)
+        >>> bearing, elevation = ray_angles([0.0, 1.0, -1.0])
+        >>> round(bearing), round(elevation)
+        (0, -45)
+    """
+    e, n, u = (float(v) for v in ray)
+    horizontal = math.hypot(e, n)
+    bearing = math.degrees(math.atan2(e, n)) % 360.0
+    elevation = math.degrees(math.atan2(u, horizontal))
+    return bearing, elevation
+
+
+def ground_range_from_ray(
+    ray: Sequence[float] | np.ndarray, camera_height_m: float
+) -> float | None:
+    """
+    Horizontal distance at which a world-frame ray meets flat ground.
+
+    Returns ``None`` for rays at or above the horizon (within
+    :data:`MIN_DEPRESSION_DEG`).
+
+    Example:
+        >>> round(ground_range_from_ray([0.0, 1.0, -1.0], 2.4), 2)
+        2.4
+        >>> ground_range_from_ray([0.0, 1.0, 0.0], 2.4) is None
+        True
+    """
+    _, elevation = ray_angles(ray)
+    if elevation > -MIN_DEPRESSION_DEG:
+        return None
+    return camera_height_m / math.tan(math.radians(-elevation))
+
+
+def polygon_anchor(
+    polygon: Sequence[tuple[float, float]], is_pano: bool
+) -> tuple[float, float, float]:
+    """
+    Centre column, vertical centre and bottom row of a detection outline.
+
+    For panoramas the centre column is a circular mean so an outline that
+    straddles the left/right seam is handled.
+
+    Example:
+        >>> cx, cy, bottom = polygon_anchor(
+        ...     [(0.1, 0.4), (0.3, 0.4), (0.3, 0.6), (0.1, 0.6)], False
+        ... )
+        >>> round(cx, 3), round(cy, 3), round(bottom, 3)
+        (0.2, 0.5, 0.6)
+    """
+    xs = [p[0] for p in polygon]
+    ys = [p[1] for p in polygon]
+    if is_pano:
+        angles = [2 * math.pi * x for x in xs]
+        cx = (
+            math.atan2(sum(map(math.sin, angles)), sum(map(math.cos, angles)))
+            / (2 * math.pi)
+        ) % 1.0
+    else:
+        cx = sum(xs) / len(xs)
+    return cx, (min(ys) + max(ys)) / 2.0, max(ys)
+
+
+def observation_angles(
+    obs: Observation,
+) -> tuple[float, float]:
+    """
+    Bearing to an observation and elevation of its ground contact.
+
+    Uses the full camera pose (``obs.extra['computed_rotation']``, the camera
+    type and lens parameters) when the frame carries one, which accounts for
+    the camera's pitch and roll; otherwise falls back to :func:`view_angles`,
+    which assumes a level camera.
+
+    Returns:
+        tuple[float, float]: ``(bearing_deg, elevation_deg)``.
+    """
+    rotation = obs.extra.get('computed_rotation')
+    cx, cy, y_bottom = polygon_anchor(obs.polygon, obs.is_pano)
+    if rotation is None:
+        focal_norm = None
+        params = obs.extra.get('camera_parameters')
+        if params:
+            focal_norm = float(params[0])
+        aspect = 2.0
+        if obs.image_width and obs.image_height:
+            aspect = obs.image_width / obs.image_height
+        return view_angles(
+            obs.polygon, obs.compass_angle, obs.is_pano, focal_norm, aspect
+        )
+    camera_type = obs.extra.get('camera_type') or (
+        'spherical' if obs.is_pano else 'perspective'
+    )
+    params = obs.extra.get('camera_parameters')
+    centre = world_ray(
+        pixel_bearing(cx, cy, camera_type, obs.image_width, obs.image_height, params),
+        rotation,
+    )
+    contact = world_ray(
+        pixel_bearing(
+            cx, y_bottom, camera_type, obs.image_width, obs.image_height, params
+        ),
+        rotation,
+    )
+    bearing, _ = ray_angles(centre)
+    _, elevation = ray_angles(contact)
+    return bearing, elevation
 
 
 # --------------------------------------------------------------- multi view

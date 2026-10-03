@@ -105,6 +105,7 @@ from rapidtools.core import (
     raise_if_cancelled,
 )
 from rapidtools.data_sources import MapillaryClient, MapillaryLabels
+from rapidtools.data_sources.mapillary_client import is_map_feature_value
 
 from . import outlines
 from .step import Stage
@@ -117,6 +118,7 @@ from .street_localization import (
     simplify_polygon,
     thin_frames,
 )
+from .street_tracking import discover_objects, estimate_attributes
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +184,8 @@ _IMAGE_FIELDS: tuple[str, ...] = (
     'is_pano',
     'camera_type',
     'camera_parameters',
+    'computed_rotation',
+    'computed_altitude',
     'width',
     'height',
     'sequence',
@@ -349,9 +353,12 @@ class MapillaryFeatureExtractor:
             Only use imagery uploaded by the RAPID Facility. Defaults to
             ``True``.
         detection_source (str):
-            ``'auto'`` (Mapillary detections, SAM 3 for unresolved classes),
-            ``'mapillary'`` (skip unresolved classes with a warning) or
-            ``'sam3'`` (SAM 3 for every class).
+            ``'auto'`` (Mapillary map features for static point classes such
+            as utility poles and hydrants, Mapillary detections for the rest,
+            SAM 3 for unresolved classes), ``'mapillary'`` (detections only;
+            skip unresolved classes with a warning), ``'sam3'`` (SAM 3 for
+            every class) or ``'map_features'`` (only Mapillary's
+            pre-triangulated map features; other classes are skipped).
         label_mapper (Any | None):
             Optional :class:`~rapidtools.processing.MapillaryLabelMapper`
             to translate class names the built-in aliases do not cover.
@@ -366,7 +373,49 @@ class MapillaryFeatureExtractor:
             Smallest detection kept, as a fraction of the image. Defaults to
             0.0004.
         cluster_radius_m (float):
-            Sightings closer than this are the same object. Defaults to 4.0.
+            Sightings closer than this are the same object in the legacy
+            ``'cluster'`` method; with ``'tracks'`` it only sets the default
+            ``max_merge_m`` (1.5 times this value). Defaults to 4.0.
+        localization_method (str):
+            How sightings become objects. ``'tracks'`` (default) links
+            detections frame to frame by bearing, triangulates each track
+            robustly, drops moving vehicles and merges estimates with a
+            covariance-aware gate (see
+            :mod:`~rapidtools.processing.street_tracking`). ``'voting'``
+            accumulates rays on a ground grid and takes the peaks, a
+            baseline to compare against. ``'cluster'`` is the previous
+            behaviour: single-view positions clustered by radius.
+        bearing_sigma_deg (float):
+            One-sigma bearing error of a sighting. Defaults to 0.75.
+        max_merge_m (float | None):
+            Farthest two estimates can be and still be merged into one
+            object. ``None`` uses ``1.5 * cluster_radius_m``.
+        track_gap_frames (int):
+            Frames a track may miss before it is closed. Defaults to 2.
+        min_path_distance_m (float):
+            Objects closer than this to the line the camera drove are
+            dropped; the survey vehicle passed through that spot. Defaults
+            to 1.5.
+        object_size_m (float):
+            Object footprint used by the voting method. Defaults to 4.5.
+        reid (bool):
+            After localisation, compare the appearance of objects from
+            different sequences that lie within ``reid_max_distance_m`` and
+            merge look-alikes, removing double counts from repeated passes.
+            Downloads one thumbnail per compared object and loads
+            ``reid_model``. Defaults to ``False``.
+        reid_model (str):
+            Hugging Face vision backbone for the embeddings. Defaults to
+            ``'facebook/dinov2-small'``.
+        reid_min_similarity (float):
+            Cosine similarity at which two crops count as the same object.
+            Defaults to 0.80.
+        reid_max_distance_m (float):
+            Only objects this close are compared. Defaults to 6.0.
+        reid_embedder (Any | None):
+            A ready :class:`~rapidtools.processing.reid.AppearanceEmbedder`
+            (or anything with ``embed(images)``) to use instead of loading
+            ``reid_model``.
         min_observations (int):
             Sightings required to keep an object; ``2`` drops single-frame
             noise. Defaults to 1.
@@ -457,6 +506,17 @@ class MapillaryFeatureExtractor:
         max_range_m: float = 30.0,
         min_area_fraction: float = 0.0004,
         cluster_radius_m: float = 4.0,
+        localization_method: str = 'tracks',
+        bearing_sigma_deg: float = 0.75,
+        max_merge_m: float | None = None,
+        track_gap_frames: int = 2,
+        min_path_distance_m: float = 1.5,
+        object_size_m: float = 4.5,
+        reid: bool = False,
+        reid_model: str = 'facebook/dinov2-small',
+        reid_min_similarity: float = 0.80,
+        reid_max_distance_m: float = 6.0,
+        reid_embedder: Any = None,
         min_observations: int = 1,
         frame_spacing_m: float = 0.0,
         ego_filter: bool = True,
@@ -484,10 +544,15 @@ class MapillaryFeatureExtractor:
             raise ValueError('frame_batch_size must be at least 1.')
         if simplify_tolerance < 0:
             raise ValueError('simplify_tolerance cannot be negative.')
-        if detection_source not in ('auto', 'mapillary', 'sam3'):
+        if detection_source not in ('auto', 'mapillary', 'sam3', 'map_features'):
             raise ValueError(
-                "detection_source must be 'auto', 'mapillary' or 'sam3', "
-                f'got {detection_source!r}.'
+                "detection_source must be 'auto', 'mapillary', 'sam3' or "
+                f"'map_features', got {detection_source!r}."
+            )
+        if localization_method not in ('tracks', 'voting', 'cluster'):
+            raise ValueError(
+                "localization_method must be 'tracks', 'voting' or 'cluster', "
+                f'got {localization_method!r}.'
             )
         if client is None and not access_token:
             raise ValueError('Provide a Mapillary access_token or a client.')
@@ -505,6 +570,17 @@ class MapillaryFeatureExtractor:
         self.max_range_m = max_range_m
         self.min_area_fraction = min_area_fraction
         self.cluster_radius_m = cluster_radius_m
+        self.localization_method = localization_method
+        self.bearing_sigma_deg = bearing_sigma_deg
+        self.max_merge_m = max_merge_m
+        self.track_gap_frames = track_gap_frames
+        self.min_path_distance_m = min_path_distance_m
+        self.object_size_m = object_size_m
+        self.reid = reid
+        self.reid_model = reid_model
+        self.reid_min_similarity = reid_min_similarity
+        self.reid_max_distance_m = reid_max_distance_m
+        self.reid_embedder = reid_embedder
         self.min_observations = min_observations
         self.frame_spacing_m = frame_spacing_m
         self.ego_filter = ego_filter
@@ -529,11 +605,37 @@ class MapillaryFeatureExtractor:
         )
 
     # ---------------------------------------------------------------- setup
-    def _plan_classes(self) -> tuple[dict[str, tuple[str, ...]], list[str]]:
-        """Split the requested classes into Mapillary labels and SAM 3 prompts."""
+    def _plan_classes(
+        self,
+    ) -> tuple[dict[str, tuple[str, ...]], list[str], dict[str, tuple[str, ...]]]:
+        """
+        Split the requested classes three ways.
+
+        Returns:
+            tuple: ``(detections, sam3_prompts, map_features)``: classes read
+            from Mapillary's per-image detections, classes detected with
+            SAM 3, and classes served by Mapillary's pre-triangulated map
+            features (static point objects such as poles and hydrants).
+        """
         if self.detection_source == 'sam3':
-            return {}, list(self.classes)
+            return {}, list(self.classes), {}
         resolved, unresolved = resolve_classes(self.classes, self.label_mapper)
+        map_features: dict[str, tuple[str, ...]] = {}
+        if self.detection_source in ('auto', 'map_features'):
+            for cls, labels in list(resolved.items()):
+                if labels and all(is_map_feature_value(v) for v in labels):
+                    map_features[cls] = labels
+                    del resolved[cls]
+        if self.detection_source == 'map_features':
+            skipped = list(resolved) + unresolved
+            if skipped:
+                logger.warning(
+                    'Not served as Mapillary map features: %s; these classes are '
+                    "skipped. Use detection_source='auto' to detect them from "
+                    'images.',
+                    ', '.join(repr(c) for c in skipped),
+                )
+            return {}, [], map_features
         if unresolved and self.detection_source == 'mapillary':
             logger.warning(
                 'No Mapillary label for %s; these classes are skipped. Use '
@@ -541,7 +643,19 @@ class MapillaryFeatureExtractor:
                 ', '.join(repr(c) for c in unresolved),
             )
             unresolved = []
-        return resolved, unresolved
+        return resolved, unresolved, map_features
+
+    @staticmethod
+    def _finish(
+        existing: PhysicalAssetCollection | None, assets: Iterable[PhysicalAsset]
+    ) -> PhysicalAssetCollection:
+        """Collection of ``existing`` (if any) plus ``assets``."""
+        collection = PhysicalAssetCollection()
+        if existing is not None:
+            collection.merge(existing)
+        for asset in assets:
+            collection.add(asset)
+        return collection
 
     def _resolve_region(self, source: Any) -> BoundingBox | PolygonRegion:
         region = (
@@ -573,10 +687,17 @@ class MapillaryFeatureExtractor:
         existing = source if isinstance(source, PhysicalAssetCollection) else None
         region = self._resolve_region(source)
         bbox = region if isinstance(region, BoundingBox) else region.get_bounding_box()
-        mapillary_classes, sam3_classes = self._plan_classes()
-        if not mapillary_classes and not sam3_classes:
+        mapillary_classes, sam3_classes, map_feature_classes = self._plan_classes()
+        if not mapillary_classes and not sam3_classes and not map_feature_classes:
             logger.warning('Nothing to detect after class resolution.')
             return existing or PhysicalAssetCollection()
+        map_assets = (
+            self._map_feature_assets(bbox, map_feature_classes)
+            if map_feature_classes
+            else []
+        )
+        if not mapillary_classes and not sam3_classes:
+            return self._finish(existing, map_assets)
 
         # 1. Cheap pass: the coverage tiles list every image with its position,
         #    heading, date and sequence. Tiles are ~2 km wide, so clip to the
@@ -600,7 +721,7 @@ class MapillaryFeatureExtractor:
                 inside.append((image, pose))
         if not inside:
             logger.warning('No images with a camera position inside the region.')
-            return existing or PhysicalAssetCollection()
+            return self._finish(existing, map_assets)
 
         # 2. Thin along each sequence before paying for per-image metadata:
         keep = thin_frames(
@@ -656,17 +777,17 @@ class MapillaryFeatureExtractor:
                 sam3_frames.extend(frames)
         if not n_frames:
             logger.warning('No usable images (missing camera pose) in the region.')
-            return existing or PhysicalAssetCollection()
+            return self._finish(existing, map_assets)
         logger.info(f'{n_frames} frames with metadata; detections read.')
         if sam3_classes:
             for cls, obs in self._sam3_observations(sam3_frames, sam3_classes).items():
                 observations[cls].extend(obs)
 
-        collection = PhysicalAssetCollection()
-        if existing is not None:
-            collection.merge(existing)
+        collection = self._finish(existing, map_assets)
         counter = 0
         for cls in self.classes:
+            if cls in map_feature_classes:
+                continue
             obs_list = observations.get(cls, [])
             if not obs_list:
                 logger.info(f"No detections for class '{cls}'.")
@@ -698,7 +819,11 @@ class MapillaryFeatureExtractor:
                     'captured_at': _captured_at(props),
                     'width': props.get('width'),
                     'height': props.get('height'),
+                    'camera_type': props.get('camera_type'),
                     'camera_parameters': props.get('camera_parameters'),
+                    # Full pose (OpenSfM axis-angle, world -> camera); lets the
+                    # geometry account for the camera's pitch and roll:
+                    'rotation': props.get('computed_rotation'),
                     'detections': (props.get('detections') or {}).get('data'),
                     'thumb_url': props.get(f'thumb_{self.sam3_image_size}_url'),
                 }
@@ -731,9 +856,15 @@ class MapillaryFeatureExtractor:
             source=source,
             image_width=frame['width'],
             image_height=frame['height'],
-            extra={'camera_parameters': frame['camera_parameters']}
-            if frame.get('camera_parameters')
-            else {},
+            extra={
+                key: frame[source_key]
+                for key, source_key in (
+                    ('camera_parameters', 'camera_parameters'),
+                    ('camera_type', 'camera_type'),
+                    ('computed_rotation', 'rotation'),
+                )
+                if frame.get(source_key) is not None
+            },
         )
 
     # ---------------------------------------------------------------- mapillary
@@ -855,11 +986,58 @@ class MapillaryFeatureExtractor:
             polygons.append([(x0, y0), (x1, y0), (x1, y1), (x0, y1)])
         return polygons
 
+    # ---------------------------------------------------------------- map features
+    def _map_feature_assets(
+        self, bbox: BoundingBox, classes: dict[str, tuple[str, ...]]
+    ) -> list[PhysicalAsset]:
+        """Point assets from Mapillary's pre-triangulated map features."""
+        assets: list[PhysicalAsset] = []
+        for cls, values in classes.items():
+            raise_if_cancelled(self.cancel_event, 'street-level detection')
+            features = self.client.fetch_map_features(
+                bbox, values, start_date=self.start_date, end_date=self.end_date
+            )
+            counter = 0
+            for feature in features:
+                counter += 1
+                image_ids = list(feature.get('image_ids') or [])
+                attributes: dict[str, Any] = {
+                    'asset_type': self.asset_type or _slug(cls),
+                    'class': cls,
+                    'label': feature.get('object_value'),
+                    'source': 'mapillary_map_features',
+                    'localization': 'map_feature',
+                    'map_feature_id': str(feature.get('id')),
+                    'n_observations': 0,
+                    'n_images': len(image_ids),
+                }
+                if image_ids:
+                    attributes['image_ids'] = image_ids
+                if feature.get('aligned_direction') is not None:
+                    attributes['aligned_direction'] = round(
+                        float(feature['aligned_direction']), 1
+                    )
+                if feature.get('first_seen_at'):
+                    attributes['first_seen'] = feature['first_seen_at']
+                if feature.get('last_seen_at'):
+                    attributes['last_seen'] = feature['last_seen_at']
+                assets.append(
+                    PhysicalAsset(
+                        id=f'{self.id_prefix}_{_slug(cls)}_{counter:05d}',
+                        geometry=Point(float(feature['lon']), float(feature['lat'])),
+                        attributes=attributes,
+                    )
+                )
+            logger.info(
+                f"'{cls}': {len(features)} Mapillary map features in the region."
+            )
+        return assets
+
     # ---------------------------------------------------------------- assets
     def _assets_for_class(
         self, cls: str, obs_list: list[Observation], counter: int
     ) -> tuple[list[PhysicalAsset], int]:
-        """Filter, localise and cluster one class's sightings into assets."""
+        """Filter, localise and group one class's sightings into assets."""
         if self.ego_filter:
             ego = estimate_ego_mask(obs_list, min_recurrence=self.ego_min_recurrence)
             if ego:
@@ -867,6 +1045,8 @@ class MapillaryFeatureExtractor:
                     f"'{cls}': {len(ego)} sightings belong to the survey vehicle."
                 )
             obs_list = [o for i, o in enumerate(obs_list) if i not in ego]
+        if self.localization_method != 'cluster':
+            return self._assets_from_tracks(cls, obs_list, counter)
         located = [
             o
             for o in obs_list
@@ -891,10 +1071,172 @@ class MapillaryFeatureExtractor:
             assets.append(self._build_asset(cls, members, counter))
         return assets, counter
 
+    def _assets_from_tracks(
+        self, cls: str, obs_list: list[Observation], counter: int
+    ) -> tuple[list[PhysicalAsset], int]:
+        """Track, triangulate, merge (and optionally re-identify) one class."""
+        estimates, counts, unproject = discover_objects(
+            obs_list,
+            method=self.localization_method,
+            camera_height_m=self.camera_height_m,
+            min_range_m=self.min_range_m,
+            max_range_m=self.max_range_m,
+            min_area_fraction=self.min_area_fraction,
+            bearing_sigma_deg=self.bearing_sigma_deg,
+            max_merge_m=self.max_merge_m or 1.5 * self.cluster_radius_m,
+            track_gap_frames=self.track_gap_frames,
+            min_path_distance_m=self.min_path_distance_m,
+            object_size_m=self.object_size_m,
+        )
+        logger.info(
+            f"'{cls}': {counts['with_bearing']} sightings with a bearing, "
+            f'{counts["tracks"]} tracks, {counts["moving"]} moving dropped, '
+            f'{counts["on_path"]} on the driven path dropped -> '
+            f'{counts["objects"]} objects.'
+        )
+        assets = []
+        for est in estimates:
+            if len(est.members) < self.min_observations:
+                continue
+            counter += 1
+            assets.append(self._asset_from_estimate(cls, est, unproject, counter))
+        if self.reid and len(assets) > 1:
+            assets = self._merge_by_appearance(assets)
+        return assets, counter
+
+    def _asset_from_estimate(
+        self, cls: str, est: Any, unproject: Any, index: int
+    ) -> PhysicalAsset:
+        """Describe one tracked/voted object as a point asset."""
+        lon, lat = unproject(est.x, est.y)
+        members = est.members
+        ranges = [o.range_m for o in members if o.range_m is not None]
+        confidences = [o.confidence for o in members if o.confidence is not None]
+        dates = sorted(o.captured_at for o in members if o.captured_at)
+        attributes: dict[str, Any] = {
+            'asset_type': self.asset_type or _slug(cls),
+            'class': cls,
+            'label': Counter(o.label for o in members).most_common(1)[0][0],
+            'source': Counter(o.source for o in members).most_common(1)[0][0],
+            'n_observations': len(members),
+            'sequence_ids': sorted({o.sequence_id for o in members if o.sequence_id}),
+            'observations': [o.to_dict() for o in members],
+        }
+        attributes.update(estimate_attributes(est))
+        if ranges:
+            attributes['min_range_m'] = round(min(ranges), 1)
+        if confidences:
+            attributes['confidence'] = round(max(confidences), 3)
+        if dates:
+            attributes['first_seen'], attributes['last_seen'] = dates[0], dates[-1]
+        return PhysicalAsset(
+            id=f'{self.id_prefix}_{_slug(cls)}_{index:05d}',
+            geometry=Point(lon, lat),
+            attributes=attributes,
+        )
+
+    def _merge_by_appearance(self, assets: list[PhysicalAsset]) -> list[PhysicalAsset]:
+        """Merge look-alike objects from different sequences (see ``reid``)."""
+        from .reid import (
+            AppearanceEmbedder,
+            ReidCandidate,
+            crop_observation,
+            merge_by_appearance,
+            merged_position,
+            pairs_to_compare,
+        )
+
+        by_key = {a.id: a for a in assets}
+        obs_by_key: dict[str, list[Observation]] = {}
+        candidates = []
+        for asset in assets:
+            obs = [
+                Observation.from_dict(r)
+                for r in asset.attributes.get('observations', [])
+            ]
+            obs.sort(key=lambda o: o.range_m if o.range_m is not None else 1e9)
+            obs_by_key[asset.id] = obs
+            candidates.append(
+                ReidCandidate.from_observations(
+                    asset.id, asset.geometry.x, asset.geometry.y, obs
+                )
+            )
+        pairs = pairs_to_compare(candidates, max_distance_m=self.reid_max_distance_m)
+        if not pairs:
+            return assets
+        crops: dict[str, Image.Image] = {}
+        for key in sorted({k for pair in pairs for k in pair}):
+            for sighting in obs_by_key[key]:
+                path = self._download_thumbnail(
+                    {'id': sighting.image_id, 'thumb_url': None}
+                )
+                if path is None:
+                    continue
+                try:
+                    with Image.open(path) as image:
+                        crops[key] = crop_observation(
+                            image.convert('RGB'), sighting.polygon
+                        )
+                except OSError:
+                    continue
+                break
+        embedder = self.reid_embedder or AppearanceEmbedder(
+            self.reid_model, device=self.device
+        )
+        groups = merge_by_appearance(
+            candidates,
+            crops,
+            embedder,
+            max_distance_m=self.reid_max_distance_m,
+            min_similarity=self.reid_min_similarity,
+        )
+        merged: list[PhysicalAsset] = []
+        n_merged = 0
+        for group in groups:
+            parts = [by_key[k] for k in group]
+            if len(parts) == 1:
+                merged.append(parts[0])
+                continue
+            n_merged += len(parts) - 1
+            lon, lat = merged_position([(a.geometry.x, a.geometry.y) for a in parts])
+            records = [r for a in parts for r in a.attributes.get('observations', [])]
+            attributes = dict(parts[0].attributes)
+            attributes.update(
+                {
+                    'observations': records,
+                    'n_observations': len(records),
+                    'n_images': len({r['image_id'] for r in records}),
+                    'sequence_ids': sorted(
+                        {s for a in parts for s in a.attributes.get('sequence_ids', [])}
+                    ),
+                    'reid_merged': len(parts),
+                }
+            )
+            if any(a.attributes.get('localization') == 'triangulated' for a in parts):
+                attributes['localization'] = 'triangulated'
+            dates = sorted(
+                d
+                for a in parts
+                for d in (a.attributes.get('first_seen'), a.attributes.get('last_seen'))
+                if d
+            )
+            if dates:
+                attributes['first_seen'], attributes['last_seen'] = dates[0], dates[-1]
+            merged.append(
+                PhysicalAsset(
+                    id=parts[0].id, geometry=Point(lon, lat), attributes=attributes
+                )
+            )
+        if n_merged:
+            logger.info(
+                f'Appearance re-identification merged {n_merged} duplicate objects.'
+            )
+        return merged
+
     def _build_asset(
         self, cls: str, members: list[Observation], index: int
     ) -> PhysicalAsset:
-        """Position and describe one object from its sightings."""
+        """Position and describe one object from its sightings (legacy method)."""
         # Every member passed ``localize``, which sets all four of these:
         rays: dict[str, tuple[float, float, float]] = {}
         lons: list[float] = []
