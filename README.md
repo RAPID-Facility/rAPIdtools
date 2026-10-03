@@ -232,7 +232,7 @@ cloud = MuseSparkAssetAnalyzer(api_key='...', prompt='Return JSON with a damage_
 local = QwenVisionAssetAnalyzer(prompt='Rate the fire damage 0-5.', model_id='Qwen/Qwen3.5-9B', load_in_4bit=True)
 ```
 
-## Contributing and Security
+## Contributing, Security and Accessibility
 
 Bug reports, documentation fixes and code are welcome; see
 [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and the checks a
@@ -240,7 +240,9 @@ pull request must pass, and the [wiki](https://github.com/RAPID-Facility/rAPIdto
 for how the pieces fit together. Participation is governed by the
 [Code of Conduct](CODE_OF_CONDUCT.md). Please report security problems
 privately as described in the [Security Policy](SECURITY.md), not in a public
-issue.
+issue. Our [Accessibility Statement](ACCESSIBILITY.md) describes what we know
+about using the package, documentation and GUI with assistive technology and
+how to report barriers.
 
 ## Citing rAPIdtools
 
