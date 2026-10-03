@@ -139,6 +139,17 @@ minor releases may change public APIs.
 
 - `numpy` and `scipy` are declared dependencies (both were already required
   transitively).
+- Street-level detections are no longer filtered by pixel area.
+  `min_area_fraction` is deprecated (a tiny internal floor remains for
+  decoding noise); object size is judged in metres once a track's distance
+  is known (`min_object_width_m`, 1 m), `max_range_m` defaults to 60 m and
+  bounds the triangulated position rather than discarding sightings, and
+  the moving-vehicle check is occlusion-aware (`object_height_m`): a track
+  whose ground-contact ranges read too long is kept when another detection
+  stands in front of it or its outline is too short for a full object, and
+  dropped as moving only when the object is fully visible. On a sample of
+  Spokane frames the old filters discarded four in five vehicle sightings
+  before localisation, which is why driveway cars went missing.
 - `MapillaryFeatureExtractor` reads frames in batches (`frame_batch_size`,
   default 200) and discards each image's full detection payload once the
   requested classes are read, and simplifies detection outlines on arrival

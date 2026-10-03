@@ -1232,7 +1232,7 @@ class Api:
                 min_observations=int(body.get('min_observations', 2)),
                 cluster_radius_m=float(body.get('cluster_radius_m', 4.0)),
                 camera_height_m=float(body.get('camera_height_m', 2.4)),
-                max_range_m=float(body.get('max_range_m', 30.0)),
+                max_range_m=float(body.get('max_range_m', 60.0)),
             )
         except (TypeError, ValueError) as exc:
             raise ApiError(str(exc)) from exc

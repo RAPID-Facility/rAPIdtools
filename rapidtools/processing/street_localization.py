@@ -83,6 +83,12 @@ MIN_DEPRESSION_DEG = 1.0
 
 # Bearings closer than this cannot be intersected reliably:
 MIN_TRIANGULATION_SEPARATION_DEG = 8.0
+# Outlines smaller than this share of the image are decoding noise (a few
+# hundred pixels on a survey panorama). Whether an object is big enough is
+# judged in metres once its distance is known, not in pixels.
+MIN_POLYGON_AREA_FRACTION = 5e-6
+# Farthest triangulated position worth reporting by default.
+DEFAULT_MAX_RANGE_M = 60.0
 
 
 # --------------------------------------------------------------- basics
@@ -259,8 +265,8 @@ def localize(
     obs: Observation,
     camera_height_m: float = 2.4,
     min_range_m: float = 2.0,
-    max_range_m: float = 30.0,
-    min_area_fraction: float = 0.0004,
+    max_range_m: float = DEFAULT_MAX_RANGE_M,
+    min_area_fraction: float = MIN_POLYGON_AREA_FRACTION,
 ) -> bool:
     """
     Fill in the single-view ground position of an observation.
@@ -279,9 +285,11 @@ def localize(
         camera_height_m: Height of the camera above the ground.
         min_range_m: Closest plausible object (the ego vehicle and the road
             surface sit inside this radius).
-        max_range_m: Farthest object worth keeping; ranges beyond a few tens
-            of metres are dominated by height and slope errors.
-        min_area_fraction: Minimum polygon area as a fraction of the image.
+        max_range_m: Farthest single-view range worth keeping as a prior.
+        min_area_fraction: Outlines smaller than this share of the image are
+            treated as noise. The default only rejects decoding garbage;
+            whether an object is large enough is decided in metres by
+            :func:`~rapidtools.processing.street_tracking.classify_track`.
     """
     if obs.area < min_area_fraction:
         return False
@@ -551,6 +559,61 @@ def observation_angles(
     bearing, _ = ray_angles(centre)
     _, elevation = ray_angles(contact)
     return bearing, elevation
+
+
+def polygon_angular_size(obs: Observation) -> tuple[float, float]:
+    """
+    Angular width and height of a detection outline as seen from the camera.
+
+    Uses the same camera model as :func:`observation_angles`, so the result
+    is correct for panoramas (including outlines across the seam) and for
+    perspective and fisheye frames. Together with a distance this gives the
+    object's physical size: ``2 * distance * tan(width / 2)``.
+
+    Returns:
+        tuple[float, float]: ``(width_deg, height_deg)``.
+
+    Example:
+        >>> from rapidtools.core import Observation
+        >>> obs = Observation('i', 'car', [(0.45, 0.5), (0.55, 0.5), (0.55, 0.55)],
+        ...                   0.0, 0.0, 0.0, is_pano=True)
+        >>> width, height = polygon_angular_size(obs)
+        >>> round(width), round(height)
+        (36, 9)
+    """
+    xs = [p[0] for p in obs.polygon]
+    ys = [p[1] for p in obs.polygon]
+    if obs.is_pano and (max(xs) - min(xs)) > 0.5:
+        # The outline straddles the seam: unwrap it before taking the span.
+        xs = [x + 1.0 if x < 0.5 else x for x in xs]
+    x0, x1 = min(xs), max(xs)
+    cx = (x0 + x1) / 2.0
+    if obs.is_pano:
+        x0, x1, cx = x0 % 1.0, x1 % 1.0, cx % 1.0
+    y0, y1 = min(ys), max(ys)
+    cy = (y0 + y1) / 2.0
+    camera_type = obs.extra.get('camera_type') or (
+        'spherical' if obs.is_pano else 'perspective'
+    )
+    params = obs.extra.get('camera_parameters')
+    w, h = obs.image_width, obs.image_height
+
+    def azimuth(b: np.ndarray) -> float:
+        return math.degrees(math.atan2(float(b[0]), float(b[2])))
+
+    def elevation(b: np.ndarray) -> float:
+        return math.degrees(
+            math.atan2(-float(b[1]), math.hypot(float(b[0]), float(b[2])))
+        )
+
+    # Width is the azimuth span (what a ground footprint subtends), height the
+    # elevation span between the top and bottom edges on the centre column.
+    left = pixel_bearing(x0, cy, camera_type, w, h, params)
+    right = pixel_bearing(x1, cy, camera_type, w, h, params)
+    top = pixel_bearing(cx, y0, camera_type, w, h, params)
+    bottom = pixel_bearing(cx, y1, camera_type, w, h, params)
+    width = (azimuth(right) - azimuth(left)) % 360.0
+    return min(width, 360.0 - width), abs(elevation(top) - elevation(bottom))
 
 
 # --------------------------------------------------------------- multi view

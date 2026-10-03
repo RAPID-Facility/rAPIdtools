@@ -73,19 +73,35 @@ CAM_H = 2.4
 LABEL = 'object--vehicle--car'
 
 
-def _pano_polygon(cam_xy, heading, obj_xy, rng, noise_deg=0.4, range_noise=0.15):
-    """Normalised pano outline of a 1.5 m tall object seen from ``cam_xy``."""
+def _pano_polygon(
+    cam_xy,
+    heading,
+    obj_xy,
+    rng,
+    noise_deg=0.4,
+    range_noise=0.15,
+    occlusion=1.0,
+    width_m=2.0,
+    height_m=1.5,
+):
+    """
+    Normalised pano outline of an object seen from ``cam_xy``.
+
+    ``occlusion`` > 1 raises the visible bottom edge as a fence or a parked
+    car hiding the wheels would: the ground contact then reads that many
+    times too far while the top edge stays where it is.
+    """
     dx, dy = obj_xy[0] - cam_xy[0], obj_xy[1] - cam_xy[1]
     dist = math.hypot(dx, dy)
     bearing = math.degrees(math.atan2(dx, dy)) + rng.gauss(0.0, noise_deg)
     rel = ((bearing - heading + 180.0) % 360.0) - 180.0
     cx = 0.5 + rel / 360.0
     # The ground contact as the mask sees it: the range is biased/noisy.
-    seen_dist = dist * (1.0 + rng.gauss(0.0, range_noise))
+    seen_dist = dist * (1.0 + rng.gauss(0.0, range_noise)) * occlusion
     y_bottom = 0.5 + math.degrees(math.atan2(CAM_H, seen_dist)) / 180.0
-    y_top = 0.5 - math.degrees(math.atan2(1.5 - CAM_H, seen_dist)) / 180.0 * -1
-    y_top = min(y_top, y_bottom - 0.01)
-    half_w = math.degrees(math.atan2(1.0, dist)) / 360.0
+    y_top = 0.5 + math.degrees(math.atan2(CAM_H - height_m, dist)) / 180.0
+    y_top = min(y_top, y_bottom - 0.002)
+    half_w = math.degrees(math.atan2(width_m / 2.0, dist)) / 360.0
     return [
         ((cx - half_w) % 1.0, y_top),
         ((cx + half_w) % 1.0, y_top),
@@ -106,6 +122,8 @@ def _survey(
     range_noise=0.15,
     max_range=35.0,
     frame_prefix='f',
+    occlusion=1.0,
+    width_m=2.0,
 ):
     """
     Sightings of ``cars`` (local-frame metres) from a camera driving east
@@ -130,7 +148,14 @@ def _survey(
                     image_id=f'{frame_prefix}{k:03d}',
                     label=LABEL,
                     polygon=_pano_polygon(
-                        cam_xy, heading, obj, rng, noise_deg, range_noise
+                        cam_xy,
+                        heading,
+                        obj,
+                        rng,
+                        noise_deg,
+                        range_noise,
+                        occlusion=occlusion,
+                        width_m=width_m,
                     ),
                     camera_lon=cam_lon,
                     camera_lat=cam_lat,
@@ -336,3 +361,57 @@ def test_discover_objects_rejects_unknown_method():
 def test_vote_rays_empty():
     project, _ = local_projection(LON0, LAT0)
     assert vote_rays([], project) == []
+
+
+# ==========================================
+# Far, occluded and fragmentary objects
+# ==========================================
+
+
+def test_discover_objects_keeps_far_cars_within_the_range_bound():
+    """Driveway cars 40-55 m out are found once the area knob is gone."""
+    far = [(10.0, 40.0), (25.0, -45.0), (40.0, 52.0)]
+    obs, _, _ = _survey(far, n_frames=24, max_range=70.0, range_noise=0.25)
+    estimates, counts, unp = discover_objects(
+        obs, method='tracks', camera_height_m=CAM_H, max_range_m=60.0
+    )
+    assert len(estimates) == len(far), counts
+    assert all(len(h) == 1 for h in _match(far, estimates, unp, 1.5))
+
+
+def test_occluded_static_car_is_kept_not_called_moving():
+    """Hidden wheels make the range read 1.8x too far; the car still stands."""
+    from rapidtools.processing.street_localization import localize
+    from rapidtools.processing.street_tracking import classify_track
+
+    obs, project, _ = _survey([(15.0, 6.0)], occlusion=1.8, range_noise=0.05)
+    for o in obs:
+        localize(o, camera_height_m=CAM_H, max_range_m=60)
+    est, reason = classify_track(obs, project, camera_height_m=CAM_H)
+    assert reason == 'ok' and est is not None
+    assert est.localization == 'triangulated'
+    assert math.hypot(est.x - 15.0, est.y - 6.0) < 0.6
+
+
+def test_fully_visible_moving_car_is_still_rejected():
+    from rapidtools.processing.street_localization import localize
+    from rapidtools.processing.street_tracking import classify_track
+
+    obs, project, _ = _survey([], moving=((40.0, -4.0), (-4.0, 0.0)), n_frames=10)
+    for o in obs:
+        localize(o, camera_height_m=CAM_H, max_range_m=60)
+    est, reason = classify_track(obs, project, camera_height_m=CAM_H)
+    assert est is None and reason == 'moving'
+
+
+def test_fragment_narrower_than_an_object_is_dropped():
+    from rapidtools.processing.street_localization import localize
+    from rapidtools.processing.street_tracking import classify_track
+
+    obs, project, _ = _survey([(12.0, 5.0)], width_m=0.3, range_noise=0.05)
+    for o in obs:
+        localize(o, camera_height_m=CAM_H, max_range_m=60)
+    est, reason = classify_track(obs, project, camera_height_m=CAM_H)
+    assert est is None and reason == 'fragment'
+    estimates, counts, _ = discover_objects(obs, camera_height_m=CAM_H)
+    assert estimates == [] and counts['fragment'] == 1

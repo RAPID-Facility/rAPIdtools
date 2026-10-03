@@ -849,3 +849,14 @@ def test_reid_merges_duplicates_across_passes(
         assert sorted(merged.attributes['sequence_ids']) == ['seq1', 'seq2']
         assert embedder.calls >= 1
         assert client.downloaded  # one thumbnail per compared object
+
+
+def test_min_area_fraction_is_deprecated_but_honoured():
+    with pytest.warns(DeprecationWarning):
+        ext = MapillaryFeatureExtractor(
+            classes=['cars'], access_token='t', min_area_fraction=0.0004
+        )
+    assert ext.min_area_fraction == 0.0004
+    ext = MapillaryFeatureExtractor(classes=['cars'], access_token='t')
+    assert ext.min_area_fraction < 1e-4
+    assert ext.max_range_m == 60.0

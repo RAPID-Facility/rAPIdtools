@@ -124,7 +124,7 @@ def test_localize_fills_position():
 @pytest.mark.parametrize(
     'polygon, kwargs',
     [
-        (_box(0.5, 0.6, w=0.01, h=0.01), {}),  # too small
+        (_box(0.5, 0.6, w=0.001, h=0.001), {}),  # decoding noise
         (_box(0.5, 0.45), {}),  # above the horizon
         (_box(0.5, 0.95), {}),  # under the camera: range below min
         (_box(0.5, 0.52), {'max_range_m': 10.0}),  # too far
@@ -408,3 +408,26 @@ def test_localize_without_rotation_uses_level_camera_fallback():
     expected_bearing, expected_elev = view_angles(obs.polygon, 10.0, True)
     assert obs.bearing == pytest.approx(expected_bearing)
     assert obs.elevation == pytest.approx(expected_elev)
+
+
+def test_polygon_angular_size_pano_and_seam():
+    from rapidtools.processing.street_localization import polygon_angular_size
+
+    width, height = polygon_angular_size(_obs(polygon=_box(0.5, 0.5, w=0.1, h=0.05)))
+    assert width == pytest.approx(36.0, abs=0.5)
+    assert height == pytest.approx(9.0, abs=0.5)
+    # The same outline across the seam:
+    seam = [((x + 0.45) % 1.0, y) for x, y in _box(0.5, 0.5, w=0.1, h=0.05)]
+    width, height = polygon_angular_size(_obs(polygon=seam))
+    assert width == pytest.approx(36.0, abs=0.5)
+    # Perspective frames use the lens model: half a focal length off the
+    # principal point is atan(0.5) = 26.57 degrees.
+    obs = _obs(
+        polygon=[(0.5, 0.45), (0.95, 0.45), (0.95, 0.55), (0.5, 0.55)],
+        is_pano=False,
+        image_width=4000,
+        image_height=3000,
+        extra={'camera_type': 'perspective', 'camera_parameters': [0.9, 0, 0]},
+    )
+    width, _ = polygon_angular_size(obs)
+    assert width == pytest.approx(26.57, abs=0.1)

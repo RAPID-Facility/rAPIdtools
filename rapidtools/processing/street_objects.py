@@ -81,6 +81,7 @@ from __future__ import annotations
 import logging
 import math
 import threading
+import warnings
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -110,6 +111,8 @@ from rapidtools.data_sources.mapillary_client import is_map_feature_value
 from . import outlines
 from .step import Stage
 from .street_localization import (
+    DEFAULT_MAX_RANGE_M,
+    MIN_POLYGON_AREA_FRACTION,
     cluster_observations,
     estimate_ego_mask,
     intersect_bearings,
@@ -368,10 +371,22 @@ class MapillaryFeatureExtractor:
         min_range_m (float):
             Closest plausible object. Defaults to 2.0.
         max_range_m (float):
-            Farthest object kept. Defaults to 30.0.
-        min_area_fraction (float):
-            Smallest detection kept, as a fraction of the image. Defaults to
-            0.0004.
+            Farthest triangulated position reported, and the farthest
+            single-view range kept as a prior. Defaults to 60.0.
+        min_object_width_m (float):
+            Objects narrower than this, judged from the outline's angular
+            width at the estimated distance, are fragments or false
+            detections and are dropped. Resolution-independent and tolerant
+            of partial occlusion. Defaults to 1.0.
+        object_height_m (float):
+            Typical height of the class. When a track's ground-contact
+            ranges disagree with its triangulation, the track is called
+            moving only if enough of an object this tall is visible for
+            occlusion to be ruled out. Defaults to 1.5 (vehicles).
+        min_area_fraction (float | None):
+            Deprecated. Pixel-area floor below which a detection is ignored;
+            ``None`` (the default) keeps only a tiny floor for decoding
+            noise. Size is judged with ``min_object_width_m`` instead.
         cluster_radius_m (float):
             Sightings closer than this are the same object in the legacy
             ``'cluster'`` method; with ``'tracks'`` it only sets the default
@@ -503,8 +518,10 @@ class MapillaryFeatureExtractor:
         label_mapper: Any = None,
         camera_height_m: float = 2.4,
         min_range_m: float = 2.0,
-        max_range_m: float = 30.0,
-        min_area_fraction: float = 0.0004,
+        max_range_m: float = DEFAULT_MAX_RANGE_M,
+        min_object_width_m: float = 1.0,
+        object_height_m: float = 1.5,
+        min_area_fraction: float | None = None,
         cluster_radius_m: float = 4.0,
         localization_method: str = 'tracks',
         bearing_sigma_deg: float = 0.75,
@@ -568,7 +585,21 @@ class MapillaryFeatureExtractor:
         self.camera_height_m = camera_height_m
         self.min_range_m = min_range_m
         self.max_range_m = max_range_m
-        self.min_area_fraction = min_area_fraction
+        self.min_object_width_m = min_object_width_m
+        self.object_height_m = object_height_m
+        if min_area_fraction is not None:
+            warnings.warn(
+                'min_area_fraction is deprecated: object size is now judged in '
+                'metres once the distance is known (min_object_width_m). The '
+                'value is still applied as a pixel floor.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        self.min_area_fraction = (
+            MIN_POLYGON_AREA_FRACTION
+            if min_area_fraction is None
+            else min_area_fraction
+        )
         self.cluster_radius_m = cluster_radius_m
         self.localization_method = localization_method
         self.bearing_sigma_deg = bearing_sigma_deg
@@ -1086,13 +1117,15 @@ class MapillaryFeatureExtractor:
             max_merge_m=self.max_merge_m or 1.5 * self.cluster_radius_m,
             track_gap_frames=self.track_gap_frames,
             min_path_distance_m=self.min_path_distance_m,
+            min_object_width_m=self.min_object_width_m,
+            object_height_m=self.object_height_m,
             object_size_m=self.object_size_m,
         )
         logger.info(
             f"'{cls}': {counts['with_bearing']} sightings with a bearing, "
             f'{counts["tracks"]} tracks, {counts["moving"]} moving dropped, '
-            f'{counts["on_path"]} on the driven path dropped -> '
-            f'{counts["objects"]} objects.'
+            f'{counts["fragment"]} too small dropped, {counts["on_path"]} on the '
+            f'driven path dropped -> {counts["objects"]} objects.'
         )
         assets = []
         for est in estimates:

@@ -77,7 +77,7 @@ from __future__ import annotations
 import logging
 import math
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -86,9 +86,12 @@ import numpy as np
 from rapidtools.core import Observation
 
 from .street_localization import (
+    DEFAULT_MAX_RANGE_M,
+    MIN_POLYGON_AREA_FRACTION,
     MIN_TRIANGULATION_SEPARATION_DEG,
     local_projection,
     localize,
+    polygon_angular_size,
 )
 
 logger = logging.getLogger(__name__)
@@ -99,6 +102,10 @@ BEARING_SIGMA_DEG = 0.75
 CHI2_2D_99 = 9.21
 #: Fraction of a track's rays that must agree for it to count as static.
 STATIC_INLIER_FRACTION = 0.6
+#: How closely an outline must match the full height of an object at its
+#: ground-contact range before a range disagreement is blamed on motion
+#: rather than on something hiding the object's lower part.
+MIN_VISIBLE_FRACTION = 0.9
 
 Project = Callable[[float, float], tuple[float, float]]
 Unproject = Callable[[float, float], tuple[float, float]]
@@ -406,14 +413,49 @@ def _extend(
 def triangulate_track(
     members: Sequence[Observation],
     project: Project,
-    max_range_m: float = 30.0,
+    max_range_m: float = DEFAULT_MAX_RANGE_M,
     bearing_sigma_deg: float = BEARING_SIGMA_DEG,
     min_parallax_deg: float = MIN_TRIANGULATION_SEPARATION_DEG,
     inlier_fraction: float = STATIC_INLIER_FRACTION,
     range_ratio_bounds: tuple[float, float] = (0.6, 1.6),
+    min_object_width_m: float = 1.0,
+    object_height_m: float = 1.5,
+    camera_height_m: float = 2.4,
 ) -> ObjectEstimate | None:
     """
-    Position a track from its rays, or decide it was a moving object.
+    Position a track from its rays, or ``None`` when it is not a static object.
+
+    A thin wrapper over :func:`classify_track` that drops the reason.
+    """
+    return classify_track(
+        members,
+        project,
+        max_range_m=max_range_m,
+        bearing_sigma_deg=bearing_sigma_deg,
+        min_parallax_deg=min_parallax_deg,
+        inlier_fraction=inlier_fraction,
+        range_ratio_bounds=range_ratio_bounds,
+        min_object_width_m=min_object_width_m,
+        object_height_m=object_height_m,
+        camera_height_m=camera_height_m,
+    )[0]
+
+
+def classify_track(
+    members: Sequence[Observation],
+    project: Project,
+    max_range_m: float = DEFAULT_MAX_RANGE_M,
+    bearing_sigma_deg: float = BEARING_SIGMA_DEG,
+    min_parallax_deg: float = MIN_TRIANGULATION_SEPARATION_DEG,
+    inlier_fraction: float = STATIC_INLIER_FRACTION,
+    range_ratio_bounds: tuple[float, float] = (0.6, 1.6),
+    min_object_width_m: float = 1.0,
+    object_height_m: float = 1.5,
+    camera_height_m: float = 2.4,
+    frame_sightings: Mapping[str, Sequence[Observation]] | None = None,
+) -> tuple[ObjectEstimate | None, str]:
+    """
+    Position a track from its rays, or decide why it is not a static object.
 
     Rays from distinct cameras are intersected with a RANSAC search over ray
     pairs followed by a weighted least-squares refinement over the inliers.
@@ -435,11 +477,27 @@ def triangulate_track(
             sightings' ground-contact ranges and their distances to the
             intersection. A target moving at constant speed makes the rays
             meet at a phantom point whose distances do not match those
-            ranges, so this is the check that catches such vehicles.
+            ranges, so this is the check that catches such vehicles. Ranges
+            that are too *long* can also come from occlusion (a fence hides
+            the wheels, so the visible bottom edge sits above the ground
+            contact); the track is only called moving when enough of the
+            object is visible for that explanation to fail.
+        min_object_width_m: Objects narrower than this, judged from the
+            outline's angular width at the estimated distance, are
+            fragments or false detections and are dropped.
+        object_height_m: Typical height of the class, used to decide how
+            much of an object should be visible at a given distance.
+        camera_height_m: Camera height above the ground.
+        frame_sightings: Every sighting of the class per image id. When
+            another detection sits directly below the track's outline in a
+            frame (a car at the kerb in front of one in a driveway), the
+            raised ground contact is explained by occlusion and the track is
+            kept.
 
     Returns:
-        ObjectEstimate | None: The estimate, or ``None`` for a moving object
-        or a track with no usable geometry.
+        tuple[ObjectEstimate | None, str]: The estimate (``None`` when the
+        track is rejected) and a reason: ``'ok'``, ``'moving'``,
+        ``'fragment'`` or ``'no_geometry'``.
     """
     sigma_rad = math.radians(bearing_sigma_deg)
     rays_by_image: dict[str, tuple[float, float, float]] = {}
@@ -451,9 +509,16 @@ def triangulate_track(
     rays = list(rays_by_image.values())
     located = [o for o in members if o.has_location and o.range_m is not None]
 
-    def single_view() -> ObjectEstimate | None:
+    def physical_width(obs: Observation, distance: float) -> float:
+        width_deg, _ = polygon_angular_size(obs)
+        return 2.0 * distance * math.tan(math.radians(width_deg) / 2.0)
+
+    def single_view() -> tuple[ObjectEstimate | None, str]:
         if not located:
-            return None
+            return None, 'no_geometry'
+        widths = [physical_width(o, float(o.range_m or 0.0)) for o in located]
+        if float(np.median(widths)) < min_object_width_m:
+            return None, 'fragment'
         info = np.zeros((2, 2))
         vec = np.zeros(2)
         for o in located:
@@ -466,13 +531,16 @@ def triangulate_track(
             vec += inv @ p
         cov = np.linalg.inv(info)
         point = cov @ vec
-        return ObjectEstimate(
-            float(point[0]),
-            float(point[1]),
-            cov,
-            list(members),
-            'single_view',
-            parallax_deg=_max_separation(b for _, _, b in rays),
+        return (
+            ObjectEstimate(
+                float(point[0]),
+                float(point[1]),
+                cov,
+                list(members),
+                'single_view',
+                parallax_deg=_max_separation(b for _, _, b in rays),
+            ),
+            'ok',
         )
 
     if len(rays) < 2 or _max_separation(b for _, _, b in rays) < min_parallax_deg:
@@ -506,7 +574,7 @@ def triangulate_track(
         return single_view()
     if count / n < inlier_fraction:
         if n >= 3:
-            return None  # rays disagree: the object moved between frames
+            return None, 'moving'  # rays disagree: the object moved
         return single_view()
 
     fit = _weighted_intersection([rays[k] for k in inliers], sigma_rad)
@@ -517,36 +585,99 @@ def triangulate_track(
     if np.any(along <= 0) or np.any(along > max_range_m):
         return single_view()
     rms = float(math.sqrt(float(np.mean(perp**2))))
+
+    inlier_rays = {rays[k] for k in inliers}
+    inlier_images = {
+        image for image, ray in rays_by_image.items() if ray in inlier_rays
+    }
+    seen = [o for o in members if o.image_id in inlier_images and o.bearing is not None]
+    distances = {}
+    for o in seen:
+        cx, cy = project(o.camera_lon, o.camera_lat)
+        distances[o.image_id] = math.hypot(point[0] - cx, point[1] - cy)
+
     # Absolute ranges from the ground contact must agree with the distances
     # to the intersection (see ``range_ratio_bounds``):
-    inlier_images = {
-        image
-        for image, ray in rays_by_image.items()
-        if ray in {rays[k] for k in inliers}
-    }
-    ratios = []
-    for o in located:
-        if o.image_id not in inlier_images:
-            continue
-        cx, cy = project(o.camera_lon, o.camera_lat)
-        dist = math.hypot(point[0] - cx, point[1] - cy)
-        if dist > 0 and o.range_m is not None:
-            ratios.append(o.range_m / dist)
-    if len(ratios) >= 2:
+    ratios = [
+        o.range_m / distances[o.image_id]
+        for o in seen
+        if o.range_m is not None and distances[o.image_id] > 0
+    ]
+    if len(ratios) >= 2 and n >= 3:
         median = float(np.median(ratios))
-        if not (range_ratio_bounds[0] <= median <= range_ratio_bounds[1]):
-            return None if n >= 3 else single_view()
+        if median < range_ratio_bounds[0]:
+            return None, 'moving'  # appears closer than the rays allow
+        if median > range_ratio_bounds[1] and not _occlusion_explains(
+            seen, camera_height_m, object_height_m, frame_sightings
+        ):
+            return None, 'moving'
+
+    # Physical size: an outline that would be narrower than a real object at
+    # this distance is a fragment or a false detection.
+    widths = [physical_width(o, distances[o.image_id]) for o in seen]
+    if widths and float(np.median(widths)) < min_object_width_m:
+        return None, 'fragment'
+
     # Guard against over-confident covariances from near-parallel rays:
     cov = cov + np.eye(2) * 0.05**2
-    return ObjectEstimate(
-        float(point[0]),
-        float(point[1]),
-        cov,
-        list(members),
-        'triangulated',
-        rms_m=rms,
-        parallax_deg=_max_separation(rays[k][2] for k in inliers),
+    return (
+        ObjectEstimate(
+            float(point[0]),
+            float(point[1]),
+            cov,
+            list(members),
+            'triangulated',
+            rms_m=rms,
+            parallax_deg=_max_separation(rays[k][2] for k in inliers),
+        ),
+        'ok',
     )
+
+
+def _occlusion_explains(
+    seen: Sequence[Observation],
+    camera_height_m: float,
+    object_height_m: float,
+    frame_sightings: Mapping[str, Sequence[Observation]] | None,
+) -> bool:
+    """
+    Can a hidden lower part explain ground-contact ranges that read too long?
+
+    Two signs say yes. Another detection of the class sits directly below
+    the outline in most frames (the occluder itself), or the outline is much
+    shorter than a full object of ``object_height_m`` would be at the range
+    its bottom edge implies (the bottom edge is not the ground contact). A
+    moving vehicle in the open shows neither: nothing stands in front of it
+    and its outline has the full height of an object at that range.
+    """
+    occluded_frames = 0
+    visible = []
+    for o in seen:
+        x0, y0, x1, y1 = o.bbox
+        others = (frame_sightings or {}).get(o.image_id, ())
+        for p in others:
+            if p is o:
+                continue
+            px0, py0, px1, py1 = p.bbox
+            overlap = min(x1, px1) - max(x0, px0)
+            if overlap <= 0.3 * max(x1 - x0, 1e-9):
+                continue
+            # The other outline starts no lower than our bottom edge (a
+            # little tolerance) and reaches further down the image:
+            if py0 <= y1 + 0.15 * (y1 - y0) and py1 > y1:
+                occluded_frames += 1
+                break
+        if o.range_m is not None and o.range_m > 0:
+            expected = math.degrees(
+                math.atan2(camera_height_m, o.range_m)
+                - math.atan2(camera_height_m - object_height_m, o.range_m)
+            )
+            if expected > 0:
+                _, height_deg = polygon_angular_size(o)
+                visible.append(height_deg / expected)
+    if seen and occluded_frames / len(seen) >= 0.5:
+        return True
+    return bool(visible) and float(np.median(visible)) < MIN_VISIBLE_FRACTION
 
 
 # --------------------------------------------------------------- merging
@@ -767,14 +898,16 @@ def discover_objects(
     method: str = 'tracks',
     camera_height_m: float = 2.4,
     min_range_m: float = 2.0,
-    max_range_m: float = 30.0,
-    min_area_fraction: float = 0.0004,
+    max_range_m: float = DEFAULT_MAX_RANGE_M,
+    min_area_fraction: float = MIN_POLYGON_AREA_FRACTION,
     bearing_sigma_deg: float = BEARING_SIGMA_DEG,
     min_parallax_deg: float = MIN_TRIANGULATION_SEPARATION_DEG,
     max_merge_m: float = 6.0,
     merge_floor_m: float = 0.5,
     track_gap_frames: int = 2,
     min_path_distance_m: float = 1.5,
+    min_object_width_m: float = 1.0,
+    object_height_m: float = 1.5,
     object_size_m: float = 4.5,
     vote_cell_m: float = 0.5,
     min_vote_score: float = 1.5,
@@ -789,8 +922,9 @@ def discover_objects(
         camera_height_m: Camera height above the ground, for single-view
             ranges.
         min_range_m: Closest plausible object.
-        max_range_m: Farthest plausible object.
-        min_area_fraction: Smallest detection worth placing.
+        max_range_m: Farthest triangulated position reported.
+        min_area_fraction: Outline area below which a detection is decoding
+            noise; the default only removes garbage.
         bearing_sigma_deg: One-sigma bearing error.
         min_parallax_deg: Smallest bearing separation that counts as
             parallax.
@@ -801,6 +935,10 @@ def discover_objects(
         min_path_distance_m: Objects closer than this to the line the camera
             drove are discarded: the survey vehicle passed through that spot,
             so whatever was seen there was moving (or is the vehicle itself).
+        min_object_width_m: Objects narrower than this at their estimated
+            distance are fragments or false detections.
+        object_height_m: Typical height of the class, for the
+            occlusion-aware moving check.
         object_size_m: Object footprint used by the voting baseline.
         vote_cell_m: Grid cell of the voting baseline.
         min_vote_score: Peak threshold of the voting baseline.
@@ -808,8 +946,8 @@ def discover_objects(
     Returns:
         tuple: ``(estimates, counts, unproject)`` where ``counts`` reports
         ``'sightings'``, ``'with_bearing'``, ``'tracks'``, ``'moving'``,
-        ``'on_path'`` and ``'objects'``, and ``unproject`` converts local
-        metres back to ``(lon, lat)``.
+        ``'fragment'``, ``'on_path'`` and ``'objects'``, and ``unproject``
+        converts local metres back to ``(lon, lat)``.
     """
     if method not in ('tracks', 'voting'):
         raise ValueError(f"method must be 'tracks' or 'voting', got {method!r}.")
@@ -818,6 +956,7 @@ def discover_objects(
         'with_bearing': 0,
         'tracks': 0,
         'moving': 0,
+        'fragment': 0,
         'on_path': 0,
         'objects': 0,
     }
@@ -855,20 +994,27 @@ def discover_objects(
     by_sequence: dict[str, list[Observation]] = defaultdict(list)
     for obs in usable:
         by_sequence[obs.sequence_id or '__none__'].append(obs)
+    frame_sightings: dict[str, list[Observation]] = defaultdict(list)
+    for obs in usable:
+        frame_sightings[obs.image_id].append(obs)
     estimates = []
     for members in by_sequence.values():
         for track in track_sequence(members, project, max_gap_frames=track_gap_frames):
             counts['tracks'] += 1
-            est = triangulate_track(
+            est, reason = classify_track(
                 track,
                 project,
                 max_range_m=max_range_m,
                 bearing_sigma_deg=bearing_sigma_deg,
                 min_parallax_deg=min_parallax_deg,
+                min_object_width_m=min_object_width_m,
+                object_height_m=object_height_m,
+                camera_height_m=camera_height_m,
+                frame_sightings=frame_sightings,
             )
             if est is None:
-                if len({o.image_id for o in track}) >= 3:
-                    counts['moving'] += 1
+                if reason in ('moving', 'fragment'):
+                    counts[reason] += 1
                 continue
             estimates.append(est)
     merged = merge_estimates(

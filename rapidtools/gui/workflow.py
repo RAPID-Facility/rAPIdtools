@@ -525,7 +525,7 @@ class StreetDetectionSettings:
     min_observations: int = 2
     cluster_radius_m: float = 4.0
     camera_height_m: float = 2.4
-    max_range_m: float = 30.0
+    max_range_m: float = 60.0
     max_workers: int = 10
 
     def __post_init__(self) -> None:

@@ -139,8 +139,10 @@ How it works:
    parameters, so pitch and roll are accounted for) give an accurate bearing
    from the camera. The polygon's lowest point gives the elevation of the
    ground contact and, with the camera height, a rough range; that range is
-   only a prior. Sightings closer than ``min_range_m`` or farther than
-   ``max_range_m`` are discarded.
+   only a prior. Nothing is discarded for being small or distant at this
+   stage: once a track has a distance, outlines narrower than
+   ``min_object_width_m`` (1 m) are dropped as fragments, and positions
+   farther than ``max_range_m`` (60 m) are not reported.
 4. **Sightings are tracked, triangulated and merged.** Within each sequence,
    detections are linked from frame to frame by bearing continuity, where the
    data is precise, rather than by their noisy ground positions. Each track
