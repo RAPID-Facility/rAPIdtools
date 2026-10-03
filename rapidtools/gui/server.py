@@ -235,9 +235,10 @@ def _geocode(query: str, limit: int = 6) -> list[dict[str, Any]]:
 
     from rapidtools.config import REQUESTS_HEADERS, REQUESTS_TIMEOUT_VAL
 
+    params: dict[str, str | int] = {'q': query, 'format': 'jsonv2', 'limit': limit}
     response = requests.get(
         GEOCODE_URL,
-        params={'q': query, 'format': 'jsonv2', 'limit': limit},
+        params=params,
         headers={**REQUESTS_HEADERS, 'User-Agent': 'rapidtools-gui (asset analysis)'},
         timeout=REQUESTS_TIMEOUT_VAL,
     )
@@ -783,13 +784,13 @@ class Api:
         {'rows': [], 'columns': []}
     """
 
-    def __init__(self, state: AppState, data_root: Path | None = None) -> None:
+    def __init__(self, state: AppState, data_root: str | Path | None = None) -> None:
         """
         Bind the API to a state object.
 
         Args:
             state (AppState): The shared server state.
-            data_root (Path | None): If given, every user-supplied path must lie
+            data_root (str | Path | None): If given, every user-supplied path must lie
                 inside this directory. Defaults to ``None`` (unrestricted).
         """
         self.state = state
@@ -1636,10 +1637,10 @@ class Api:
                     entry['done'] += 1
                 return out
 
-            lines: list[list[float]] = []
+            fetched_lines: list[list[float]] = []
             with ThreadPoolExecutor(max_workers=OVERVIEW_WORKERS) as pool:
                 for result in pool.map(one, tiles):
-                    lines.extend(result)
+                    fetched_lines.extend(result)
             if failures:
                 raise RuntimeError(
                     f'{len(failures)} of {len(tiles)} coverage tiles could not be '
@@ -1647,11 +1648,11 @@ class Api:
                 )
             try:
                 cache.parent.mkdir(parents=True, exist_ok=True)
-                cache.write_text(json.dumps(lines), encoding='utf-8')
+                cache.write_text(json.dumps(fetched_lines), encoding='utf-8')
             except OSError as exc:
                 logger.debug(f'Could not cache the survey overview: {exc}')
             with state.lock:
-                entry.update(status='ready', lines=lines)
+                entry.update(status='ready', lines=fetched_lines)
         except Exception as exc:  # noqa: BLE001 - reported through the state
             logger.warning(f'Survey overview failed: {exc}')
             with state.lock:
@@ -2420,9 +2421,9 @@ def _optional_bbox(body: dict[str, Any]):
         raise ApiError('Longitudes and latitudes must be numbers.') from exc
     if all(v is None for v in values):
         return None
-    if any(v is None for v in values):
-        raise ApiError('Give all four of min/max longitude and latitude.')
     min_lon, min_lat, max_lon, max_lat = values
+    if min_lon is None or min_lat is None or max_lon is None or max_lat is None:
+        raise ApiError('Give all four of min/max longitude and latitude.')
     if not (-180 <= min_lon < max_lon <= 180 and -85 <= min_lat < max_lat <= 85):
         raise ApiError(
             'The box must satisfy min < max with longitudes in [-180, 180] and '
@@ -2538,7 +2539,9 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
         if token is None:
             return True
         presented = presented if presented is not None else self._presented_token()
-        return bool(presented) and secrets.compare_digest(presented, token)
+        if not presented:
+            return False
+        return secrets.compare_digest(presented, token)
 
     def _token_cookie(self) -> str:
         """Return the ``Set-Cookie`` value that remembers the access token."""
@@ -2708,6 +2711,15 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
         path = unquote(urlsplit(self.path).path)
         api = self.server.api
         state = self.server.state
+
+        def cancel(_body: dict[str, Any]) -> dict[str, Any]:
+            state.cancel_job()
+            return {'ok': True}
+
+        def reset(_body: dict[str, Any]) -> dict[str, Any]:
+            state.reset()
+            return {'ok': True}
+
         routes: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
             '/api/imagery/local': api.load_local_raster,
             '/api/imagery/sample': api.download_sample_raster,
@@ -2726,8 +2738,8 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
             '/api/notify': api.set_notification,
             '/api/street/routes/rebuild': api.rebuild_routes,
             '/api/models': api.list_models,
-            '/api/cancel': lambda _b: (state.cancel_job(), {'ok': True})[1],
-            '/api/reset': lambda _b: (state.reset(), {'ok': True})[1],
+            '/api/cancel': cancel,
+            '/api/reset': reset,
         }
         try:
             if path == '/api/login':
@@ -2908,6 +2920,13 @@ class GuiServer(ThreadingHTTPServer):
             self._log_handler = None
         super().server_close()
 
+    def _host_port(self) -> tuple[str, int]:
+        """Return the bound ``(host, port)`` with the host as text."""
+        host, port = self.server_address[:2]
+        if isinstance(host, bytes):
+            host = host.decode()
+        return str(host), int(port)
+
     @property
     def url(self) -> str:
         """
@@ -2917,7 +2936,7 @@ class GuiServer(ThreadingHTTPServer):
             str: ``http://localhost:<port>/`` for loopback / wildcard binds,
             otherwise the bound host.
         """
-        host, port = self.server_address[:2]
+        host, port = self._host_port()
         display_host = 'localhost' if host in ('0.0.0.0', '127.0.0.1', '') else host
         return f'http://{display_host}:{port}/'
 
@@ -2932,7 +2951,7 @@ class GuiServer(ThreadingHTTPServer):
             list[str]: Unique URLs, each ending in ``?token=<token>`` when a
             token is configured.
         """
-        host, port = self.server_address[:2]
+        host, port = self._host_port()
         hosts: list[str] = []
         if host in ('0.0.0.0', ''):
             hosts.append(socket.gethostname())

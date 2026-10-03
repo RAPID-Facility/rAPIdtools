@@ -56,6 +56,7 @@ Example:
 import logging
 import sys
 import warnings
+from collections.abc import Iterable
 from enum import StrEnum
 from typing import Any
 
@@ -85,7 +86,14 @@ REQUESTS_HEADERS = {
 DEFAULT_RETRY_TOTAL = 5
 DEFAULT_BACKOFF = 1
 DEFAULT_STATUS_FORCELIST = [429, 500, 502, 503, 504]
-DEFAULT_ALLOWED_METHODS = ['HEAD', 'GET', 'POST', 'OPTIONS']
+# Only idempotent methods are retried automatically. A POST that reached the
+# server may already have been processed (and billed), so the API clients opt
+# in through API_RETRY_METHODS, limited to API_RETRY_STATUSES: the statuses
+# that mean the provider did not process the request (rate limited,
+# unavailable, or overloaded; 529 is Anthropic's overload status).
+DEFAULT_ALLOWED_METHODS = ['HEAD', 'GET', 'OPTIONS']
+API_RETRY_METHODS = ['HEAD', 'GET', 'OPTIONS', 'POST']
+API_RETRY_STATUSES = [429, 503, 529]
 
 REQUESTS_TIMEOUT_VAL = 30
 
@@ -120,7 +128,10 @@ DEFAULT_INSTANCE_CMAP = 'nipy_spectral'
 
 # Helper functions:
 def get_configured_session(
-    retries: int = DEFAULT_RETRY_TOTAL, backoff_factor: float = DEFAULT_BACKOFF
+    retries: int = DEFAULT_RETRY_TOTAL,
+    backoff_factor: float = DEFAULT_BACKOFF,
+    allowed_methods: Iterable[str] | None = None,
+    status_forcelist: Iterable[int] | None = None,
 ) -> requests.Session:
     """
     Create a requests Session with retry logic, timeouts, and headers.
@@ -132,6 +143,12 @@ def get_configured_session(
         backoff_factor (float):
             Time factor for exponential backoff. Defaults to DEFAULT_BACKOFF
             (1).
+        allowed_methods (Iterable[str] | None):
+            HTTP methods that may be retried. Defaults to the idempotent
+            DEFAULT_ALLOWED_METHODS; pass API_RETRY_METHODS to include POST.
+        status_forcelist (Iterable[int] | None):
+            Response statuses that trigger a retry. Defaults to
+            DEFAULT_STATUS_FORCELIST.
 
     Returns:
         requests.Session: A configured session object ready for use.
@@ -153,8 +170,12 @@ def get_configured_session(
     retry_strategy = Retry(
         total=retries,
         backoff_factor=backoff_factor,
-        status_forcelist=DEFAULT_STATUS_FORCELIST,
-        allowed_methods=DEFAULT_ALLOWED_METHODS,
+        status_forcelist=list(
+            DEFAULT_STATUS_FORCELIST if status_forcelist is None else status_forcelist
+        ),
+        allowed_methods=frozenset(
+            DEFAULT_ALLOWED_METHODS if allowed_methods is None else allowed_methods
+        ),
     )
 
     # Mount the retry adapter to both HTTP and HTTPS:

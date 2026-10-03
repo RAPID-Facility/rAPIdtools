@@ -7,6 +7,37 @@ on:
     branches: [ main ]
 
 jobs:
+  lint:
+    name: Lint and type check
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+        cache: pip
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        # CPU-only PyTorch keeps the install small; mypy only needs the
+        # package importable. torch and torchvision must come from the same
+        # index (see docs.yml).
+        pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+        pip install -e ".[test]" ruff mypy
+
+    - name: Ruff lint
+      run: python -m ruff check rapidtools tests
+
+    - name: Ruff format check
+      run: python -m ruff format --check rapidtools tests
+
+    - name: Mypy
+      run: python -m mypy rapidtools
+
   test:
     name: ${{ matrix.os }} / Py ${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
@@ -28,7 +59,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        # We use quotes ".[test]" to ensure shells (like zsh or PowerShell) 
+        # We use quotes ".[test]" to ensure shells (like zsh or PowerShell)
         # don't misinterpret the brackets.
         pip install -e ".[test]"
 
@@ -37,10 +68,10 @@ jobs:
       run: |
         # Run pytest and save output:
         pytest --cov=rapidtools | tee coverage_output.txt
-        
+
         # Extract the coverage number:
         COVERAGE=$(grep "TOTAL" coverage_output.txt | awk '{print $NF}' | sed 's/%//')
-        
+
         # Save to env var:
         echo "COVERAGE=$COVERAGE" >> $GITHUB_ENV
 
@@ -53,7 +84,7 @@ jobs:
         filename: coverage.json
         label: Coverage
         message: ${{ env.COVERAGE }}%
-        
+
         # --- Color Range Configuration ---
         # The number to evaluate (actual code coverage)
         valColorRange: ${{ env.COVERAGE }}

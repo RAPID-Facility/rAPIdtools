@@ -81,6 +81,7 @@ from shapely.affinity import rotate as shapely_rotate
 from shapely.geometry import LineString, Point, Polygon, box
 from shapely.strtree import STRtree
 
+from rapidtools.config import MaskType
 from rapidtools.constants import EARTH_RADIUS_KM, LATITUDE_SPACING_KM
 from rapidtools.core import (
     ImageAsset,
@@ -702,7 +703,7 @@ def find_best_panos(
     sorted_angles = sorted(target_angles)
 
     # 7. Ray matching & occlusion check:
-    results_map = {}
+    results_map: dict[str, ImageAsset | None] = {}
     raw_results_map = {}  # Geometric bests, ignoring occlusion
     axis_map = {
         0.0: 'major_pos',
@@ -1305,7 +1306,7 @@ def crop_panorama_to_asset(
     mask_data = None
     mask_strip = None
     if vertical_crop_mode == 'smart':
-        mask_data = pano_image.load_mask('semantic')
+        mask_data = pano_image.load_mask(MaskType.SEMANTIC)
 
     # Get the geometry for the asset and process it into a polygon of
     # appropriate type:

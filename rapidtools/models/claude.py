@@ -60,7 +60,9 @@ from rapidtools.config import get_configured_session
 from .api_base import (
     API_REQUEST_TIMEOUT,
     BaseAPIInferenceModel,
+    api_session,
     catalog_ids,
+    is_retryable_status,
     resolve_api_key,
 )
 from .base import GenerationConfig, ModelOutput
@@ -241,8 +243,8 @@ class ClaudeInference(BaseAPIInferenceModel):
     def _build_payload(
         self,
         user_content: list[dict[str, Any]],
-        temperature: float,
-        max_tokens: int,
+        temperature: float | None,
+        max_tokens: int | None,
         json_mode: bool,
         system_instruction: str | None = None,
     ) -> dict[str, Any]:
@@ -250,9 +252,10 @@ class ClaudeInference(BaseAPIInferenceModel):
         payload: dict[str, Any] = {
             'model': self.model_id,
             'messages': [{'role': 'user', 'content': user_content}],
-            'max_tokens': max_tokens,
         }
-        if self.supports_temperature(self.model_id):
+        if max_tokens is not None:
+            payload['max_tokens'] = max_tokens
+        if temperature is not None and self.supports_temperature(self.model_id):
             payload['temperature'] = temperature
 
         # Anthropic puts the system prompt at the root, not in messages.
@@ -296,6 +299,7 @@ class ClaudeInference(BaseAPIInferenceModel):
         temperature: float | None = None,
         max_tokens: int | None = None,
         config: GenerationConfig | None = None,
+        **kwargs: Any,
     ) -> ModelOutput | None:
         """
         Send images and a prompt to the Messages API.
@@ -311,6 +315,7 @@ class ClaudeInference(BaseAPIInferenceModel):
             max_tokens: Per-call output-token limit override.
             config: A :class:`~rapidtools.models.GenerationConfig`; explicit
                 keyword arguments take precedence over it.
+            **kwargs: Ignored; accepted for interface compatibility.
 
         Returns:
             ModelOutput | None: The response text and raw JSON, or ``None``
@@ -368,7 +373,7 @@ class ClaudeInference(BaseAPIInferenceModel):
         session_to_use = self.session
         should_close_session = False
         if max_retries is not None:
-            session_to_use = get_configured_session(retries=max_retries)
+            session_to_use = api_session(max_retries)
             session_to_use.headers.update(self.session.headers)
             should_close_session = True
 
@@ -391,11 +396,11 @@ class ClaudeInference(BaseAPIInferenceModel):
             stop_reason = result_json.get('stop_reason')
             if stop_reason == 'refusal':
                 details = result_json.get('stop_details') or {}
-                logger.warning(
-                    f'{log_ctx} Request refused by Claude '
-                    f'(category: {details.get("category")}).'
+                reason = (
+                    f'Request refused by Claude (category: {details.get("category")}).'
                 )
-                return None
+                logger.warning(f'{log_ctx} {reason}')
+                return ModelOutput.failure(reason, raw_response=result_json)
             if stop_reason == 'max_tokens':
                 logger.warning(f'{log_ctx} Response truncated due to max_tokens limit.')
 
@@ -408,7 +413,10 @@ class ClaudeInference(BaseAPIInferenceModel):
         except RetryError:
             logger.error(f'{log_ctx} Max retries exceeded.')
         except HTTPError as e:
-            logger.error(f'{log_ctx} HTTP Error: {e.response.status_code}')
+            status = e.response.status_code if e.response is not None else None
+            logger.error(f'{log_ctx} HTTP Error: {status}')
+            if status is not None and not is_retryable_status(status):
+                return ModelOutput.failure(f'HTTP {status}', retryable=False)
         except Exception as e:  # noqa: BLE001 - surfaced as a failed asset
             logger.error(f'{log_ctx} Unexpected error: {e}')
         finally:

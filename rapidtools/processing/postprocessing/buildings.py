@@ -67,16 +67,16 @@ from typing import Any
 import networkx as nx
 import numpy as np
 import pyproj
-import rasterio.features
-from rasterio.transform import from_bounds
-from shapely.geometry import LineString, MultiPolygon, Polygon, shape
+from shapely.geometry import LineString, MultiPolygon, Polygon
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import split, unary_union
 from shapely.ops import transform as shapely_transform
 
 from rapidtools.core import PhysicalAsset, PhysicalAssetCollection, raise_if_cancelled
+from rapidtools.data_sources.orthomosaic_reader import PatchGeoref
 from rapidtools.processing.image_segmenters import SAM3ImageSegmenter
 from rapidtools.processing.step import Stage
+from rapidtools.processing.vectorize import mask_to_wgs84_polygons
 
 logger = logging.getLogger(__name__)
 
@@ -609,10 +609,16 @@ class BuildingRegularizer:
                 Assets that have been run through ``SAM3ImageSegmenter`` and
                 therefore carry ``'sam3_masks'`` in their attributes.
 
+        Masks are vectorized in the crop's own pixel grid using the
+        ``'native_georef'`` property written by ``AerialImageryExtractor``
+        and reprojected to WGS84; crops that only carry ``'wgs84_bounds'``
+        fall back to that envelope, which is exact only for north-up WGS84
+        rasters.
+
         Returns:
             PhysicalAssetCollection:
                 Newly created refined assets. Assets without masks, without
-                ``'wgs84_bounds'`` on their images, or whose masks fail the
+                georeferencing on their images, or whose masks fail the
                 filters are dropped.
         """
         refined_collection = PhysicalAssetCollection()
@@ -638,36 +644,34 @@ class BuildingRegularizer:
             valid_instances = []
 
             for img_asset in asset.image_assets:
+                if img_asset.id is None:
+                    continue
                 masks = sam3_masks_dict.get(img_asset.id)
                 if masks is None or len(masks) == 0:
                     continue
 
                 wgs84_bounds = img_asset.properties.get('wgs84_bounds')
-                if not wgs84_bounds:
+                georef = None
+                georef_dict = img_asset.properties.get('native_georef')
+                if georef_dict:
+                    try:
+                        georef = PatchGeoref.from_dict(georef_dict)
+                    except (KeyError, TypeError, ValueError) as e:
+                        logger.warning(
+                            f"Ignoring unreadable 'native_georef' on image "
+                            f"'{img_asset.id}': {e}"
+                        )
+                if georef is None and not wgs84_bounds:
                     continue
-
-                min_lon, min_lat, max_lon, max_lat = wgs84_bounds
 
                 masks = np.asarray(masks)
                 if masks.ndim == 2:
                     masks = masks[np.newaxis, ...]
 
-                height, width = masks.shape[-2:]
-                transform = from_bounds(
-                    min_lon, min_lat, max_lon, max_lat, width, height
-                )
-
                 for instance_mask in masks:
-                    binary_mask = np.squeeze(instance_mask > 0.5).astype(np.uint8)
-                    instance_parts = []
-
-                    for geom_dict, val in rasterio.features.shapes(
-                        binary_mask, transform=transform
-                    ):
-                        if val == 1:
-                            poly = shape(geom_dict)
-                            if poly.is_valid and not poly.is_empty:
-                                instance_parts.append(poly)
+                    instance_parts = mask_to_wgs84_polygons(
+                        instance_mask, georef=georef, wgs84_bounds=wgs84_bounds
+                    )
 
                     if not instance_parts:
                         continue

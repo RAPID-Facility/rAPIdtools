@@ -355,11 +355,12 @@ class HFVisionInference(BaseLocalInferenceModel):
             max_tokens=kwargs.get('max_tokens'),
         )
         temperature = resolved.temperature
+        do_sample = temperature is not None and temperature > 0.0
         gen: dict[str, Any] = {
             'max_new_tokens': resolved.max_tokens,
-            'do_sample': temperature > 0.0,
+            'do_sample': do_sample,
         }
-        if temperature > 0.0:
+        if do_sample:
             gen['temperature'] = temperature
         return gen
 
@@ -463,11 +464,12 @@ class HFVisionInference(BaseLocalInferenceModel):
             for imgs, prompt in zip(batch_image_inputs, batch_prompts, strict=True)
         ]
         valid = [i for i, m in enumerate(messages_batch) if m is not None]
+        valid_messages = [m for m in messages_batch if m is not None]
         results: list[ModelOutput | None] = [None] * len(messages_batch)
         if not valid:
             return results
         try:
-            texts = self._generate([messages_batch[i] for i in valid], kwargs)
+            texts = self._generate(valid_messages, kwargs)
         except Exception as exc:  # noqa: BLE001
             logger.error(f'Batch inference failed for {self.model_id}: {exc}')
             if len(valid) > 1:

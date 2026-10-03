@@ -25,10 +25,10 @@ format:  ## Apply Ruff fixes and formatting
 	$(PYTHON) -m ruff check $(SRC) --fix
 	$(PYTHON) -m ruff format $(SRC)
 
-typecheck:  ## Static type check of the package (advisory: not yet clean, so not part of `check`)
+typecheck:  ## Static type check of the package (mypy; part of `check` and CI)
 	$(PYTHON) -m mypy rapidtools
 
-check: lint test  ## What a pull request must pass: lint and tests
+check: lint typecheck test  ## What a pull request must pass: lint, type check and tests
 
 test:  ## Run the test suite (coverage summary comes from pyproject's pytest options)
 	$(PYTHON) -m pytest

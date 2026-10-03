@@ -66,6 +66,7 @@ Detection, segmentation and regularization
    SAM3ImageSegmenter
    BuildingRegularizer
    RoadwayRegularizer
+   vectorize.mask_to_wgs84_polygons
 
 Provider-specific analyzers
 ---------------------------
@@ -147,6 +148,7 @@ Data sources
    :nosignatures:
 
    OrthomosaicReader
+   orthomosaic_reader.PatchGeoref
    GoogleAerialImageExtractor
    BingAerialImageExtractor
    GoogleStreetViewClient
@@ -168,6 +170,7 @@ Datasets, configuration and authentication
    config.configure_logging
    config.get_configured_session
    config.resolve_alias
+   models.api_base.api_session
    auth.login
    auth.ensure_huggingface_login
 

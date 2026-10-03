@@ -65,7 +65,14 @@ import os
 from abc import abstractmethod
 from pathlib import Path
 
-from rapidtools.config import REQUESTS_TIMEOUT_VAL, get_configured_session
+import requests
+
+from rapidtools.config import (
+    API_RETRY_METHODS,
+    API_RETRY_STATUSES,
+    REQUESTS_TIMEOUT_VAL,
+    get_configured_session,
+)
 
 from .base import BaseInferenceModel
 
@@ -74,6 +81,42 @@ logger = logging.getLogger(__name__)
 # Vision requests carry images and long prompts; give providers more time than
 # the general-purpose request timeout.
 API_REQUEST_TIMEOUT = 60.0
+
+
+def is_retryable_status(status: int) -> bool:
+    """
+    Return whether an HTTP status describes a transient provider failure.
+
+    Rate limits, timeouts, conflicts and every 5xx are worth another attempt
+    later; any other 4xx (bad request, authentication, payload too large,
+    model not found, ...) will fail the same way again.
+
+    Example:
+        >>> is_retryable_status(429), is_retryable_status(503)
+        (True, True)
+        >>> is_retryable_status(400), is_retryable_status(404)
+        (False, False)
+    """
+    return status in (408, 409, 425, 429) or status >= 500
+
+
+def api_session(retries: int = 3) -> requests.Session:
+    """
+    Return a session with the retry policy used for provider API calls.
+
+    POSTs are re-sent automatically only after :data:`API_RETRY_STATUSES`
+    (429, 503, 529): statuses that guarantee the provider did not process,
+    and therefore did not bill, the request. Other failures are reported to
+    the caller instead of being silently repeated.
+
+    Args:
+        retries: Total retries per request.
+    """
+    return get_configured_session(
+        retries=retries,
+        allowed_methods=API_RETRY_METHODS,
+        status_forcelist=API_RETRY_STATUSES,
+    )
 
 
 def resolve_api_key(
@@ -209,7 +252,7 @@ class BaseAPIInferenceModel(BaseInferenceModel):
         self.max_retries = max_retries
         self.max_workers = max_workers
         self.timeout = timeout
-        self.session = get_configured_session(retries=self.max_retries)
+        self.session = api_session(self.max_retries)
 
     @classmethod
     @abstractmethod

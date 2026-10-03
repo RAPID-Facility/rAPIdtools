@@ -83,7 +83,7 @@ import re
 import smtplib
 import ssl
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from email.message import EmailMessage
 from typing import Any
@@ -123,12 +123,12 @@ class NotificationConfig:
     public_url: str = ''
 
     @classmethod
-    def from_env(cls, env: dict[str, str] | None = None, **overrides: Any):
+    def from_env(cls, env: Mapping[str, str] | None = None, **overrides: Any):
         """
         Read the ``RAPIDTOOLS_SMTP_*`` variables, then apply ``overrides``.
 
         Args:
-            env (dict[str, str] | None): Environment to read; ``os.environ``
+            env (Mapping[str, str] | None): Environment to read; ``os.environ``
                 by default.
             **overrides: Field values that win over the environment (falsy
                 values are ignored so CLI defaults do not mask variables).
@@ -136,15 +136,15 @@ class NotificationConfig:
         Returns:
             NotificationConfig: The merged configuration.
         """
-        env = os.environ if env is None else env
+        source: Mapping[str, str] = os.environ if env is None else env
         values: dict[str, Any] = {
-            'smtp_host': env.get('RAPIDTOOLS_SMTP_HOST', ''),
-            'smtp_port': int(env.get('RAPIDTOOLS_SMTP_PORT') or 0) or 0,
-            'smtp_user': env.get('RAPIDTOOLS_SMTP_USER', ''),
-            'smtp_password': env.get('RAPIDTOOLS_SMTP_PASSWORD', ''),
-            'smtp_from': env.get('RAPIDTOOLS_SMTP_FROM', ''),
-            'smtp_ssl': env.get('RAPIDTOOLS_SMTP_SSL', '') in ('1', 'true', 'yes'),
-            'public_url': env.get('RAPIDTOOLS_PUBLIC_URL', ''),
+            'smtp_host': source.get('RAPIDTOOLS_SMTP_HOST', ''),
+            'smtp_port': int(source.get('RAPIDTOOLS_SMTP_PORT') or 0) or 0,
+            'smtp_user': source.get('RAPIDTOOLS_SMTP_USER', ''),
+            'smtp_password': source.get('RAPIDTOOLS_SMTP_PASSWORD', ''),
+            'smtp_from': source.get('RAPIDTOOLS_SMTP_FROM', ''),
+            'smtp_ssl': source.get('RAPIDTOOLS_SMTP_SSL', '') in ('1', 'true', 'yes'),
+            'public_url': source.get('RAPIDTOOLS_PUBLIC_URL', ''),
         }
         for key, value in overrides.items():
             if value:
@@ -290,6 +290,7 @@ class Notifier:
         )
         message['To'] = to
         message.set_content(summary.text)
+        client: smtplib.SMTP
         if cfg.smtp_ssl:
             client = smtplib.SMTP_SSL(
                 cfg.smtp_host,

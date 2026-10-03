@@ -42,6 +42,8 @@ from requests.adapters import HTTPAdapter
 
 # Import everything relevant from your new config
 from rapidtools.config import (
+    API_RETRY_METHODS,
+    API_RETRY_STATUSES,
     DATE_FORMAT,
     DEFAULT_ALLOWED_METHODS,
     DEFAULT_BACKOFF,
@@ -97,7 +99,12 @@ def test_request_settings_constants():
     assert 429 in DEFAULT_STATUS_FORCELIST
     assert 500 in DEFAULT_STATUS_FORCELIST
     assert 'GET' in DEFAULT_ALLOWED_METHODS
-    assert 'POST' in DEFAULT_ALLOWED_METHODS
+    # POST is never retried blindly: a request the server already processed
+    # (and billed) must not be re-sent. API clients opt in for the statuses
+    # that guarantee the provider did not process the request:
+    assert 'POST' not in DEFAULT_ALLOWED_METHODS
+    assert 'POST' in API_RETRY_METHODS
+    assert API_RETRY_STATUSES == [429, 503, 529]
 
 
 def test_default_colormaps():

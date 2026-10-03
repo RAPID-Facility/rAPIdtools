@@ -250,7 +250,7 @@ class LlamaVisionInference(BaseLocalInferenceModel):
                     **inputs,
                     max_new_tokens=final_tokens,
                     temperature=final_temp,
-                    do_sample=(final_temp > 0.0),
+                    do_sample=(final_temp is not None and final_temp > 0.0),
                 )
             # Keep only the newly generated tokens.
             generated_ids = output_ids[0][inputs['input_ids'].shape[1] :]

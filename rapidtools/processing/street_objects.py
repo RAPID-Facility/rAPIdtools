@@ -289,7 +289,10 @@ def _camera_pose(props: dict[str, Any]) -> tuple[float, float, float] | None:
             break
     if lon is None:
         lon, lat = props.get('longitude'), props.get('latitude')
-    compass = props.get('computed_compass_angle', props.get('compass_angle'))
+    # A key present with a null value must fall through to the raw angle:
+    compass = props.get('computed_compass_angle')
+    if compass is None:
+        compass = props.get('compass_angle')
     if lon is None or lat is None or compass is None:
         return None
     return float(lon), float(lat), float(compass) % 360.0
@@ -892,12 +895,21 @@ class MapillaryFeatureExtractor:
         self, cls: str, members: list[Observation], index: int
     ) -> PhysicalAsset:
         """Position and describe one object from its sightings."""
-        project, unproject = local_projection(members[0].lon, members[0].lat)
-        rays = {}
+        # Every member passed ``localize``, which sets all four of these:
+        rays: dict[str, tuple[float, float, float]] = {}
+        lons: list[float] = []
+        lats: list[float] = []
+        ranges: list[float] = []
         for o in members:
+            if o.lon is None or o.lat is None or o.bearing is None or o.range_m is None:
+                raise ValueError(f'Observation {o.image_id!r} has not been localized.')
             rays.setdefault(o.image_id, (o.camera_lon, o.camera_lat, o.bearing))
-        lon = sum(o.lon for o in members) / len(members)
-        lat = sum(o.lat for o in members) / len(members)
+            lons.append(o.lon)
+            lats.append(o.lat)
+            ranges.append(o.range_m)
+        project, unproject = local_projection(lons[0], lats[0])
+        lon = sum(lons) / len(members)
+        lat = sum(lats) / len(members)
         localization, rms = 'single_view', None
         if len(rays) >= 2:
             fix = intersect_bearings(
@@ -925,7 +937,7 @@ class MapillaryFeatureExtractor:
             'n_observations': len(members),
             'n_images': len(rays),
             'localization': localization,
-            'min_range_m': round(min(o.range_m for o in members), 1),
+            'min_range_m': round(min(ranges), 1),
             'sequence_ids': sorted({o.sequence_id for o in members if o.sequence_id}),
             'observations': [o.to_dict() for o in members],
         }

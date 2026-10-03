@@ -112,12 +112,59 @@ minor releases may change public APIs.
 - `DetectionSettings.detect_in_recon_imagery` is kept in sync with the new
   `basemap` field (`'bing'`, `'google'` or `'recon'`); `DetectionResult`
   reports which `basemap` was used.
+- `get_configured_session()` takes `allowed_methods` and `status_forcelist`;
+  its default no longer retries POST. API clients use
+  `rapidtools.models.api_base.api_session()`, which retries POST only on
+  429, 503 and 529.
+- `ModelOutput` gained `error`, `retryable`, `failed` and
+  `ModelOutput.failure()`. Transient failures are still a plain `None` from
+  `run_inference`; provider rejections now come back as a failed output.
+- CI runs `ruff check`, `ruff format --check` and `mypy` in a lint job, and
+  `make check` includes `typecheck`. The package type-checks clean.
 
 ### Removed
 
 - `examples/mapillary_vehicle_detection.py`, superseded by the example above.
   Its geometry lives on in `street_localization`; its main flaw, counting the
   survey vehicle as a detection in every frame, is fixed by the ego filter.
+
+### Fixed
+
+- Image assets attached to a `PhysicalAsset` survive GeoJSON and shapefile
+  round trips. `to_geojson_feature` serialized the private image caches, so
+  `from_geojson_feature` rejected every image with a warning, and
+  `PhysicalAssetCollection.from_geojson` never rehydrated images at all.
+  `ImageAsset.to_dict()` / `from_dict()` are the serialization pair both
+  loaders use. `to_shapefile` writes the images and the original names of
+  truncated columns to a `<name>.rapidtools.json` sidecar (the DBF keeps an
+  `n_images` count instead of 254 characters of cut-off JSON), which
+  `from_shapefile` reads back into `image_assets` and full attribute names.
+- SAM 3 masks from `SAM3OrthoFeatureExtractor` and `BuildingRegularizer` are
+  vectorized in the raster's own pixel grid and reprojected to WGS84
+  (`rapidtools.processing.vectorize.mask_to_wgs84_polygons`,
+  `OrthomosaicReader.generate_tiles(return_georef=True)` and
+  `get_image_patch(return_georef=True)`, and the `'native_georef'` image
+  property written by `AerialImageryExtractor`). Mapping pixels through the
+  tile's lon/lat envelope stretched and skewed polygons on projected or
+  rotated orthomosaics; on a 20° rotated UTM test raster the old polygons
+  reached 0.56 IoU against ground truth, the new ones 1.00.
+- Provider POSTs are no longer re-sent automatically after 500/502/504, which
+  could double-bill a request the provider had already processed. Refusals,
+  safety blocks and 4xx responses are returned with `retryable=False`, and
+  `AssetAnalyzer` reports them as failed without pausing every worker for the
+  rate-limit cooldown or re-sending them in the retry passes.
+- The Mapillary access token no longer appears in logged tile and Graph API
+  error messages.
+- Web Mercator pixel and tile indices are clamped at longitude 180 and the
+  Mercator latitude limit instead of landing one past the grid.
+- `ImageAsset.load_mask(custom_path=...)` reads the requested file instead of
+  returning the mask cached for the default path.
+- `ImageAsset.save_interactive_html` escapes labels in the generated markup
+  and JavaScript.
+- A `computed_compass_angle` present with a null value falls back to
+  `compass_angle` instead of discarding the frame.
+- `from_shapefile` logs the records it skips for unreadable geometry instead
+  of dropping them silently.
 
 ## [0.2.0] - 2026-09-28
 

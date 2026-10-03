@@ -827,9 +827,9 @@ class PromptAssistant:
             spec = PromptSpec.from_dict(kwargs.get('spec'))
             return {'spec': self.refine(spec, kwargs.get('instruction', '')).to_dict()}
         if action == 'review':
-            spec = kwargs.get('spec')
+            spec_data = kwargs.get('spec')
             text = kwargs.get('prompt_text') or (
-                assemble_prompt(PromptSpec.from_dict(spec)) if spec else ''
+                assemble_prompt(PromptSpec.from_dict(spec_data)) if spec_data else ''
             )
             return {'text': self.review(text)}
         if action == 'indicators':

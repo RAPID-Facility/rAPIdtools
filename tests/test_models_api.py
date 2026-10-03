@@ -298,7 +298,8 @@ def test_openai_compat_error_paths(requests_mock, image, caplog):
     url = f'{OPENAI_BASE_URL}/chat/completions'
 
     requests_mock.post(url, json=_chat_response('x', finish='content_filter'))
-    assert model.run_inference(image, 'p') is None
+    filtered = model.run_inference(image, 'p')
+    assert filtered.failed and not filtered.retryable
 
     with caplog.at_level('WARNING'):
         requests_mock.post(url, json=_chat_response('trunc', finish='length'))
@@ -328,7 +329,8 @@ def test_openai_compat_error_paths(requests_mock, image, caplog):
 
     requests_mock.post(url, status_code=400, json={'error': {'message': 'bad request'}})
     with caplog.at_level('ERROR'):
-        assert model.run_inference(image, 'p') is None
+        rejected = model.run_inference(image, 'p')
+    assert rejected.failed and not rejected.retryable and rejected.text is None
     assert 'bad request' in caplog.text
 
     requests_mock.post(url, status_code=500, text='not json')
@@ -596,7 +598,8 @@ def test_claude_error_paths(requests_mock, image, caplog):
         json=_claude_response([], stop='refusal', stop_details={'category': 'cyber'}),
     )
     with caplog.at_level('WARNING'):
-        assert model.run_inference(image, 'p') is None
+        refused = model.run_inference(image, 'p')
+    assert refused.failed and not refused.retryable
     assert 'refused' in caplog.text
 
     requests_mock.post(
@@ -613,7 +616,8 @@ def test_claude_error_paths(requests_mock, image, caplog):
 
     requests_mock.post(url, status_code=400, json={'error': {'message': 'too big'}})
     with caplog.at_level('ERROR'):
-        assert model.run_inference(image, 'p') is None
+        rejected = model.run_inference(image, 'p')
+    assert rejected.failed and not rejected.retryable
     assert 'too big' in caplog.text
     requests_mock.post(url, status_code=502, text='gateway')
     assert model.run_inference(image, 'p') is None
@@ -749,11 +753,13 @@ def test_gemini_error_paths(requests_mock, image, caplog):
 
     requests_mock.post(url, json={'promptFeedback': {'blockReason': 'SAFETY'}})
     with caplog.at_level('WARNING'):
-        assert model.run_inference(image, 'p') is None
+        blocked = model.run_inference(image, 'p')
+    assert blocked.failed and not blocked.retryable
     assert 'Blocked by safety filters' in caplog.text
 
     requests_mock.post(url, json={'candidates': [{'finishReason': 'MAX_TOKENS'}]})
-    assert model.run_inference(image, 'p') is None
+    halted = model.run_inference(image, 'p')
+    assert halted.failed and not halted.retryable
     requests_mock.post(
         url, json={'candidates': [{'finishReason': 'STOP', 'content': {'parts': []}}]}
     )
@@ -765,7 +771,8 @@ def test_gemini_error_paths(requests_mock, image, caplog):
 
     requests_mock.post(url, status_code=400, text='{"error": "bad"}')
     with caplog.at_level('ERROR'):
-        assert model.run_inference(image, 'p') is None
+        rejected = model.run_inference(image, 'p')
+    assert rejected.failed and not rejected.retryable
     assert 'HTTP Error' in caplog.text
     requests_mock.post(url, exc=requests.exceptions.RetryError)
     assert model.run_inference(image, 'p') is None

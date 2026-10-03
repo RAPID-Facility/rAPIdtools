@@ -73,7 +73,9 @@ from rapidtools.config import get_configured_session
 from .api_base import (
     API_REQUEST_TIMEOUT,
     BaseAPIInferenceModel,
+    api_session,
     catalog_ids,
+    is_retryable_status,
     resolve_api_key,
 )
 from .base import GenerationConfig, ModelOutput
@@ -299,17 +301,18 @@ class BaseOpenAICompatibleInference(BaseAPIInferenceModel):
     def _build_payload(
         self,
         messages: list[dict[str, Any]],
-        temperature: float,
-        max_tokens: int,
+        temperature: float | None,
+        max_tokens: int | None,
         json_mode: bool,
     ) -> dict[str, Any]:
         """Build the JSON body for ``/chat/completions``."""
         payload: dict[str, Any] = {
             'model': self.model_id,
             'messages': messages,
-            self.MAX_TOKENS_FIELD: max_tokens,
         }
-        if self._supports_temperature(self.model_id):
+        if max_tokens is not None:
+            payload[self.MAX_TOKENS_FIELD] = max_tokens
+        if temperature is not None and self._supports_temperature(self.model_id):
             payload['temperature'] = temperature
         if json_mode:
             payload['response_format'] = {'type': 'json_object'}
@@ -333,9 +336,15 @@ class BaseOpenAICompatibleInference(BaseAPIInferenceModel):
                 part.get('text', '') for part in content if isinstance(part, dict)
             )
 
+        refusal = (choice.get('message') or {}).get('refusal')
+        if refusal:
+            reason = f'Request refused by {self.PROVIDER_NAME}: {refusal}'
+            logger.warning(f'{log_ctx} {reason}')
+            return ModelOutput.failure(reason, raw_response=result_json)
         if finish_reason == 'content_filter':
-            logger.warning(f'{log_ctx} Blocked by {self.PROVIDER_NAME} content filter.')
-            return None
+            reason = f'Blocked by {self.PROVIDER_NAME} content filter.'
+            logger.warning(f'{log_ctx} {reason}')
+            return ModelOutput.failure(reason, raw_response=result_json)
         if finish_reason == 'length':
             logger.warning(f'{log_ctx} Response truncated due to max_tokens limit.')
 
@@ -351,6 +360,7 @@ class BaseOpenAICompatibleInference(BaseAPIInferenceModel):
         temperature: float | None = None,
         max_tokens: int | None = None,
         config: GenerationConfig | None = None,
+        **kwargs: Any,
     ) -> ModelOutput | None:
         """
         Send images and a prompt to ``/chat/completions``.
@@ -365,6 +375,7 @@ class BaseOpenAICompatibleInference(BaseAPIInferenceModel):
             max_tokens: Per-call output-token limit override.
             config: A :class:`~rapidtools.models.GenerationConfig`; explicit
                 keyword arguments take precedence over it.
+            **kwargs: Ignored; accepted for interface compatibility.
 
         Returns:
             ModelOutput | None: The response text and raw JSON, or ``None``
@@ -405,7 +416,7 @@ class BaseOpenAICompatibleInference(BaseAPIInferenceModel):
         session_to_use = self.session
         should_close_session = False
         if max_retries is not None:
-            session_to_use = get_configured_session(retries=max_retries)
+            session_to_use = api_session(max_retries)
             session_to_use.headers.update(self.session.headers)
             should_close_session = True
 
@@ -424,7 +435,10 @@ class BaseOpenAICompatibleInference(BaseAPIInferenceModel):
         except RetryError:
             logger.error(f'{log_ctx} Max retries exceeded.')
         except HTTPError as e:
-            logger.error(f'{log_ctx} HTTP Error: {e.response.status_code}')
+            status = e.response.status_code if e.response is not None else None
+            logger.error(f'{log_ctx} HTTP Error: {status}')
+            if status is not None and not is_retryable_status(status):
+                return ModelOutput.failure(f'HTTP {status}', retryable=False)
         except Exception as e:  # noqa: BLE001 - surfaced as a failed asset
             logger.error(f'{log_ctx} Unexpected error: {e}')
         finally:

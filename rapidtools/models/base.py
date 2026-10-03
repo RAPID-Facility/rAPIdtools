@@ -98,7 +98,7 @@ class GenerationConfig:
             >>> GenerationConfig(temperature=0.4).merged(max_tokens=5).max_tokens
             5
         """
-        values = {
+        values: dict[str, Any] = {
             'temperature': self.temperature,
             'max_tokens': self.max_tokens,
             'json_mode': self.json_mode,
@@ -142,6 +142,13 @@ class ModelOutput:
         bounding_boxes: Detected boxes as ``[x0, y0, x1, y1]`` lists.
         raw_response: The provider's raw JSON or the raw tensors/metadata of
             a local model, kept for debugging.
+        error: Why the request produced no output (``None`` on success).
+            Transient failures (rate limits, timeouts) are still reported as
+            a plain ``None`` return from ``run_inference``; this field marks
+            responses the provider actively rejected.
+        retryable: Whether the same request could succeed later. Provider
+            rejections (refusals, safety blocks, 4xx errors) set it to
+            ``False`` so callers do not pause and retry them.
 
     Example:
         >>> from rapidtools.models.base import ModelOutput
@@ -150,12 +157,31 @@ class ModelOutput:
         False
         >>> out.has_bounding_boxes
         True
+        >>> ModelOutput.failure('refused').retryable
+        False
     """
 
     text: str | None = None
     masks: Any | None = None
     bounding_boxes: list | None = None
     raw_response: Any | None = None
+    #: Why the request produced no usable output; ``None`` on success.
+    error: str | None = None
+    #: Whether sending the same request again could succeed. ``False`` for
+    #: provider rejections (refusals, safety blocks, 4xx errors).
+    retryable: bool = True
+
+    @classmethod
+    def failure(
+        cls, error: str, *, retryable: bool = False, raw_response: Any | None = None
+    ) -> ModelOutput:
+        """Build an output that records why the request failed."""
+        return cls(error=error, retryable=retryable, raw_response=raw_response)
+
+    @property
+    def failed(self) -> bool:
+        """``True`` when the request failed (see :attr:`error`)."""
+        return self.error is not None
 
     @property
     def has_text(self) -> bool:
@@ -381,9 +407,12 @@ class BaseInferenceModel(ABC):
             asset_id: str, img_inputs: Any
         ) -> tuple[str, str, ModelOutput | str]:
             result = self.run_inference(img_inputs, prompt_str, **kwargs)
-            if result:
+            if result is not None and not result.failed:
                 return asset_id, 'ok', result
-            return asset_id, 'failed', 'Inference failed or was blocked.'
+            message = (result.error if result is not None else None) or (
+                'Inference failed or was blocked.'
+            )
+            return asset_id, 'failed', message
 
         asset_list = list(asset_inputs)
         if not asset_list:

@@ -60,7 +60,9 @@ from rapidtools.config import get_configured_session
 from .api_base import (
     API_REQUEST_TIMEOUT,
     BaseAPIInferenceModel,
+    api_session,
     catalog_ids,
+    is_retryable_status,
     resolve_api_key,
 )
 from .base import GenerationConfig, ModelOutput
@@ -227,20 +229,24 @@ class GeminiInference(BaseAPIInferenceModel):
     def _build_payload(
         self,
         contents_parts: list[dict[str, Any]],
-        temperature: float,
-        max_tokens: int,
+        temperature: float | None,
+        max_tokens: int | None,
         json_mode: bool,
         system_instruction: str | None = None,
     ) -> dict[str, Any]:
         """Construct the ``generateContent`` request body."""
+        generation_config: dict[str, Any] = {}
+        if temperature is not None:
+            generation_config['temperature'] = temperature
+        if max_tokens is not None:
+            generation_config['maxOutputTokens'] = max_tokens
+        generation_config['responseMimeType'] = (
+            'application/json' if json_mode else 'text/plain'
+        )
         payload: dict[str, Any] = {
             'contents': [{'parts': contents_parts}],
             'safetySettings': self.SAFETY_SETTINGS,
-            'generationConfig': {
-                'temperature': temperature,
-                'maxOutputTokens': max_tokens,
-                'responseMimeType': 'application/json' if json_mode else 'text/plain',
-            },
+            'generationConfig': generation_config,
         }
         system = system_instruction or self.system_instruction
         if system:
@@ -266,6 +272,7 @@ class GeminiInference(BaseAPIInferenceModel):
         temperature: float | None = None,
         max_tokens: int | None = None,
         config: GenerationConfig | None = None,
+        **kwargs: Any,
     ) -> ModelOutput | None:
         """
         Send images and a prompt to ``generateContent``.
@@ -281,6 +288,7 @@ class GeminiInference(BaseAPIInferenceModel):
             max_tokens: Per-call output-token limit override.
             config: A :class:`~rapidtools.models.GenerationConfig`; explicit
                 keyword arguments take precedence over it.
+            **kwargs: Ignored; accepted for interface compatibility.
 
         Returns:
             ModelOutput | None: The response text and raw JSON, or ``None``
@@ -333,7 +341,7 @@ class GeminiInference(BaseAPIInferenceModel):
         session_to_use = self.session
         should_close_session = False
         if max_retries is not None:
-            session_to_use = get_configured_session(retries=max_retries)
+            session_to_use = api_session(max_retries)
             should_close_session = True
 
         try:
@@ -349,20 +357,20 @@ class GeminiInference(BaseAPIInferenceModel):
 
             block_reason = result_json.get('promptFeedback', {}).get('blockReason')
             if block_reason:
-                logger.warning(
-                    f'{log_ctx} Blocked by safety filters. Reason: {block_reason}'
-                )
-                return None
+                reason = f'Blocked by safety filters. Reason: {block_reason}'
+                logger.warning(f'{log_ctx} {reason}')
+                return ModelOutput.failure(reason, raw_response=result_json)
 
             candidates = result_json.get('candidates', [])
             if candidates:
                 finish_reason = candidates[0].get('finishReason')
                 if finish_reason != 'STOP':
-                    logger.warning(
-                        f'{log_ctx} Generation halted unexpectedly. '
+                    reason = (
+                        'Generation halted unexpectedly. '
                         f'Finish Reason: {finish_reason}'
                     )
-                    return None
+                    logger.warning(f'{log_ctx} {reason}')
+                    return ModelOutput.failure(reason, raw_response=result_json)
 
             logger.error(f'{log_ctx} Unexpected response format: {result_json}')
             return None
@@ -372,6 +380,9 @@ class GeminiInference(BaseAPIInferenceModel):
         except HTTPError as e:
             body = e.response.text if e.response is not None else ''
             logger.error(f'{log_ctx} HTTP Error: {e} | Response: {body}')
+            status = e.response.status_code if e.response is not None else None
+            if status is not None and not is_retryable_status(status):
+                return ModelOutput.failure(f'HTTP {status}', retryable=False)
         except Exception as e:  # noqa: BLE001 - surfaced as a failed asset
             logger.error(f'{log_ctx} Unexpected error: {e}')
         finally:

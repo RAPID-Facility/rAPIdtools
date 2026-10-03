@@ -49,9 +49,11 @@ merging, batch downloading and metadata export on top of a list of assets.
 from __future__ import annotations
 
 import base64
+import copy
+import html
 import json
 import logging
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from io import BytesIO
@@ -187,6 +189,101 @@ class ImageAsset:
             "<ImageAsset id='img_01' filename='photo.jpg'>"
         """
         return f"<ImageAsset id='{self.id}' filename='{self.filename}'>"
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Serialize the asset to a JSON-friendly dictionary.
+
+        Only the constructor arguments are included; the lazily loaded image
+        and mask caches are not, and ``path`` is written as a string. The
+        result round-trips through :meth:`from_dict` and :func:`json.dumps`.
+
+        Returns:
+            dict[str, Any]: Keyword arguments accepted by :meth:`from_dict`.
+
+        Example:
+            >>> from rapidtools.core import ImageAsset
+            >>> img = ImageAsset(id='a', path='/tmp/a.jpg', allow_missing_file=True)
+            >>> sorted(img.to_dict())  # doctest: +NORMALIZE_WHITESPACE
+            ['allow_missing_file', 'id', 'instance_map', 'path',
+             'properties', 'semantic_map']
+        """
+        return {
+            'id': self.id,
+            'path': str(self.path),
+            'properties': copy.deepcopy(self.properties),
+            'semantic_map': (
+                dict(self.semantic_map) if self.semantic_map is not None else None
+            ),
+            'instance_map': (
+                copy.deepcopy(self.instance_map)
+                if self.instance_map is not None
+                else None
+            ),
+            'allow_missing_file': self.allow_missing_file,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, data: Mapping[str, Any], allow_missing_file: bool | None = None
+    ) -> ImageAsset:
+        """
+        Rebuild an asset from :meth:`to_dict` output or a parsed JSON object.
+
+        Unknown keys (including the private cache fields that older exports
+        contained) are ignored, and mask-map keys that JSON turned into
+        strings are converted back to integers.
+
+        Args:
+            data (Mapping[str, Any]):
+                The serialized asset. ``'path'`` is required.
+            allow_missing_file (bool | None):
+                Whether the file may be absent on disk. ``None`` uses the
+                stored value, defaulting to ``True`` when the dictionary has
+                none: deserialized assets usually describe imagery that lives
+                elsewhere.
+
+        Returns:
+            ImageAsset: The rebuilt asset.
+
+        Raises:
+            ValueError: If ``'path'`` is missing, or the file is missing and
+                ``allow_missing_file`` is ``False``.
+
+        Example:
+            >>> from rapidtools.core import ImageAsset
+            >>> img = ImageAsset.from_dict(
+            ...     {'id': 'a', 'path': '/tmp/a.jpg', 'semantic_map': {'1': 'road'}}
+            ... )
+            >>> img.semantic_map
+            {1: 'road'}
+        """
+        if 'path' not in data or data['path'] in (None, ''):
+            raise ValueError("Image asset dictionary is missing 'path'.")
+
+        def _int_key(key: Any) -> Any:
+            if isinstance(key, str):
+                try:
+                    return int(key)
+                except ValueError:
+                    return key
+            return key
+
+        kwargs: dict[str, Any] = {'path': data['path']}
+        if data.get('id') is not None:
+            kwargs['id'] = str(data['id'])
+        properties = data.get('properties')
+        kwargs['properties'] = (
+            copy.deepcopy(dict(properties)) if isinstance(properties, Mapping) else {}
+        )
+        for key in ('semantic_map', 'instance_map'):
+            value = data.get(key)
+            if isinstance(value, Mapping):
+                kwargs[key] = {_int_key(k): v for k, v in value.items()}
+        if allow_missing_file is None:
+            allow_missing_file = bool(data.get('allow_missing_file', True))
+        kwargs['allow_missing_file'] = allow_missing_file
+        return cls(**kwargs)
 
     @property
     def directory(self) -> Path:
@@ -1018,6 +1115,11 @@ class ImageAsset:
         }
         cache_attr = cache_map.get(valid_type)
 
+        # A mask requested from an explicit path must come from that file,
+        # not from whatever was cached for the default location:
+        if custom_path is not None:
+            force_reload = True
+
         # Return cached if available:
         if cache_attr:
             current_val = getattr(self, cache_attr)
@@ -1302,7 +1404,7 @@ class ImageAsset:
             </head>
             <body>
                 <h2 style="text-align:center">
-                    {self.filename} ({mask_type})
+                    {html.escape(str(self.filename))} ({html.escape(str(mask_type))})
                 </h2>
                 <div class="container">
                     <img src="data:image/jpeg;base64,{img_str}" class="bg-img">
@@ -1377,10 +1479,13 @@ class ImageAsset:
 
                 points_str = ' '.join(points)
 
+                # Labels come from user data: escape them for the attribute,
+                # the JavaScript string literal and the element text:
+                onclick = html.escape(f'alert({json.dumps(tooltip)})', quote=True)
                 html_content += (
                     f'<polygon points="{points_str}" fill="{hex_color}" '
-                    f'fill-opacity="{opacity}" onclick="alert(\'{tooltip}\')">'
-                    f'<title>{label_text}</title></polygon>\n'
+                    f'fill-opacity="{opacity}" onclick="{onclick}">'
+                    f'<title>{html.escape(label_text)}</title></polygon>\n'
                 )
 
         # Create the footer and save:

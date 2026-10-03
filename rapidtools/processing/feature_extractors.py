@@ -78,9 +78,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import rasterio.features
-from rasterio.transform import from_bounds
-from shapely.geometry import shape
 from shapely.ops import unary_union
 from shapely.strtree import STRtree
 from tqdm import tqdm
@@ -89,6 +86,7 @@ from rapidtools.core import PhysicalAsset, PhysicalAssetCollection, raise_if_can
 from rapidtools.data_sources import OrthomosaicReader
 
 from .step import Stage
+from .vectorize import mask_to_wgs84_polygons
 
 logger = logging.getLogger(__name__)
 
@@ -362,28 +360,35 @@ class SAM3OrthoFeatureExtractor:
                 overlap_ratio=self.overlap_ratio,
                 max_missing_data_ratio=self.max_missing_data_ratio,
                 pad_edge_tiles=True,
+                return_georef=True,
             )
 
-            batch_images = []
-            batch_bounds = []
+            batch_images: list = []
+            batch_bounds: list = []
+            batch_georefs: list = []
 
-            for pil_image, wgs84_bounds in tqdm(
+            for pil_image, wgs84_bounds, georef in tqdm(
                 tile_generator, desc=f"Scanning for '{self.prompt}'"
             ):
                 raise_if_cancelled(self.cancel_event, f"scan for '{self.prompt}'")
                 batch_images.append(pil_image)
                 batch_bounds.append(wgs84_bounds)
+                batch_georefs.append(georef)
 
                 if len(batch_images) == self.batch_size:
                     self._process_batch(
-                        batch_images, batch_bounds, raw_polygons, raw_scores
+                        batch_images,
+                        batch_bounds,
+                        raw_polygons,
+                        raw_scores,
+                        batch_georefs,
                     )
-                    batch_images, batch_bounds = [], []
+                    batch_images, batch_bounds, batch_georefs = [], [], []
 
             # Process any remaining images in the final partial batch
             if batch_images:
                 self._process_batch(
-                    batch_images, batch_bounds, raw_polygons, raw_scores
+                    batch_images, batch_bounds, raw_polygons, raw_scores, batch_georefs
                 )
 
         final_collection = PhysicalAssetCollection()
@@ -453,16 +458,17 @@ class SAM3OrthoFeatureExtractor:
         batch_bounds: list,
         raw_polygons: list,
         raw_scores: list | None = None,
+        batch_georefs: list | None = None,
     ) -> None:
         """
         Run inference on one batch of tiles and append polygons to ``raw_polygons``.
 
         The in-memory PIL tiles are written to temporary JPEG files (the model
         API expects paths), inference is run once for the whole batch, and
-        each returned mask instance is vectorized with
-        :func:`rasterio.features.shapes` using an affine transform derived from
-        the tile's WGS84 bounds. Temporary files are always removed, even if
-        inference raises.
+        each returned mask instance is vectorized in the raster's own pixel
+        grid and reprojected to WGS84 (see
+        :func:`~rapidtools.processing.vectorize.mask_to_wgs84_polygons`).
+        Temporary files are always removed, even if inference raises.
 
         Args:
             batch_images (list[PIL.Image.Image]):
@@ -477,6 +483,10 @@ class SAM3OrthoFeatureExtractor:
                 only its largest polygon, and its confidence (``None`` if the
                 model reported none) is appended here in step with
                 ``raw_polygons``.
+            batch_georefs (list[PatchGeoref] | None):
+                Native georeferencing of each tile. When omitted, polygons are
+                mapped through the WGS84 envelope in ``batch_bounds``, which
+                is only exact for north-up WGS84 rasters.
         """
         temp_paths = []
 
@@ -497,8 +507,9 @@ class SAM3OrthoFeatureExtractor:
                 mask_threshold=self.mask_threshold,
             )
 
-            if not outputs or getattr(outputs, 'masks', None) is None:
+            if outputs is None or outputs.masks is None:
                 return
+            output_masks = outputs.masks
 
             raw_response = getattr(outputs, 'raw_response', None)
             scores_per_image = (
@@ -507,7 +518,7 @@ class SAM3OrthoFeatureExtractor:
 
             # 3. Translate pixel masks to geographic polygons
             for image_index, (image_masks, bounds) in enumerate(
-                zip(outputs.masks, batch_bounds, strict=False)
+                zip(output_masks, batch_bounds, strict=False)
             ):
                 if image_masks is None or len(image_masks) == 0:
                     continue
@@ -524,29 +535,18 @@ class SAM3OrthoFeatureExtractor:
                 if image_masks.ndim == 2:
                     image_masks = image_masks[np.newaxis, ...]
 
-                min_lon, min_lat, max_lon, max_lat = bounds
-
-                # Safely grab height and width from the last two dimensions:
-                height, width = image_masks.shape[-2:]
-
-                # Build an affine transform for this specific tile
-                transform = from_bounds(
-                    min_lon, min_lat, max_lon, max_lat, width, height
+                georef = (
+                    batch_georefs[image_index]
+                    if batch_georefs is not None and image_index < len(batch_georefs)
+                    else None
                 )
 
                 for instance_index, instance_mask in enumerate(image_masks):
-                    # Binarize the float/boolean mask
-                    binary_mask = (instance_mask > 0.5).astype(np.uint8)
-
-                    # Extract the shapes natively using rasterio
-                    polygons = []
-                    for geom_dict, val in rasterio.features.shapes(
-                        binary_mask, transform=transform
-                    ):
-                        if val == 1:
-                            poly = shape(geom_dict)
-                            if poly.is_valid and not poly.is_empty:
-                                polygons.append(poly)
+                    # Vectorize in the raster's pixel grid and reproject the
+                    # polygons to WGS84 (the envelope is only a fallback):
+                    polygons = mask_to_wgs84_polygons(
+                        instance_mask, georef=georef, wgs84_bounds=bounds
+                    )
 
                     if raw_scores is None:
                         raw_polygons.extend(polygons)

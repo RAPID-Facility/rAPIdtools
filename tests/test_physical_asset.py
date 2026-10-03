@@ -375,9 +375,8 @@ def test_from_geojson_image_rehydration_fail(caplog):
         'geometry': {'type': 'Point', 'coordinates': [0, 0]},
         'properties': {
             'image_assets': [
-                # Passing an unknown argument 'bad_arg' should cause ImageAsset
-                # init to fail:
-                {'id': 'img1', 'path': 'p.jpg', 'bad_arg': 'fail'}
+                # An image record without a path cannot be rebuilt:
+                {'id': 'img1', 'properties': {}}
             ]
         },
     }
