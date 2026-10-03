@@ -1,0 +1,139 @@
+# Contributing to rAPIdtools
+
+Thank you for your interest in rAPIdtools. Bug reports, documentation fixes,
+new examples and code are all welcome. This page explains how to set up a
+development environment, what a change must pass before it is merged, and how
+we review pull requests. Participation is governed by our
+[Code of Conduct](CODE_OF_CONDUCT.md); security problems should be reported as
+described in our [Security Policy](SECURITY.md), not in a public issue.
+
+## Ways to contribute
+
+- **Report a bug.** Open an issue with the rapidtools version
+  (`python -c "import rapidtools; print(rapidtools.__version__)"`), your
+  operating system and Python version, the smallest script that reproduces the
+  problem, and the full error output. Never paste API keys, Mapillary tokens or
+  Hugging Face tokens into an issue; redact them.
+- **Suggest a feature.** Open an issue describing the use case before writing
+  code, so we can agree on the approach. The
+  [wiki](https://github.com/RAPID-Facility/rAPIdtools/wiki) and the
+  [documentation](https://rapid-facility.github.io/rAPIdtools/) describe how
+  the existing pieces fit together.
+- **Improve the documentation.** Docstrings, the Sphinx pages under
+  `docs/source/`, the examples under `examples/` and the wiki can all be
+  edited; small fixes do not need an issue first.
+- **Submit code.** Fork the repository, branch from `main`, and open a pull
+  request. The rest of this page covers what that involves.
+
+## Development setup
+
+rAPIdtools requires Python 3.11 or newer. Clone your fork and install the
+package in editable mode with the development extras:
+
+```bash
+git clone https://github.com/<your-user>/rAPIdtools.git
+cd rAPIdtools
+make install          # python -m pip install -e ".[dev]"
+```
+
+On a machine without a GPU, install CPU-only PyTorch first so the environment
+stays small. `torch` and `torchvision` must come from the same index, or every
+model module fails to import:
+
+```bash
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+```
+
+`make help` lists every developer target. `PYTHON` can be overridden for any
+of them, for example `make test PYTHON=python3.12`.
+
+## Before you open a pull request
+
+Run the same checks as continuous integration:
+
+```bash
+make check            # ruff lint and format check, mypy, pytest
+```
+
+The three parts, and what they expect:
+
+| Check | Command | Expectation |
+| --- | --- | --- |
+| Style | `make lint` (`make format` to fix) | Ruff is the style gate: line length 88, single quotes, rule sets `E`, `W`, `F`, `I`, `UP`, `B`, `Q` (see `[tool.ruff]` in `pyproject.toml`). |
+| Types | `make typecheck` | `mypy rapidtools` is clean on `main`; keep it that way and annotate public signatures. Avoid `# type: ignore` unless a third-party stub forces it, and say why in a comment. |
+| Tests | `make test` | All tests pass. The suite is offline: it never downloads model weights or contacts a provider, tile server or the Hugging Face Hub. |
+
+### Writing tests
+
+Tests live in `tests/`, one module per component. Follow the patterns already
+there:
+
+- Patch the network boundary with `requests-mock` or `monkeypatch`; never call
+  a real service.
+- Replace model and processor loaders with fakes, as `tests/test_models_local.py`
+  does, so `transformers` never loads a checkpoint. `tests/conftest.py` already
+  stubs the Hugging Face login for every test.
+- Keep fixtures deterministic and small; build rasters and GeoJSON in
+  `tmp_path` rather than committing data files.
+- Add a test for every bug fix that would have caught it.
+
+### Documentation and changelog
+
+- Public classes and functions carry Google-style docstrings with an `Example:`
+  block. The API reference is generated from them, so a new public object also
+  needs an entry in `docs/source/api/index.rst`.
+- Build the docs with `make docs` and check the result in
+  `docs/build/html/index.html` when you change user-facing behaviour.
+- Add a line to the `Unreleased` section of `CHANGELOG.md` under `Added`,
+  `Changed`, `Deprecated`, `Removed` or `Fixed`. The file follows
+  [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+### Compatibility
+
+- Keep the 0.x promise honest: minor releases may change public APIs, but a
+  renamed parameter or class should keep the old name working with a
+  `DeprecationWarning` for at least one release, as the 0.2.0 renames did.
+- All geometries exchanged through `PhysicalAssetCollection` are WGS84
+  (EPSG:4326); rasters may be in any CRS and are reprojected on read.
+- Heavy imports (`torch`, `transformers`) stay inside the model modules so
+  that `import rapidtools` remains fast and API-only users are not forced to
+  load them.
+
+## Commits and pull requests
+
+- Commit subjects follow the repository's pattern
+  `bc - <Sentence describing the change>`, for example
+  `bc - Making the ego-vehicle filter linear in the sequence length`. Put the
+  reasoning in the body.
+- Keep a pull request to one topic. Describe what changed, why, and how you
+  verified it; link the issue it closes.
+- Continuous integration must be green: the lint and type-check job plus the
+  test matrix on Linux, macOS and Windows with Python 3.11 to 3.13.
+- A maintainer reviews every pull request. Expect questions about correctness
+  on real data (projected rasters, antimeridian edges, provider failure modes)
+  and about memory use on large regions; those are where most bugs have lived.
+- Do not commit credentials, tokens, model weights, large rasters or generated
+  outputs. `.gitignore` already excludes the usual locations; if you add an
+  example that needs a key, read it from an environment variable.
+
+## Releases
+
+Maintainers cut releases by moving the `Unreleased` entries in `CHANGELOG.md`
+under a new version heading, setting the same version in `pyproject.toml` and
+`CITATION.cff`, and pushing a `v<version>` tag. The `Release` workflow creates
+the GitHub Release from the changelog section and refuses a tag that does not
+match `pyproject.toml`.
+
+## License
+
+rAPIdtools is released under the [BSD-3-Clause license](LICENSE). By
+contributing, you agree that your contributions are licensed under the same
+terms. Source files carry the license header, a `Contributors:` list and a
+`Last updated:` date; add yourself to the list when you make a substantial
+change to a file.
+
+## Questions
+
+Open a [discussion or issue](https://github.com/RAPID-Facility/rAPIdtools/issues)
+on GitHub. For anything that should not be public, including suspected
+security problems, email <uwrapid@uwrapid.org>.

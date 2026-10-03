@@ -9,6 +9,10 @@ minor releases may change public APIs.
 
 ### Added
 
+- `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `CONTRIBUTING.md` and
+  `SECURITY.md`, which asks for private vulnerability reports through GitHub
+  Security Advisories (now enabled on the repository), plus a Contributing
+  and Security section in the README.
 - **Street-level object discovery.** `MapillaryFeatureExtractor` (a `DETECT`
   step) finds objects of the requested classes in every Mapillary image of a
   region from Mapillary's own segmentation detections, read as metadata with
