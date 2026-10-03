@@ -104,6 +104,7 @@ from rapidtools.data_sources.google_aerial_image_extractor import (
     GOOGLE_TILE_URL,
 )
 from rapidtools.data_sources.google_streetview import haversine_m
+from rapidtools.data_sources.tile_imagery_base import MAX_MERCATOR_LAT
 
 from . import outlines
 from .pano_utils import (
@@ -130,8 +131,11 @@ class AerialImageryExtractor:
     corresponding ``PhysicalAsset`` objects in the collection.
 
     Each saved ``ImageAsset`` gets the ID ``'<asset_id>_<image_prefix>'`` and
-    two properties: ``'wgs84_bounds'`` (``(min_lon, min_lat, max_lon,
-    max_lat)`` of the patch) and ``'source_raster'`` (the TIFF file name).
+    three properties: ``'wgs84_bounds'`` (``(min_lon, min_lat, max_lon,
+    max_lat)`` of the patch), ``'native_georef'`` (the patch's affine
+    transform and CRS, see
+    :class:`~rapidtools.data_sources.orthomosaic_reader.PatchGeoref`) and
+    ``'source_raster'`` (the TIFF file name).
 
     Args:
         dataset (str | Path | list[str | Path]):
@@ -548,13 +552,16 @@ class AerialImageryExtractor:
                             force_square=self.force_square_image,
                             min_footprint_coverage=self.min_footprint_coverage,
                             pad_edges=self.pad_edges,
+                            return_georef=True,
                         )
 
                         if extraction_result is None:
                             skipped_no_imagery += 1
                             continue
 
-                        pil_image, pixel_coords, wgs84_bounds = extraction_result
+                        pil_image, pixel_coords, wgs84_bounds, georef = (
+                            extraction_result
+                        )
 
                         # Draw outline if requested:
                         if self.overlay_asset_outline:
@@ -592,6 +599,7 @@ class AerialImageryExtractor:
                             allow_missing_file=False,
                             properties={
                                 'wgs84_bounds': wgs84_bounds,
+                                'native_georef': georef.to_dict(),
                                 'source_raster': raster_path.name,
                             },
                         )
@@ -1095,15 +1103,20 @@ class TileOrthomosaicExtractor:
             >>> TileOrthomosaicExtractor.lat_lon_to_pixel(0.0, 0.0, zoom=1)
             (256, 256)
         """
-        sin_lat = math.sin(lat * math.pi / 180.0)
-        sin_lat = max(min(sin_lat, 0.9999), -0.9999)
+        lat = max(min(lat, MAX_MERCATOR_LAT), -MAX_MERCATOR_LAT)
+        sin_lat = math.sin(math.radians(lat))
         map_size = 256 << zoom
 
         pixel_x = ((lon + 180) / 360) * map_size
         pixel_y = (
             0.5 - math.log((1 + sin_lat) / (1 - sin_lat)) / (4 * math.pi)
         ) * map_size
-        return int(pixel_x), int(pixel_y)
+        # lon=180 and the Mercator limit land on the map edge (index
+        # map_size), which belongs to the last pixel:
+        return (
+            min(max(int(pixel_x), 0), map_size - 1),
+            min(max(int(pixel_y), 0), map_size - 1),
+        )
 
     def _tile_url(self, tile_x: int, tile_y: int) -> str:
         """

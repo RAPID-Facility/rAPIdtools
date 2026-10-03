@@ -103,7 +103,10 @@ def test_lat_lon_to_pixel_clamps_polar_latitudes():
     _, y_south = BingAerialImageExtractor.lat_lon_to_pixel(-90.0, 0.0, 3)
     _, y_limit = BingAerialImageExtractor.lat_lon_to_pixel(89.5, 0.0, 3)
     assert isinstance(y_pole, int) and isinstance(y_south, int)
-    assert y_pole < 0 < y_south
+    # The poles clamp onto the first and last pixel rows of the map, never
+    # outside the grid:
+    assert y_pole == 0
+    assert y_south == (256 << 3) - 1
     # Anything beyond the clamp collapses onto the same pixel row:
     assert y_pole == y_limit
 

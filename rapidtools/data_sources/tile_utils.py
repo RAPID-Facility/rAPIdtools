@@ -58,6 +58,9 @@ if TYPE_CHECKING:
     from rapidtools.core.bounding_box import BoundingBox
 
 
+MAX_MERCATOR_LAT = 85.05112878
+
+
 class TileUtils:
     """
     Utility methods for Web Mercator/Mapbox Vector Tile operations.
@@ -107,6 +110,9 @@ class TileUtils:
             >>> TileUtils.latlon_to_tile(0.0, 0.0, 1)
             (1.0, 1.0)
         """
+        # Beyond the Mercator limit the projection diverges; clamp so the
+        # result stays inside [0, n]:
+        lat = max(min(lat, MAX_MERCATOR_LAT), -MAX_MERCATOR_LAT)
         lat_rad = math.radians(lat)
         n = 2.0**z
         xtile = (lon + 180.0) / 360.0 * n
@@ -290,9 +296,13 @@ class TileUtils:
         max_x_float, max_y_float = TileUtils.latlon_to_tile(min_lat, max_lon, zoom)
 
         # Take the integer parts to get the tile index range that covers the
-        # bbox:
-        min_x, min_y = int(min_x_float), int(min_y_float)
-        max_x, max_y = int(max_x_float), int(max_y_float)
+        # bbox. A bbox edge on lon=180 or at the Mercator limit gives the
+        # fractional coordinate 2^zoom, which belongs to the last tile:
+        last_index = (1 << zoom) - 1
+        min_x = min(max(int(min_x_float), 0), last_index)
+        min_y = min(max(int(min_y_float), 0), last_index)
+        max_x = min(max(int(max_x_float), 0), last_index)
+        max_y = min(max(int(max_y_float), 0), last_index)
 
         # Build the full list of tiles in the inclusive [min_x..max_x] x
         # [min_y..max_y] range:

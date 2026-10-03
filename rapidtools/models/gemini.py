@@ -60,7 +60,9 @@ from rapidtools.config import get_configured_session
 from .api_base import (
     API_REQUEST_TIMEOUT,
     BaseAPIInferenceModel,
+    api_session,
     catalog_ids,
+    is_retryable_status,
     resolve_api_key,
 )
 from .base import GenerationConfig, ModelOutput
@@ -333,7 +335,7 @@ class GeminiInference(BaseAPIInferenceModel):
         session_to_use = self.session
         should_close_session = False
         if max_retries is not None:
-            session_to_use = get_configured_session(retries=max_retries)
+            session_to_use = api_session(max_retries)
             should_close_session = True
 
         try:
@@ -349,20 +351,20 @@ class GeminiInference(BaseAPIInferenceModel):
 
             block_reason = result_json.get('promptFeedback', {}).get('blockReason')
             if block_reason:
-                logger.warning(
-                    f'{log_ctx} Blocked by safety filters. Reason: {block_reason}'
-                )
-                return None
+                reason = f'Blocked by safety filters. Reason: {block_reason}'
+                logger.warning(f'{log_ctx} {reason}')
+                return ModelOutput.failure(reason, raw_response=result_json)
 
             candidates = result_json.get('candidates', [])
             if candidates:
                 finish_reason = candidates[0].get('finishReason')
                 if finish_reason != 'STOP':
-                    logger.warning(
-                        f'{log_ctx} Generation halted unexpectedly. '
+                    reason = (
+                        'Generation halted unexpectedly. '
                         f'Finish Reason: {finish_reason}'
                     )
-                    return None
+                    logger.warning(f'{log_ctx} {reason}')
+                    return ModelOutput.failure(reason, raw_response=result_json)
 
             logger.error(f'{log_ctx} Unexpected response format: {result_json}')
             return None
@@ -372,6 +374,9 @@ class GeminiInference(BaseAPIInferenceModel):
         except HTTPError as e:
             body = e.response.text if e.response is not None else ''
             logger.error(f'{log_ctx} HTTP Error: {e} | Response: {body}')
+            status = e.response.status_code if e.response is not None else None
+            if status is not None and not is_retryable_status(status):
+                return ModelOutput.failure(f'HTTP {status}', retryable=False)
         except Exception as e:  # noqa: BLE001 - surfaced as a failed asset
             logger.error(f'{log_ctx} Unexpected error: {e}')
         finally:

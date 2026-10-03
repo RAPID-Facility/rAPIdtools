@@ -60,7 +60,9 @@ from rapidtools.config import get_configured_session
 from .api_base import (
     API_REQUEST_TIMEOUT,
     BaseAPIInferenceModel,
+    api_session,
     catalog_ids,
+    is_retryable_status,
     resolve_api_key,
 )
 from .base import GenerationConfig, ModelOutput
@@ -368,7 +370,7 @@ class ClaudeInference(BaseAPIInferenceModel):
         session_to_use = self.session
         should_close_session = False
         if max_retries is not None:
-            session_to_use = get_configured_session(retries=max_retries)
+            session_to_use = api_session(max_retries)
             session_to_use.headers.update(self.session.headers)
             should_close_session = True
 
@@ -391,11 +393,11 @@ class ClaudeInference(BaseAPIInferenceModel):
             stop_reason = result_json.get('stop_reason')
             if stop_reason == 'refusal':
                 details = result_json.get('stop_details') or {}
-                logger.warning(
-                    f'{log_ctx} Request refused by Claude '
-                    f'(category: {details.get("category")}).'
+                reason = (
+                    f'Request refused by Claude (category: {details.get("category")}).'
                 )
-                return None
+                logger.warning(f'{log_ctx} {reason}')
+                return ModelOutput.failure(reason, raw_response=result_json)
             if stop_reason == 'max_tokens':
                 logger.warning(f'{log_ctx} Response truncated due to max_tokens limit.')
 
@@ -408,7 +410,10 @@ class ClaudeInference(BaseAPIInferenceModel):
         except RetryError:
             logger.error(f'{log_ctx} Max retries exceeded.')
         except HTTPError as e:
-            logger.error(f'{log_ctx} HTTP Error: {e.response.status_code}')
+            status = e.response.status_code if e.response is not None else None
+            logger.error(f'{log_ctx} HTTP Error: {status}')
+            if status is not None and not is_retryable_status(status):
+                return ModelOutput.failure(f'HTTP {status}', retryable=False)
         except Exception as e:  # noqa: BLE001 - surfaced as a failed asset
             logger.error(f'{log_ctx} Unexpected error: {e}')
         finally:

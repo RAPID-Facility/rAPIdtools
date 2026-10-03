@@ -289,7 +289,10 @@ def _camera_pose(props: dict[str, Any]) -> tuple[float, float, float] | None:
             break
     if lon is None:
         lon, lat = props.get('longitude'), props.get('latitude')
-    compass = props.get('computed_compass_angle', props.get('compass_angle'))
+    # A key present with a null value must fall through to the raw angle:
+    compass = props.get('computed_compass_angle')
+    if compass is None:
+        compass = props.get('compass_angle')
     if lon is None or lat is None or compass is None:
         return None
     return float(lon), float(lat), float(compass) % 360.0

@@ -205,14 +205,19 @@ class WebMercatorTileExtractor(ABC):
             >>> WebMercatorTileExtractor.lat_lon_to_pixel(0.0, 0.0, zoom=1)
             (256, 256)
         """
-        sin_lat = math.sin(lat * math.pi / 180.0)
-        sin_lat = max(min(sin_lat, 0.9999), -0.9999)
+        lat = max(min(lat, MAX_MERCATOR_LAT), -MAX_MERCATOR_LAT)
+        sin_lat = math.sin(math.radians(lat))
         map_size = TILE_SIZE << zoom
 
         pixel_x = ((lon + 180) / 360) * map_size
         y_calc = 0.5 - math.log((1 + sin_lat) / (1 - sin_lat)) / (4 * math.pi)
         pixel_y = y_calc * map_size
-        return int(pixel_x), int(pixel_y)
+        # lon=180 and the Mercator limit land on the map edge (index
+        # map_size), which belongs to the last pixel:
+        return (
+            min(max(int(pixel_x), 0), map_size - 1),
+            min(max(int(pixel_y), 0), map_size - 1),
+        )
 
     @staticmethod
     def pixel_to_lat_lon(pixel_x: int, pixel_y: int, zoom: int) -> tuple[float, float]:

@@ -69,8 +69,9 @@ Example:
 import math
 import re
 from collections.abc import Generator
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, overload
 
 import numpy as np
 import rasterio
@@ -81,6 +82,7 @@ from rasterio import open as rasterio_open
 from rasterio.crs import CRS
 from rasterio.errors import WindowError
 from rasterio.io import DatasetReader
+from rasterio.transform import Affine
 from rasterio.warp import transform_bounds, transform_geom
 from rasterio.windows import Window, from_bounds
 from shapely.geometry import shape
@@ -95,6 +97,79 @@ from rapidtools.constants import (
 
 DEFAULT_PATCH_SIZE = 512
 DEFAULT_PATCH_OVERLAP_RATIO = 0.2
+
+
+@dataclass(frozen=True)
+class PatchGeoref:
+    """
+    Native georeferencing of an image patch read from a raster.
+
+    A patch's WGS84 bounding box is only an envelope: for a projected or
+    rotated raster the patch edges are not lines of constant latitude and
+    longitude, so mapping pixels through that envelope stretches and skews
+    the result. This record keeps the exact pixel-to-CRS affine transform of
+    the window that was read so masks drawn on the patch can be vectorized in
+    the raster's own grid and then reprojected.
+
+    Attributes:
+        transform: Affine transform from patch pixel coordinates to ``crs``.
+        crs: The raster's coordinate reference system.
+        width: Patch width in pixels when it was read.
+        height: Patch height in pixels when it was read.
+
+    Example:
+        >>> from rasterio.crs import CRS
+        >>> from rasterio.transform import Affine
+        >>> georef = PatchGeoref(Affine(0.5, 0, 500000, 0, -0.5, 4100000),
+        ...                      CRS.from_epsg(32611), 100, 100)
+        >>> georef.transform_for(50, 50).a
+        1.0
+        >>> PatchGeoref.from_dict(georef.to_dict()) == georef
+        True
+    """
+
+    transform: Affine
+    crs: CRS
+    width: int
+    height: int
+
+    def transform_for(self, width: int, height: int) -> Affine:
+        """
+        Return the affine transform for a resampled copy of the patch.
+
+        Args:
+            width: Width in pixels of the array being georeferenced.
+            height: Height in pixels of the array being georeferenced.
+
+        Returns:
+            Affine: ``transform`` rescaled so the array still covers the
+            same ground footprint.
+        """
+        if (width, height) == (self.width, self.height):
+            return self.transform
+        return self.transform * Affine.scale(self.width / width, self.height / height)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-friendly representation (see :meth:`from_dict`)."""
+        t = self.transform
+        return {
+            'transform': [t.a, t.b, t.c, t.d, t.e, t.f],
+            'crs': self.crs.to_wkt(),
+            'width': int(self.width),
+            'height': int(self.height),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> 'PatchGeoref':
+        """Rebuild the record from :meth:`to_dict` output."""
+        a, b, c, d, e, f = (float(v) for v in data['transform'][:6])
+        return cls(
+            transform=Affine(a, b, c, d, e, f),
+            crs=CRS.from_user_input(data['crs']),
+            width=int(data['width']),
+            height=int(data['height']),
+        )
+
 
 _NOT_ENTERED_MSG = (
     'OrthomosaicReader must be used as a context manager. '
@@ -293,6 +368,42 @@ class OrthomosaicReader:
         with rasterio_open(self.dataset_path, driver='GTiff') as dataset:
             return transform_bounds(dataset.crs, CRS.from_epsg(4326), *dataset.bounds)
 
+    @overload
+    def get_image_patch(
+        self,
+        asset_geometry: list[tuple[float, float]],
+        max_missing_data_ratio: float = ...,
+        buffer: float | str = ...,
+        force_square: bool = ...,
+        min_footprint_coverage: float | None = ...,
+        pad_edges: bool | None = ...,
+        return_georef: Literal[False] = ...,
+    ) -> (
+        tuple[Image.Image, list[tuple[int, int]], tuple[float, float, float, float]]
+        | None
+    ): ...
+
+    @overload
+    def get_image_patch(
+        self,
+        asset_geometry: list[tuple[float, float]],
+        max_missing_data_ratio: float = ...,
+        buffer: float | str = ...,
+        force_square: bool = ...,
+        min_footprint_coverage: float | None = ...,
+        pad_edges: bool | None = ...,
+        *,
+        return_georef: Literal[True],
+    ) -> (
+        tuple[
+            Image.Image,
+            list[tuple[int, int]],
+            tuple[float, float, float, float],
+            PatchGeoref,
+        ]
+        | None
+    ): ...
+
     def get_image_patch(
         self,
         asset_geometry: list[tuple[float, float]],
@@ -301,10 +412,8 @@ class OrthomosaicReader:
         force_square: bool = True,
         min_footprint_coverage: float | None = None,
         pad_edges: bool | None = None,
-    ) -> (
-        tuple[Image.Image, list[tuple[int, int]], tuple[float, float, float, float]]
-        | None
-    ):
+        return_georef: bool = False,
+    ) -> tuple[Any, ...] | None:
         """
         Extract a bounded image patch for a geometric asset.
 
@@ -339,6 +448,9 @@ class OrthomosaicReader:
                 they keep their full requested size and shape. Defaults to
                 ``True`` when ``min_footprint_coverage`` is given, ``False``
                 otherwise (window clipped to the raster).
+            return_georef:
+                If ``True``, a :class:`PatchGeoref` with the patch's native
+                affine transform and CRS is returned as a fourth element.
 
         Returns:
             A tuple containing:
@@ -348,6 +460,8 @@ class OrthomosaicReader:
                   image patch.
                 - The WGS84 bounding box of the extracted image patch:
                   ``(min_lon, min_lat, max_lon, max_lat)``.
+                - With ``return_georef=True``, the :class:`PatchGeoref` of
+                  the patch.
 
             Returns ``None`` if the extracted patch contains too much missing
             data or falls completely outside the raster bounds.
@@ -482,7 +596,46 @@ class OrthomosaicReader:
         # Transform safe native bounds to WGS84:
         wgs84_bounds = transform_bounds(crs, CRS.from_epsg(4326), *safe_native_bounds)
 
+        if return_georef:
+            georef = PatchGeoref(
+                transform=rasterio.windows.transform(
+                    read_window, self._dataset.transform
+                ),
+                crs=crs,
+                width=pil_image.width,
+                height=pil_image.height,
+            )
+            return pil_image, pixel_coords, wgs84_bounds, georef
         return pil_image, pixel_coords, wgs84_bounds
+
+    @overload
+    def generate_tiles(
+        self,
+        patch_size: float = ...,
+        unit: str = ...,
+        overlap_ratio: float = ...,
+        max_missing_data_ratio: float = ...,
+        pad_edge_tiles: bool = ...,
+        return_georef: Literal[False] = ...,
+    ) -> Generator[
+        tuple[Image.Image, tuple[float, float, float, float]], None, None
+    ]: ...
+
+    @overload
+    def generate_tiles(
+        self,
+        patch_size: float = ...,
+        unit: str = ...,
+        overlap_ratio: float = ...,
+        max_missing_data_ratio: float = ...,
+        pad_edge_tiles: bool = ...,
+        *,
+        return_georef: Literal[True],
+    ) -> Generator[
+        tuple[Image.Image, tuple[float, float, float, float], PatchGeoref],
+        None,
+        None,
+    ]: ...
 
     def generate_tiles(
         self,
@@ -491,7 +644,8 @@ class OrthomosaicReader:
         overlap_ratio: float = DEFAULT_PATCH_OVERLAP_RATIO,
         max_missing_data_ratio: float = 0.8,
         pad_edge_tiles: bool = True,
-    ) -> Generator[tuple[Image.Image, tuple[float, float, float, float]], None, None]:
+        return_georef: bool = False,
+    ) -> Generator[tuple[Any, ...], None, None]:
         """
         Scan through the raster and yield populated image patches.
 
@@ -514,11 +668,17 @@ class OrthomosaicReader:
             pad_edge_tiles:
                 If True, pads tiles at the edges of the map with nodata to
                 maintain a strictly uniform output array size.
+            return_georef:
+                If ``True``, each tile also carries a :class:`PatchGeoref`
+                with the tile's native affine transform and CRS, which is
+                what mask vectorization should use for anything that is not
+                a north-up WGS84 raster.
 
         Yields:
             tuple[Image.Image, tuple[float, float, float, float]]:
                 An 8-bit RGB PIL image and its WGS84 bounding box
-                ``(min_lon, min_lat, max_lon, max_lat)``.
+                ``(min_lon, min_lat, max_lon, max_lat)``; a third
+                :class:`PatchGeoref` element when ``return_georef`` is set.
 
         Raises:
             RuntimeError: If called outside of a context manager block.
@@ -634,13 +794,12 @@ class OrthomosaicReader:
                         mode='constant',
                         constant_values=nodata_val,
                     )
-                    window_bounds = rasterio.windows.bounds(
-                        requested_window, self._dataset.transform
-                    )
+                    georef_window = requested_window
                 else:
-                    window_bounds = rasterio.windows.bounds(
-                        safe_window, self._dataset.transform
-                    )
+                    georef_window = safe_window
+                window_bounds = rasterio.windows.bounds(
+                    georef_window, self._dataset.transform
+                )
 
                 # Transform native bounds to WGS84:
                 wgs84_bounds = transform_bounds(
@@ -655,7 +814,18 @@ class OrthomosaicReader:
                 )
                 pil_image = Image.fromarray(image_hwc)
 
-                yield pil_image, wgs84_bounds
+                if return_georef:
+                    georef = PatchGeoref(
+                        transform=rasterio.windows.transform(
+                            georef_window, self._dataset.transform
+                        ),
+                        crs=self._dataset.crs,
+                        width=pil_image.width,
+                        height=pil_image.height,
+                    )
+                    yield pil_image, wgs84_bounds, georef
+                else:
+                    yield pil_image, wgs84_bounds
 
     def get_raster_dimensions(self, unit: str = 'pixels') -> tuple[float, float]:
         """

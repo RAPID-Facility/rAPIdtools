@@ -303,6 +303,10 @@ class AssetAnalyzer:
         self._lock = threading.Lock()
         self._global_cooldown_until = 0.0
         self._consecutive_error_count = 0
+        # IDs of assets the provider rejected outright (refusal, 4xx, safety
+        # block): they are reported as failed but neither pause the workers
+        # nor get another pass.
+        self._permanent_failures: set[str] = set()
 
         self.model_id = getattr(model, 'model_id', None)
 
@@ -381,6 +385,21 @@ class AssetAnalyzer:
 
         result = self._infer(image_paths, self.prompt)
 
+        if (
+            result is not None
+            and getattr(result, 'failed', False)
+            and not getattr(result, 'retryable', True)
+        ):
+            # A rejection is not a rate limit: do not stall the other workers
+            # or re-send the same request later.
+            logger.error(
+                f'Asset {asset.id} was rejected by the provider ({result.error}); '
+                'it will not be retried.'
+            )
+            with self._lock:
+                self._permanent_failures.add(asset.id)
+            return False
+
         if result is None or not result.text:
             with self._lock:
                 self._consecutive_error_count += 1
@@ -420,7 +439,7 @@ class AssetAnalyzer:
                     executor.shutdown(wait=False, cancel_futures=True)
                     break
                 try:
-                    if not future.result():
+                    if not future.result() and asset.id not in self._permanent_failures:
                         failed.append(asset)
                 except Exception as e:  # noqa: BLE001 - reported per asset
                     logger.error(f'Error on asset {asset.id}: {e}')
@@ -432,9 +451,12 @@ class AssetAnalyzer:
         Analyze assets concurrently with retry passes; return the failures.
 
         Assets without downloaded images are skipped up front. Assets whose
-        request failed (rate limit, timeout, blocked response) are retried in
-        up to ``rate_limit.max_asset_retries`` further passes.
+        request failed transiently (rate limit, timeout, network error) are
+        retried in up to ``rate_limit.max_asset_retries`` further passes;
+        assets the provider rejected (refusal, safety block, 4xx) are counted
+        as failed without a retry.
         """
+        self._permanent_failures = set()
         pending = [asset for asset in assets if self._image_paths(asset)]
         skipped = len(assets) - len(pending)
         if skipped:
@@ -465,7 +487,12 @@ class AssetAnalyzer:
                 f'{", ".join(a.id for a in failed[:10])}'
                 f'{"..." if len(failed) > 10 else ""}'
             )
-        return len(failed) + skipped
+        if self._permanent_failures:
+            logger.error(
+                f'{len(self._permanent_failures)} assets were rejected by the '
+                'provider and not retried.'
+            )
+        return len(failed) + len(self._permanent_failures) + skipped
 
     # ----------------------------------------------------------- local mode
     def _run_local(self, assets: list[PhysicalAsset]) -> int:

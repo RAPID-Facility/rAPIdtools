@@ -39,6 +39,7 @@
 
 import json
 import logging
+from pathlib import Path
 
 import pytest
 import shapefile
@@ -761,11 +762,15 @@ def test_shapefile_roundtrip(populated_collection, tmp_path):
     assert isinstance(a1_imported.attributes.get('metadata'), dict)
     assert a1_imported.attributes['metadata']['key'] == 'value'
 
-    # Check image rehydration (Shapefile parsing places images in the
-    # attributes dictionary):
-    assert 'images' in a1_imported.attributes
-    assert len(a1_imported.attributes['images']) == 1
-    assert a1_imported.attributes['images'][0]['id'] == 'img_1'
+    # Check image rehydration (images travel in the JSON sidecar and come
+    # back as ImageAsset objects, not as attributes):
+    assert shp_path.with_name('test_assets.rapidtools.json').exists()
+    assert 'images' not in a1_imported.attributes
+    assert 'n_images' not in a1_imported.attributes
+    assert len(a1_imported.image_assets) == 1
+    assert a1_imported.image_assets[0].id == 'img_1'
+    assert a1_imported.image_assets[0].path == Path('/tmp/img.jpg').resolve()
+    assert len(imported_col['a2'].image_assets) == 0
 
 
 def test_shapefile_schema_conflict_and_truncation(tmp_path):
@@ -805,13 +810,14 @@ def test_shapefile_schema_conflict_and_truncation(tmp_path):
 
     imported = PhysicalAssetCollection.from_shapefile(shp_path)
 
-    # "very_long_" and "very_long1" should be the keys in the rehydrated
-    # attributes:
+    # The DBF columns are "very_long_" and "very_long1", but the sidecar
+    # maps them back to the original attribute names on import:
     keys_1 = imported['1'].attributes.keys()
-    assert 'very_long_' in keys_1
+    assert 'very_long_attribute_name_1' in keys_1
+    assert 'very_long_' not in keys_1
 
     keys_2 = imported['2'].attributes.keys()
-    assert 'very_long1' in keys_2
+    assert 'very_long_attribute_name_2' in keys_2
 
     # "mixed_type" should have been degraded to a string for all records
     # because of Asset 3:

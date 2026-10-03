@@ -63,7 +63,7 @@ import operator as op
 import uuid
 from collections import Counter
 from collections.abc import Iterable, Iterator
-from dataclasses import InitVar, asdict, dataclass, field
+from dataclasses import InitVar, dataclass, field
 from itertools import islice
 from pathlib import Path
 from typing import Any, ClassVar, Literal
@@ -520,8 +520,10 @@ class PhysicalAsset:
 
         # Determine asset ID:
         if asset_id is None:
-            # Check top-level ID, then properties ID:
-            asset_id = geojson_feature.get('id') or properties.get('id')
+            # Check top-level ID, then properties ID (an ID of 0 is valid):
+            asset_id = geojson_feature.get('id')
+            if asset_id is None:
+                asset_id = properties.get('id')
 
         if asset_id is None:
             generated_id = f'no_id_{uuid.uuid4().hex[:8]}'
@@ -539,14 +541,10 @@ class PhysicalAsset:
         if image_data_list:
             for img_dict in image_data_list:
                 try:
-                    # Reconstruct ImageAsset from dictionary kwargs
-                    # This step always sets 'allow_missing_file' is True if not
-                    # specified, as rehydrating from JSON often implies offline
-                    # processing:
-                    if 'allow_missing_file' not in img_dict:
-                        img_dict['allow_missing_file'] = True
-
-                    img_obj = ImageAsset(**img_dict)
+                    # The file does not have to exist: a GeoJSON is often
+                    # read on a machine other than the one that holds the
+                    # imagery:
+                    img_obj = ImageAsset.from_dict(img_dict, allow_missing_file=True)
                     rehydrated_images.append(img_obj)
                 except Exception as e:
                     logger.warning(
@@ -951,10 +949,9 @@ class PhysicalAsset:
             {'type': 'Feature', 'id': 'pole_99', 'geometry':
             {'type': 'Point', 'coordinates': (10.0, 20.0)},
             'properties': {'material': 'wood', 'image_assets':
-            [{'path': PosixPath('/home/bacetiner/p1.jpg'), 'id': 'img1',
+            [{'id': 'img1', 'path': '/home/bacetiner/p1.jpg',
             'properties': {}, 'semantic_map': None, 'instance_map': None,
-            'allow_missing_file': True, '_pil_image': None, '_semantic_mask':
-            None, '_instance_mask': None}]}}
+            'allow_missing_file': True}]}}
         """
         ignore_list = ignore_properties or []
 
@@ -963,7 +960,7 @@ class PhysicalAsset:
 
         # Serialize image_assets into the properties dictionary if not ignored
         if self.image_assets and 'image_assets' not in ignore_list:
-            properties['image_assets'] = [asdict(img) for img in self.image_assets]
+            properties['image_assets'] = [img.to_dict() for img in self.image_assets]
 
         # Remove any properties requested in the ignore_list
         for key in ignore_list:
@@ -1514,12 +1511,10 @@ class PhysicalAssetCollection:
                 continue
 
             try:
-                # Convert geojson geometry to a shapely object:
-                shapely_geom = shape(geom_dict)
-
-                # Create a PhysicalAsset and add it to collection:
-                new_asset = PhysicalAsset(
-                    id=assigned_id, geometry=shapely_geom, attributes=props
+                # Build the asset (geometry, attributes and the image assets
+                # stored under 'image_assets') from the feature:
+                new_asset = PhysicalAsset.from_geojson_feature(
+                    feature, asset_id=assigned_id
                 )
 
                 new_collection.add(new_asset)
@@ -1619,6 +1614,19 @@ class PhysicalAssetCollection:
         new_collection = cls()
         file_path = str(file)
 
+        # Image assets and original attribute names live in the sidecar
+        # written by to_shapefile (when there was anything to put there):
+        field_renames: dict[str, str] = {}
+        sidecar_images: dict[str, list[dict[str, Any]]] = {}
+        sidecar_path = cls._shapefile_sidecar_path(Path(file_path))
+        if sidecar_path.is_file():
+            try:
+                sidecar = json.loads(sidecar_path.read_text(encoding='utf-8'))
+                field_renames = dict(sidecar.get('fields') or {})
+                sidecar_images = dict(sidecar.get('images') or {})
+            except (OSError, ValueError, TypeError, AttributeError) as e:
+                logger.warning(f"Ignoring unreadable sidecar '{sidecar_path}': {e}")
+
         # Open the shapefile reader:
         with shapefile.Reader(file_path) as sf:
             field_names = [field[0] for field in sf.fields[1:]]
@@ -1642,13 +1650,16 @@ class PhysicalAssetCollection:
                         logger.warning('Skipping asset: Geometry is empty or invalid.')
                         continue
 
-                except (AttributeError, ValueError, TypeError, Exception):
+                except Exception as e:  # noqa: BLE001 - one bad record
+                    logger.warning(f'Skipping asset: unreadable geometry ({e}).')
                     continue
 
-                shapely_geom = shape(geom_dict)
-
-                # Reconstruct attributes dictionary:
-                attributes = dict(zip(field_names, shape_rec.record, strict=True))
+                # Reconstruct attributes dictionary, restoring any attribute
+                # names that were truncated to fit the 10-character limit:
+                attributes = {
+                    field_renames.get(name, name): value
+                    for name, value in zip(field_names, shape_rec.record, strict=True)
+                }
 
                 # Identify ID:
                 assigned_id = None
@@ -1662,7 +1673,10 @@ class PhysicalAssetCollection:
                 if not assigned_id:
                     assigned_id = f'gen_{uuid.uuid4().hex}'
 
-                # Handle images column if it was generated by `to_shapefile`:
+                # Handle the image columns generated by `to_shapefile`: the
+                # current format stores a count plus the sidecar, older files
+                # stored (truncated) JSON in an 'images' column:
+                attributes.pop('n_images', None)
                 images_str = attributes.pop('images', None)
 
                 # Attempt to parse back JSON properties strings from DBF:
@@ -1677,12 +1691,35 @@ class PhysicalAssetCollection:
                     id=assigned_id, geometry=shapely_geom, attributes=attributes
                 )
 
+                image_dicts: list[dict[str, Any]] = list(
+                    sidecar_images.get(assigned_id, [])
+                )
                 if images_str:
                     try:
                         parsed_images = json.loads(images_str)
-                        new_asset.attributes['images'] = parsed_images
-                    except json.JSONDecodeError:
+                    except (json.JSONDecodeError, TypeError):
                         new_asset.attributes['images_raw_str'] = images_str
+                    else:
+                        if isinstance(parsed_images, list):
+                            image_dicts.extend(
+                                d for d in parsed_images if isinstance(d, dict)
+                            )
+                        else:
+                            new_asset.attributes['images'] = parsed_images
+
+                rehydrated_images = []
+                for img_dict in image_dicts:
+                    try:
+                        rehydrated_images.append(
+                            ImageAsset.from_dict(img_dict, allow_missing_file=True)
+                        )
+                    except Exception as e:  # noqa: BLE001 - reported per image
+                        logger.warning(
+                            f'Failed to rehydrate an image asset from the '
+                            f"shapefile for asset '{assigned_id}': {e}"
+                        )
+                if rehydrated_images:
+                    new_asset.add_image_assets(rehydrated_images)
 
                 if assigned_id in new_collection._data:
                     logger.warning(
@@ -2647,6 +2684,11 @@ class PhysicalAssetCollection:
 
         return feature_collection
 
+    @staticmethod
+    def _shapefile_sidecar_path(shapefile_path: Path) -> Path:
+        """Return the JSON sidecar that accompanies ``shapefile_path``."""
+        return shapefile_path.with_name(f'{shapefile_path.stem}.rapidtools.json')
+
     def to_shapefile(
         self,
         file: str | Path,
@@ -2669,6 +2711,15 @@ class PhysicalAssetCollection:
             * Column names (attribute keys) are strictly truncated to 10 chars.
             * String values are strictly truncated to 254 characters.
             * Nested data structures (lists, dicts) are serialized to JSON strings.
+
+        Because of these limits, data that does not fit the DBF table is
+        written to a JSON sidecar next to the shapefile
+        (``<name>.rapidtools.json``): the image assets of every asset, keyed
+        by asset ID, and the mapping from truncated column names back to the
+        original attribute keys. The DBF itself only records the number of
+        images per asset (``n_images``). :meth:`from_shapefile` reads the
+        sidecar when it is present, so the round trip preserves image assets
+        and attribute names.
 
         Args:
             file (str or Path):
@@ -2818,8 +2869,16 @@ class PhysicalAssetCollection:
         # Add a dedicated column for image metadata if any assets contain
         # images:
         if has_images:
-            safe_images = get_safe_name('images')
-            fields.append((safe_images, 'C', 254, 0))
+            safe_images = get_safe_name('n_images')
+            fields.append((safe_images, 'N', 9, 0))
+
+        # Data that does not fit the DBF goes to the sidecar JSON file:
+        sidecar_images: dict[str, list[dict[str, Any]]] = {}
+        renamed_fields = {
+            safe_k: original_k
+            for original_k, safe_k in field_mapping.items()
+            if safe_k != original_k
+        }
 
         # Write the Shapefile components (.shp, .shx, .dbf)
         with shapefile.Writer(str(path)) as w:
@@ -2829,7 +2888,7 @@ class PhysicalAssetCollection:
             for asset in self._data.values():
                 # Initialize the row dictionary with the required ID,
                 # truncating just in case:
-                record_values = {safe_id: str(asset.id)[:254]}
+                record_values: dict[str, Any] = {safe_id: str(asset.id)[:254]}
 
                 # Populate the remaining attributes for this asset:
                 for original_k, safe_k in field_mapping.items():
@@ -2850,25 +2909,41 @@ class PhysicalAssetCollection:
                     else:
                         record_values[safe_k] = val
 
-                # Populate images
+                # Populate images: the DBF holds the count, the sidecar the
+                # data (a 254-character cell cannot hold serialized images):
                 if has_images:
-                    if getattr(asset, 'image_assets', None):
-                        img_data = [
+                    images = list(getattr(asset, 'image_assets', None) or [])
+                    record_values[safe_images] = len(images)
+                    if images:
+                        sidecar_images[str(asset.id)] = [
                             (
-                                asdict(img)
-                                if hasattr(img, '__dataclass_fields__')
-                                else str(img)
+                                img.to_dict()
+                                if hasattr(img, 'to_dict')
+                                else {'id': str(img)}
                             )
-                            for img in asset.image_assets
+                            for img in images
                         ]
-                        record_values[safe_images] = json.dumps(img_data, default=str)[
-                            :254
-                        ]
-                    else:
-                        record_values[safe_images] = ''
 
                 w.record(**record_values)
                 w.shape(asset.geometry)
+
+        sidecar_path = self._shapefile_sidecar_path(path)
+        if sidecar_images or renamed_fields:
+            with sidecar_path.open('w', encoding='utf-8') as f:
+                json.dump(
+                    {
+                        'version': 1,
+                        'fields': renamed_fields,
+                        'images': sidecar_images,
+                    },
+                    f,
+                    indent=2,
+                    default=str,
+                )
+        elif sidecar_path.exists():
+            # Do not let a stale sidecar from an earlier export leak into
+            # this one:
+            sidecar_path.unlink()
 
         # Manually write the .prj file for projection:
         prj_filepath = path.with_suffix('.prj')

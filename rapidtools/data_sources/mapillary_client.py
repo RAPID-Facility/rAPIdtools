@@ -560,8 +560,9 @@ class MapillaryClient:
                 last_error = exc
                 time.sleep(0.5 * (attempt + 1))
         if decoded is None:
-            logger.warning(f'Could not read coverage tile {z}/{x}/{y}: {last_error}')
-            return {**empty, 'ok': False, 'error': str(last_error)}
+            error = self._redact(last_error)
+            logger.warning(f'Could not read coverage tile {z}/{x}/{y}: {error}')
+            return {**empty, 'ok': False, 'error': error}
         layer = decoded.get('sequence')
         if not layer:
             return empty
@@ -712,7 +713,7 @@ class MapillaryClient:
                     if asset:
                         assets.append(asset)
                 except Exception as e:
-                    logger.error(f'Exception for image {img_id}: {e}')
+                    logger.error(f'Exception for image {img_id}: {self._redact(e)}')
 
         final_collection = ImageCollection()
         final_collection.add(assets)
@@ -823,7 +824,9 @@ class MapillaryClient:
                     if assets:
                         final_collection.add(assets)
                 except Exception as e:
-                    logger.error(f'Critical error in tile thread {tile}: {e}')
+                    logger.error(
+                        f'Critical error in tile thread {tile}: {self._redact(e)}'
+                    )
 
         # Exit early if no images are returned:
         unique_count = len(final_collection)
@@ -1064,9 +1067,21 @@ class MapillaryClient:
 
         # If tile data cannot be downloaded log error:
         except Exception as e:
-            logger.warning(f'Failed to process tile {z}/{x}/{y}: {e}')
+            logger.warning(f'Failed to process tile {z}/{x}/{y}: {self._redact(e)}')
 
         return found_assets
+
+    def _redact(self, text: Any) -> str:
+        """
+        Return ``text`` with the access token masked, for logs and errors.
+
+        The token travels in tile and Graph API URLs, and ``requests`` puts
+        the full URL into its exception messages.
+        """
+        message = str(text)
+        if self.access_token:
+            message = message.replace(self.access_token, '***')
+        return message
 
     @staticmethod
     def _is_date_in_range(
@@ -1233,7 +1248,7 @@ class MapillaryClient:
                 # Calculate exponential wait time: 1s, 2s, 4s, 8s...
                 wait_time = backoff_factor * (2**attempt)
                 logger.debug(
-                    f'API rejected request for {image_id} ({e}). '
+                    f'API rejected request for {image_id} ({self._redact(e)}). '
                     f'Retrying in {wait_time}s...'
                 )
 
