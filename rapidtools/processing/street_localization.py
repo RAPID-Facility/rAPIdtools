@@ -433,7 +433,12 @@ def estimate_ego_mask(
         groups: dict[tuple[int, int, int, int], dict] = {}
         for i in indices:
             box = obs_list[i].bbox
-            key = tuple(int(round(v / quantum)) for v in box)
+            key = (
+                int(round(box[0] / quantum)),
+                int(round(box[1] / quantum)),
+                int(round(box[2] / quantum)),
+                int(round(box[3] / quantum)),
+            )
             group = groups.get(key)
             if group is None:
                 group = groups[key] = {
