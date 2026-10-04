@@ -169,7 +169,19 @@ How it works:
    covariance-aware gate (narrow across a ray, wide along it), so one car
    seen from two passes becomes one object while two cars seen in the same
    frame never do, unless their positions are closer than a car is wide,
-   which only a split outline can produce. Objects carry ``localization='triangulated'`` or
+   which only a split outline can produce. Two checks then remove what the
+   geometry cannot vouch for. A single-view position whose nearest sighting
+   is beyond ``max_single_view_range_m`` (30 m) is not reported: at that
+   distance the ground-contact range is a guess and the track tends to hop
+   between neighbouring cars in a distant row. And the frames in which the
+   detector did *not* fire are used as negative evidence against weak
+   estimates (single views, and triangulations never seen closer than 25 m
+   or with little parallax): when same-day frames passed within
+   ``witness_radius_m`` (12 m) of such an estimate with it in view and hold
+   no detection of the class along its bearing, the object is not there and
+   is dropped. A car triangulated from a close pass is trusted regardless,
+   since the next pass often finds it hidden behind a hedge or another car.
+   Objects carry ``localization='triangulated'`` or
    ``'single_view'`` (no parallax), plus ``position_sigma_m``,
    ``parallax_deg`` and ``n_images`` so you can filter by quality.
 

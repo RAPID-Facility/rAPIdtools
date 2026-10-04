@@ -60,10 +60,12 @@ from rapidtools.processing.street_localization import (
     localize,
 )
 from rapidtools.processing.street_tracking import (
+    CameraFrame,
     ObjectEstimate,
     discover_objects,
     merge_by_rays,
     merge_estimates,
+    prune_unwitnessed,
     single_view_covariance,
     suppress_duplicate_sightings,
     track_sequence,
@@ -564,7 +566,16 @@ def test_merge_by_rays_attaches_far_fragment_to_triangulated_object():
 # ==========================================
 
 
-def _pano_sighting(image_id, az_deg, half_width_deg, bottom_deg, label=LABEL):
+def _pano_sighting(
+    image_id,
+    az_deg,
+    half_width_deg,
+    bottom_deg,
+    label=LABEL,
+    lon=LON0,
+    lat=LAT0,
+    day=None,
+):
     """A rectangle (normalised coordinates) in an equirectangular frame."""
     x0 = 0.5 + (az_deg - half_width_deg) / 360.0
     x1 = 0.5 + (az_deg + half_width_deg) / 360.0
@@ -574,12 +585,13 @@ def _pano_sighting(image_id, az_deg, half_width_deg, bottom_deg, label=LABEL):
         image_id,
         label,
         [(x0, y0), (x1, y0), (x1, y1), (x0, y1)],
-        LON0,
-        LAT0,
+        lon,
+        lat,
         0.0,
         is_pano=True,
         image_width=8192,
         image_height=4096,
+        captured_at=day,
     )
     localize(o, camera_height_m=CAM_H, max_range_m=80)
     return o
@@ -705,3 +717,200 @@ def test_far_speck_cannot_claim_a_near_car():
     frames.append(car)
     tracks = track_sequence(frames, project)
     assert sorted(len(t) for t in tracks) == [1, 6]
+
+
+# ==========================================
+# Far single views and negative evidence
+# ==========================================
+
+
+def _far_row(range_m, n=3, step_m=1.5, seq='s1', day='2025-08-20T10:00:00'):
+    """A 2 m wide car ``range_m`` north of a camera driving east."""
+    obs = []
+    bottom = math.degrees(math.atan(CAM_H / range_m))
+    half_width = math.degrees(math.atan(1.0 / range_m))
+    for k in range(n):
+        lon = LON0 + k * step_m / 74_900.0
+        az = math.degrees(math.atan2(-k * step_m, range_m))  # bearing to the fixed car
+        o = _pano_sighting(f'{seq}-{k}', az, half_width, bottom, lon=lon, day=day)
+        o.sequence_id = seq
+        obs.append(o)
+    return obs
+
+
+def test_far_single_view_is_not_reported_but_near_one_is():
+    far = _far_row(45.0)
+    ests, counts, _ = discover_objects(far, track_gap_frames=4)
+    assert ests == [] and counts['far_single_view'] == 1
+    ests, counts, _ = discover_objects(
+        far, track_gap_frames=4, max_single_view_range_m=0
+    )
+    assert len(ests) == 1 and ests[0].localization == 'single_view'
+    near = _far_row(12.0, n=4, step_m=3.0)  # enough parallax to triangulate
+    ests, counts, _ = discover_objects(near, track_gap_frames=4)
+    assert len(ests) == 1 and counts['far_single_view'] == 0
+
+
+def _witness(image_id, x_m, y_m, day='2025-08-20', is_pano=True, compass=0.0):
+    return CameraFrame(
+        image_id,
+        LON0 + x_m / 74_900.0,
+        LAT0 + y_m / 111_320.0,
+        compass,
+        is_pano=is_pano,
+        captured_at=f'{day}T12:00:00',
+    )
+
+
+def test_prune_unwitnessed_drops_contradicted_estimates():
+    project, _ = local_projection(LON0, LAT0)
+    member = Observation(
+        'own-1',
+        LABEL,
+        [(0.5, 0.5), (0.51, 0.5), (0.51, 0.52)],
+        LON0,
+        LAT0 + 60 / 111_320.0,
+        0.0,
+        captured_at='2025-08-20T10:00:00',
+    )
+    est = ObjectEstimate(0.0, 10.0, np.eye(2) * 4.0, [member], 'single_view')
+    # Two same-day frames drove within 5 m of the spot and saw nothing there:
+    frames = [
+        _witness('w1', 0.0, 5.0),
+        _witness('w2', 3.0, 5.0),
+        _witness('own-1', 0.0, 60.0),
+    ]
+    kept, dropped = prune_unwitnessed([est], frames, {}, project)
+    assert kept == [] and dropped == 1
+    # A single negative frame is not enough:
+    kept, dropped = prune_unwitnessed([est], frames[:1], {}, project)
+    assert len(kept) == 1 and dropped == 0
+    # Frames from another survey day say nothing about today's car:
+    other_day = [
+        _witness('w1', 0.0, 5.0, day='2025-09-01'),
+        _witness('w2', 3.0, 5.0, day='2025-09-01'),
+    ]
+    kept, dropped = prune_unwitnessed([est], other_day, {}, project)
+    assert len(kept) == 1
+    # A perspective camera facing away from the spot cannot be a witness:
+    away = [
+        _witness('w1', 0.0, 5.0, is_pano=False, compass=180.0),
+        _witness('w2', 3.0, 5.0, is_pano=False, compass=180.0),
+    ]
+    kept, dropped = prune_unwitnessed([est], away, {}, project)
+    assert len(kept) == 1
+    # ... but one facing it is:
+    facing = [
+        _witness('w1', 0.0, 5.0, is_pano=False, compass=0.0),
+        _witness('w2', 3.0, 5.0, is_pano=False, compass=330.0),
+    ]
+    kept, dropped = prune_unwitnessed([est], facing, {}, project)
+    assert kept == []
+
+
+def test_prune_unwitnessed_keeps_estimates_that_nearby_frames_saw():
+    project, _ = local_projection(LON0, LAT0)
+    est = ObjectEstimate(0.0, 10.0, np.eye(2) * 0.1, [], 'triangulated')
+    frames = [
+        _witness('w1', 0.0, 5.0),
+        _witness('w2', 3.0, 5.0),
+        _witness('w3', 6.0, 5.0),
+    ]
+    # Each frame holds a detection pointing at the estimate (bearing ~ north):
+    sightings = {
+        'w1': [
+            Observation(
+                'w1', LABEL, [(0.5, 0.5), (0.52, 0.5), (0.52, 0.55)], LON0, LAT0, 0.0
+            )
+        ],
+        'w2': [
+            Observation(
+                'w2', LABEL, [(0.5, 0.5), (0.52, 0.5), (0.52, 0.55)], LON0, LAT0, 0.0
+            )
+        ],
+    }
+    for lst in sightings.values():
+        for o in lst:
+            o.bearing = 350.0
+    kept, dropped = prune_unwitnessed([est], frames, sightings, project)
+    assert len(kept) == 1 and dropped == 0
+    # A detection far off the predicted bearing does not count as seeing it:
+    for lst in sightings.values():
+        for o in lst:
+            o.bearing = 120.0
+    kept, dropped = prune_unwitnessed([est], frames, sightings, project)
+    assert kept == [] and dropped == 1
+
+
+def test_discover_objects_applies_negative_evidence_to_weak_estimates_only():
+    project, _ = local_projection(LON0, LAT0)
+    # A car triangulated from a close pass (8 m, wide parallax) is trusted even
+    # when a later same-day pass drives by at 3 m and sees nothing:
+    near = _far_row(8.0, n=4, step_m=3.0)
+    frames = [CameraFrame.from_observation(o) for o in near]
+    pass2 = [_witness(f'p-{k}', k * 1.5, 5.0, day='2025-08-20') for k in range(-3, 4)]
+    ests, counts, _ = discover_objects(near, track_gap_frames=4, frames=frames + pass2)
+    assert len(ests) == 1 and counts['unwitnessed'] == 0
+    # A car triangulated only from 30 m (weak) is dropped when a same-day pass
+    # 3 m from its spot saw nothing there:
+    far = _far_row(30.0, n=5, step_m=4.0)
+    frames = [CameraFrame.from_observation(o) for o in far]
+    ests, counts, _ = discover_objects(far, track_gap_frames=4, frames=frames)
+    assert len(ests) == 1 and ests[0].localization == 'triangulated'
+    pass2 = [_witness(f'p-{k}', k * 3.0, 27.0, day='2025-08-20') for k in range(-1, 2)]
+    ests, counts, _ = discover_objects(far, track_gap_frames=4, frames=frames + pass2)
+    assert ests == [] and counts['unwitnessed'] == 1
+    # ... but not by a pass on another day:
+    pass3 = [_witness(f'q-{k}', k * 3.0, 27.0, day='2025-09-01') for k in range(-1, 2)]
+    ests, counts, _ = discover_objects(far, track_gap_frames=4, frames=frames + pass3)
+    assert len(ests) == 1
+
+
+def test_witness_votes_are_tallied_per_survey_day():
+    """A car seen from 4 m on day one is kept although it had left by day two."""
+    project, _ = local_projection(LON0, LAT0)
+    day1 = [
+        Observation(
+            'd1-a',
+            LABEL,
+            [(0.5, 0.5), (0.52, 0.5), (0.52, 0.55)],
+            LON0,
+            LAT0,
+            0.0,
+            captured_at='2025-08-20T10:00:00',
+        ),
+        Observation(
+            'd1-b',
+            LABEL,
+            [(0.5, 0.5), (0.52, 0.5), (0.52, 0.55)],
+            LON0 + 3 / 74_900.0,
+            LAT0,
+            0.0,
+            captured_at='2025-08-20T10:00:01',
+        ),
+        # a stray far sighting from the second day merged into the object:
+        Observation(
+            'd2-far',
+            LABEL,
+            [(0.5, 0.5), (0.51, 0.5), (0.51, 0.51)],
+            LON0,
+            LAT0 - 50 / 111_320.0,
+            0.0,
+            captured_at='2025-09-10T10:00:00',
+        ),
+    ]
+    est = ObjectEstimate(1.5, 4.0, np.eye(2) * 0.1, day1, 'triangulated')
+    frames = [
+        _witness('d1-a', 0.0, 0.0),
+        _witness('d1-b', 3.0, 0.0),
+        _witness('d2-far', 0.0, -50.0, day='2025-09-10'),
+        # four frames on the second day pass right by and see nothing:
+        *[_witness(f'd2-{k}', k * 2.0, 0.0, day='2025-09-10') for k in range(-1, 3)],
+    ]
+    kept, dropped = prune_unwitnessed([est], frames, {}, project)
+    assert len(kept) == 1 and dropped == 0
+    # Without the close day-one frames (object built only from far views),
+    # the second day's misses do count:
+    far_only = ObjectEstimate(1.5, 4.0, np.eye(2) * 4.0, day1[2:], 'single_view')
+    kept, dropped = prune_unwitnessed([far_only], frames, {}, project)
+    assert kept == [] and dropped == 1

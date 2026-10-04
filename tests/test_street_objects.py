@@ -358,6 +358,35 @@ def test_ego_filter_can_be_disabled(region, tmp_path):
     assert len(ext(region)) == 0
 
 
+def test_extractor_hands_every_frame_to_the_witness_check(
+    region, tmp_path, monkeypatch
+):
+    from rapidtools.processing import street_objects as so
+
+    seen = {}
+    real = so.discover_objects
+
+    def spy(obs, **kwargs):
+        seen.update(kwargs)
+        return real(obs, **kwargs)
+
+    monkeypatch.setattr(so, 'discover_objects', spy)
+    client = FakeClient(_survey(n_frames=5))
+    ext = MapillaryFeatureExtractor(
+        classes=['cars'],
+        client=client,
+        region=region,
+        save_directory=tmp_path,
+        witness_radius_m=9.0,
+        max_single_view_range_m=25.0,
+    )
+    result = ext()
+    assert len(result) == 1  # the car is seen from every frame, nothing contradicts it
+    frames = seen['frames']
+    assert len(frames) == 5 and all(isinstance(f, so.CameraFrame) for f in frames)
+    assert seen['witness_radius_m'] == 9.0 and seen['max_single_view_range_m'] == 25.0
+
+
 def test_min_observations_and_frame_spacing(region, tmp_path):
     client = FakeClient(_survey(n_frames=2, spacing_m=1.0))
     ext = MapillaryFeatureExtractor(

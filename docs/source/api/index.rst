@@ -90,6 +90,8 @@ baseline and appearance re-identification.
    street_localization.thin_frames
    street_tracking.discover_objects
    street_tracking.suppress_duplicate_sightings
+   street_tracking.prune_unwitnessed
+   street_tracking.CameraFrame
    street_tracking.track_sequence
    street_tracking.merge_by_rays
    street_tracking.triangulate_track

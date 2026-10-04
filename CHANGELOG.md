@@ -79,6 +79,21 @@ minor releases may change public APIs.
   `min_object_width_m` wide could be, given its angular size, and the
   camera's displacement) instead of a flat 45 degrees, which stops a far
   speck from claiming a near car and localising it from the wrong frames.
+- Negative evidence in street-level discovery. `MapillaryFeatureExtractor`
+  keeps a light `CameraFrame` record of every survey frame (including frames
+  with no detection) and `street_tracking.prune_unwitnessed` drops a weak
+  estimate (`is_weak_estimate`: a single view, or a triangulation never seen
+  closer than 25 m, with parallax under 15 degrees or uncertainty over 1 m)
+  when same-day frames within `witness_radius_m` (12 m) had its position in
+  view and hold no detection of the class along its bearing; votes are
+  tallied per survey day so a car seen up close on one day is kept even if
+  it had left by the next.
+  Single-view positions whose nearest sighting is beyond
+  `max_single_view_range_m` (30 m) are no longer reported: distant rows of
+  parked cars seen from a cross street produced objects whose track hopped
+  between neighbours and whose range was a guess. `discover_objects` counts
+  both as `'far_single_view'` and `'unwitnessed'`. The verifier's question
+  also rejects outlines so small or loose that they take in several objects.
 - `MapillaryObjectImageExtractor` removes its own crop files from earlier
   runs for the assets it is about to crop, and the street detections map
   only tiles crops whose source image is among the asset's sightings. Asset

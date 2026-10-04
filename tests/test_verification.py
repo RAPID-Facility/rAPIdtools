@@ -445,3 +445,7 @@ def test_top_level_export():
     cls = rapidtools.DetectionVerifier
     assert cls is importlib.import_module('rapidtools.processing').DetectionVerifier
     assert cls is ver.DetectionVerifier
+
+
+def test_prompt_rejects_loose_outlines_over_several_objects():
+    assert 'takes in several objects' in ver.DEFAULT_PROMPT

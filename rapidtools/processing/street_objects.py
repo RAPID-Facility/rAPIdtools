@@ -121,7 +121,11 @@ from .street_localization import (
     simplify_polygon,
     thin_frames,
 )
-from .street_tracking import discover_objects, estimate_attributes
+from .street_tracking import (
+    CameraFrame,
+    discover_objects,
+    estimate_attributes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -319,6 +323,22 @@ def _is_pano(props: dict[str, Any]) -> bool:
     return bool(props.get('is_pano')) or props.get('camera_type') in _PANO_TYPES
 
 
+def _camera_frame(frame: dict[str, Any]) -> CameraFrame:
+    """The light per-frame record kept for the negative-evidence check."""
+    params = frame.get('camera_parameters')
+    focal = float(params[0]) if params and params[0] else None
+    return CameraFrame(
+        image_id=frame['id'],
+        lon=frame['lon'],
+        lat=frame['lat'],
+        compass_angle=float(frame['compass'] or 0.0),
+        is_pano=bool(frame['is_pano']),
+        captured_at=frame['captured_at'],
+        sequence_id=frame['sequence'],
+        focal_norm=focal,
+    )
+
+
 def _captured_at(props: dict[str, Any]) -> str | None:
     value = props.get('captured_at')
     if isinstance(value, (int, float)):
@@ -383,6 +403,18 @@ class MapillaryFeatureExtractor:
         max_range_m (float):
             Farthest triangulated position reported, and the farthest
             single-view range kept as a prior. Defaults to 60.0.
+        max_single_view_range_m (float):
+            A single-view object whose nearest sighting is farther than
+            this is not reported; beyond it the ground-contact range is a
+            guess and the track tends to hop between neighbouring objects.
+            ``0`` keeps them. Defaults to 30.0.
+        witness_radius_m (float):
+            Negative-evidence check: a weak object (a single view, or a
+            triangulation never seen closer than 25 m) that same-day frames
+            within this distance had in view, without any detection of the
+            class along its bearing, is dropped (at least two such frames,
+            outnumbering frames that did see it, tallied per survey day).
+            ``0`` disables the check. Defaults to 12.0.
         min_object_width_m (float):
             Objects narrower than this, judged from the outline's angular
             width at the estimated distance, are fragments or false
@@ -530,6 +562,8 @@ class MapillaryFeatureExtractor:
         camera_height_m: float = 2.4,
         min_range_m: float = 2.0,
         max_range_m: float = DEFAULT_MAX_RANGE_M,
+        max_single_view_range_m: float = 30.0,
+        witness_radius_m: float = 12.0,
         min_object_width_m: float = 1.0,
         object_height_m: float = 1.5,
         min_area_fraction: float | None = None,
@@ -596,6 +630,8 @@ class MapillaryFeatureExtractor:
         self.camera_height_m = camera_height_m
         self.min_range_m = min_range_m
         self.max_range_m = max_range_m
+        self.max_single_view_range_m = max_single_view_range_m
+        self.witness_radius_m = witness_radius_m
         self.min_object_width_m = min_object_width_m
         self.object_height_m = object_height_m
         if min_area_fraction is not None:
@@ -794,6 +830,7 @@ class MapillaryFeatureExtractor:
         ids = sorted(keep)
         observations: dict[str, list[Observation]] = defaultdict(list)
         sam3_frames: list[dict[str, Any]] = []
+        camera_frames: list[CameraFrame] = []  # every frame, for negative evidence
         n_frames = 0
         batches = range(0, len(ids), self.frame_batch_size)
         for start in tqdm(batches, desc='Frame batches', disable=len(batches) < 2):
@@ -808,6 +845,7 @@ class MapillaryFeatureExtractor:
             frames = self._frames(rich)
             del rich
             n_frames += len(frames)
+            camera_frames.extend(_camera_frame(frame) for frame in frames)
             if mapillary_classes:
                 for cls, obs in self._mapillary_observations(
                     frames, mapillary_classes
@@ -834,7 +872,9 @@ class MapillaryFeatureExtractor:
             if not obs_list:
                 logger.info(f"No detections for class '{cls}'.")
                 continue
-            assets, counter = self._assets_for_class(cls, obs_list, counter)
+            assets, counter = self._assets_for_class(
+                cls, obs_list, counter, camera_frames
+            )
             for asset in assets:
                 collection.add(asset)
             logger.info(f"'{cls}': {len(obs_list)} sightings -> {len(assets)} objects.")
@@ -1077,7 +1117,11 @@ class MapillaryFeatureExtractor:
 
     # ---------------------------------------------------------------- assets
     def _assets_for_class(
-        self, cls: str, obs_list: list[Observation], counter: int
+        self,
+        cls: str,
+        obs_list: list[Observation],
+        counter: int,
+        camera_frames: Sequence[CameraFrame] | None = None,
     ) -> tuple[list[PhysicalAsset], int]:
         """Filter, localise and group one class's sightings into assets."""
         if self.ego_filter:
@@ -1088,7 +1132,7 @@ class MapillaryFeatureExtractor:
                 )
             obs_list = [o for i, o in enumerate(obs_list) if i not in ego]
         if self.localization_method != 'cluster':
-            return self._assets_from_tracks(cls, obs_list, counter)
+            return self._assets_from_tracks(cls, obs_list, counter, camera_frames)
         located = [
             o
             for o in obs_list
@@ -1114,12 +1158,19 @@ class MapillaryFeatureExtractor:
         return assets, counter
 
     def _assets_from_tracks(
-        self, cls: str, obs_list: list[Observation], counter: int
+        self,
+        cls: str,
+        obs_list: list[Observation],
+        counter: int,
+        camera_frames: Sequence[CameraFrame] | None = None,
     ) -> tuple[list[PhysicalAsset], int]:
         """Track, triangulate, merge (and optionally re-identify) one class."""
         estimates, counts, unproject = discover_objects(
             obs_list,
             method=self.localization_method,
+            max_single_view_range_m=self.max_single_view_range_m,
+            frames=camera_frames,
+            witness_radius_m=self.witness_radius_m,
             camera_height_m=self.camera_height_m,
             min_range_m=self.min_range_m,
             max_range_m=self.max_range_m,
@@ -1137,7 +1188,9 @@ class MapillaryFeatureExtractor:
             f'{counts.get("duplicates", 0)} duplicate outlines dropped, '
             f'{counts["tracks"]} tracks, {counts["moving"]} moving dropped, '
             f'{counts["fragment"]} too small dropped, {counts["on_path"]} on the '
-            f'driven path dropped -> {counts["objects"]} objects.'
+            f'driven path dropped, {counts.get("far_single_view", 0)} far single '
+            f'views dropped, {counts.get("unwitnessed", 0)} contradicted by nearby '
+            f'frames -> {counts["objects"]} objects.'
         )
         assets = []
         for est in estimates:

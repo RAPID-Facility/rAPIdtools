@@ -961,6 +961,217 @@ def merge_by_rays(
 MIN_SEPARATION_M = 1.5
 
 
+# --------------------------------------------------------------- witnesses
+@dataclass
+class CameraFrame:
+    """
+    Where one survey frame was taken and what it could see.
+
+    One record per frame, including frames with no detection of the class:
+    those are the ones that can say an object is *not* somewhere.
+
+    Attributes:
+        image_id: Mapillary image ID.
+        lon, lat: Camera position.
+        compass_angle: Camera heading in degrees clockwise from north.
+        is_pano: Whether the frame is a 360-degree panorama.
+        captured_at: ISO timestamp (the date part identifies the survey day).
+        sequence_id: Mapillary sequence.
+        focal_norm: Focal length over the larger image side (OpenSfM), for
+            the horizontal field of view of a perspective camera.
+    """
+
+    image_id: str
+    lon: float
+    lat: float
+    compass_angle: float
+    is_pano: bool = True
+    captured_at: str | None = None
+    sequence_id: str | None = None
+    focal_norm: float | None = None
+
+    @property
+    def day(self) -> str | None:
+        """The survey day (``YYYY-MM-DD``), if the capture time is known."""
+        return self.captured_at[:10] if self.captured_at else None
+
+    @property
+    def horizontal_fov_deg(self) -> float:
+        """Horizontal field of view; 360 for a panorama."""
+        if self.is_pano:
+            return 360.0
+        focal = self.focal_norm if self.focal_norm else 0.85
+        return 2.0 * math.degrees(math.atan(0.5 / focal))
+
+    def sees(self, bearing: float, margin_deg: float = 5.0) -> bool:
+        """Whether a ground point at ``bearing`` lies inside the frame."""
+        if self.is_pano:
+            return True
+        return _angle_diff(bearing, self.compass_angle) <= (
+            self.horizontal_fov_deg / 2.0 - margin_deg
+        )
+
+    @classmethod
+    def from_observation(cls, obs: Observation) -> CameraFrame:
+        """The frame record of a sighting's camera."""
+        params = (obs.extra or {}).get('camera_parameters')
+        focal = float(params[0]) if params and params[0] else None
+        return cls(
+            obs.image_id,
+            obs.camera_lon,
+            obs.camera_lat,
+            float(obs.compass_angle or 0.0),
+            obs.is_pano,
+            obs.captured_at,
+            obs.sequence_id,
+            focal,
+        )
+
+
+def nearest_range_m(est: ObjectEstimate) -> float | None:
+    """The closest ground-contact range among an estimate's sightings."""
+    ranges = [o.range_m for o in est.members if o.range_m is not None]
+    return min(ranges) if ranges else None
+
+
+def is_weak_estimate(
+    est: ObjectEstimate,
+    weak_range_m: float = 25.0,
+    weak_sigma_m: float = 1.0,
+    weak_parallax_deg: float = 15.0,
+) -> bool:
+    """
+    Whether an estimate's position should not be trusted on its own.
+
+    Single views are weak by definition. A triangulation is weak when it
+    was never seen closer than ``weak_range_m`` (the rays are then nearly
+    parallel and a bearing bias from partial occlusion moves the
+    intersection metres along the line of sight, far more than its
+    covariance admits), when its reported uncertainty exceeds
+    ``weak_sigma_m``, or when its parallax is below ``weak_parallax_deg``.
+    """
+    if est.localization != 'triangulated':
+        return True
+    nearest = nearest_range_m(est)
+    if nearest is None or nearest > weak_range_m:
+        return True
+    return est.sigma_m > weak_sigma_m or est.parallax_deg < weak_parallax_deg
+
+
+def prune_unwitnessed(
+    estimates: Sequence[ObjectEstimate],
+    frames: Sequence[CameraFrame],
+    frame_sightings: Mapping[str, Sequence[Observation]],
+    project: Project,
+    witness_radius_m: float = 12.0,
+    min_witnesses: int = 2,
+    object_size_m: float = 4.5,
+    min_distance_m: float = 1.5,
+    bearing_margin_deg: float = 3.0,
+    weak_only: bool = True,
+) -> tuple[list[ObjectEstimate], int]:
+    """
+    Drop estimates that nearby frames should have seen but did not.
+
+    An object's position is otherwise built only from the frames in which
+    the detector fired. The frames in which it did not fire are evidence
+    too: if a camera passed within ``witness_radius_m`` of the estimated
+    position on the same survey day, with that position in its field of
+    view, and that frame holds no detection of the class anywhere near the
+    predicted bearing, the object is not there. A far single-view estimate
+    is typically metres off along its ray, and this is what catches it when
+    the survey happened to drive past the spot it was placed on.
+
+    A frame counts as a positive witness when any detection of the class
+    lies within the object's angular size of the predicted bearing (an
+    object parked in front of it counts too, since it could hide the
+    estimate). Votes are tallied per survey day, and an
+    estimate is dropped only when, on every day that has witnesses, at
+    least ``min_witnesses`` negative ones exist and they outnumber the
+    positive ones; a vehicle seen up close on one day is reported even if
+    it had gone by a later survey day. The
+    frames the estimate was built from count as positive witnesses when
+    they lie within the radius, so an object seen up close in one pass
+    survives a later pass that day in which it had gone. Frames from other
+    days (the vehicle may have left) and frames closer than
+    ``min_distance_m`` are not witnesses.
+
+    Args:
+        estimates: Candidates after merging.
+        frames: Every frame of the survey, including those with no sighting.
+        frame_sightings: Sightings of the class per image ID.
+        project: Local metre projection shared by the caller.
+        witness_radius_m: Farthest a camera can be and still count; at this
+            distance a vehicle is unmissable for the detector.
+        min_witnesses: Negative frames required.
+        object_size_m: Object footprint, for the bearing tolerance.
+        min_distance_m: Closest a witness may be (nearer ones are on the path).
+        bearing_margin_deg: Extra bearing tolerance for pose error.
+        weak_only: Judge only estimates whose position is not trustworthy
+            on its own (see :func:`is_weak_estimate`). A car triangulated
+            from a close pass is real whatever a later pass shows: driveway
+            cars are routinely hidden from the next pass by a hedge or a
+            car in front, and the detector itself misses some.
+
+    Returns:
+        tuple[list[ObjectEstimate], int]: The kept estimates and the number
+        dropped.
+    """
+    if not frames or witness_radius_m <= 0:
+        return list(estimates), 0
+    cams = np.array([project(f.lon, f.lat) for f in frames], dtype=float)
+    cell = witness_radius_m
+    grid: dict[tuple[int, int], list[int]] = defaultdict(list)
+    for i, (x, y) in enumerate(cams):
+        grid[(int(math.floor(x / cell)), int(math.floor(y / cell)))].append(i)
+    kept: list[ObjectEstimate] = []
+    dropped = 0
+    for est in estimates:
+        if weak_only and not is_weak_estimate(est):
+            kept.append(est)
+            continue
+        days = {o.captured_at[:10] for o in est.members if o.captured_at}
+        own = est.image_ids
+        votes: dict[str | None, list[int]] = defaultdict(lambda: [0, 0])
+        gx, gy = int(math.floor(est.x / cell)), int(math.floor(est.y / cell))
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for i in grid.get((gx + dx, gy + dy), ()):
+                    frame = frames[i]
+                    if days and frame.day not in days:
+                        continue
+                    cx, cy = cams[i]
+                    dist = math.hypot(est.x - cx, est.y - cy)
+                    if dist > witness_radius_m or dist < min_distance_m:
+                        continue
+                    bearing = _bearing_to(cx, cy, est.x, est.y)
+                    if not frame.sees(bearing):
+                        continue
+                    tol = (
+                        math.degrees(math.atan2(object_size_m / 2.0 + 1.0, dist))
+                        + bearing_margin_deg
+                    )
+                    # The frames the estimate was built from saw it by
+                    # definition; they vote for it, so a car seen from 3 m in
+                    # one pass is not vetoed by a later pass after it left.
+                    seen = frame.image_id in own or any(
+                        o.bearing is not None
+                        and _angle_diff(float(o.bearing), bearing) <= tol
+                        for o in frame_sightings.get(frame.image_id, ())
+                    )
+                    votes[frame.day][0 if seen else 1] += 1
+        # Tally per survey day: a vehicle seen up close on one day is real
+        # even if it had gone by the time of a later survey day.
+        contradicted = bool(votes) and all(
+            neg >= min_witnesses and neg > pos for pos, neg in votes.values()
+        )
+        if contradicted:
+            dropped += 1
+        else:
+            kept.append(est)
+    return kept, dropped
+
+
 def merge_estimates(
     estimates: Sequence[ObjectEstimate],
     max_distance_m: float = 6.0,
@@ -1206,6 +1417,9 @@ def discover_objects(
     object_size_m: float = 4.5,
     vote_cell_m: float = 0.5,
     min_vote_score: float = 1.5,
+    max_single_view_range_m: float = 30.0,
+    frames: Sequence[CameraFrame] | None = None,
+    witness_radius_m: float = 12.0,
 ) -> tuple[list[ObjectEstimate], dict[str, int], Unproject]:
     """
     Turn the sightings of one class into object estimates.
@@ -1237,13 +1451,25 @@ def discover_objects(
         object_size_m: Object footprint used by the voting baseline.
         vote_cell_m: Grid cell of the voting baseline.
         min_vote_score: Peak threshold of the voting baseline.
+        max_single_view_range_m: A single-view position whose nearest
+            sighting is farther than this is not reported: at that distance
+            the ground-contact range is a guess, not a measurement. Such
+            far fragments still take part in merging first, so a far view of
+            a well-located object joins it rather than being lost. ``0``
+            disables the cut.
+        frames: Every frame of the survey as :class:`CameraFrame` records,
+            including frames with no sighting of the class. When given,
+            estimates that nearby same-day frames should have seen but did
+            not are dropped (see :func:`prune_unwitnessed`).
+        witness_radius_m: Radius of that check; ``0`` disables it.
 
     Returns:
         tuple: ``(estimates, counts, unproject)`` where ``counts`` reports
         ``'sightings'``, ``'with_bearing'``, ``'duplicates'`` (detector
         outlines resolved within a frame), ``'tracks'``, ``'moving'``,
-        ``'fragment'``, ``'on_path'`` and ``'objects'``, and ``unproject``
-        converts local metres back to ``(lon, lat)``.
+        ``'fragment'``, ``'on_path'``, ``'far_single_view'``,
+        ``'unwitnessed'`` and ``'objects'``, and ``unproject`` converts
+        local metres back to ``(lon, lat)``.
     """
     if method not in ('tracks', 'voting'):
         raise ValueError(f"method must be 'tracks' or 'voting', got {method!r}.")
@@ -1255,6 +1481,8 @@ def discover_objects(
         'moving': 0,
         'fragment': 0,
         'on_path': 0,
+        'far_single_view': 0,
+        'unwitnessed': 0,
         'objects': 0,
     }
     usable: list[Observation] = []
@@ -1276,6 +1504,9 @@ def discover_objects(
     usable, duplicates = suppress_duplicate_sightings(usable)
     counts['duplicates'] = duplicates
     project, unproject = local_projection(usable[0].camera_lon, usable[0].camera_lat)
+    frame_sightings: dict[str, list[Observation]] = defaultdict(list)
+    for obs in usable:
+        frame_sightings[obs.image_id].append(obs)
 
     if method == 'voting':
         estimates = vote_rays(
@@ -1293,9 +1524,6 @@ def discover_objects(
     by_sequence: dict[str, list[Observation]] = defaultdict(list)
     for obs in usable:
         by_sequence[obs.sequence_id or '__none__'].append(obs)
-    frame_sightings: dict[str, list[Observation]] = defaultdict(list)
-    for obs in usable:
-        frame_sightings[obs.image_id].append(obs)
     estimates = []
     for members in by_sequence.values():
         for track in track_sequence(
@@ -1336,6 +1564,27 @@ def discover_objects(
                 continue
             kept.append(est)
         merged = kept
+    if max_single_view_range_m > 0:
+        kept = []
+        for est in merged:
+            if est.localization == 'single_view':
+                ranges = [o.range_m for o in est.members if o.range_m is not None]
+                if not ranges or min(ranges) > max_single_view_range_m:
+                    counts['far_single_view'] += 1
+                    continue
+            kept.append(est)
+        merged = kept
+    if frames and witness_radius_m > 0:
+        merged, unwitnessed = prune_unwitnessed(
+            merged,
+            frames,
+            frame_sightings,
+            project,
+            witness_radius_m=witness_radius_m,
+            object_size_m=object_size_m,
+            min_distance_m=max(min_path_distance_m, 1.0),
+        )
+        counts['unwitnessed'] = unwitnessed
     counts['objects'] = len(merged)
     return merged, counts, unproject
 

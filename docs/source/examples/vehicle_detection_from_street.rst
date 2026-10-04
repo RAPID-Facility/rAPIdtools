@@ -57,9 +57,10 @@ What to look at in the output
 - ``position_sigma_m``, ``parallax_deg``, ``n_images`` and
   ``position_rms_m`` tell you how well constrained each position is; filter
   on ``position_sigma_m`` for a map you can trust.
-- Vehicles that were driving, and anything on the line the camera itself
-  drove, are dropped before the collection is built; the log reports how
-  many.
+- Vehicles that were driving, anything on the line the camera itself
+  drove, single views whose nearest sighting is beyond 30 m, and objects
+  that nearby same-day frames should have seen but did not, are dropped
+  before the collection is built; the log reports how many of each.
 - ``observations`` lists every sighting with its image ID, so the crops can be
   regenerated later without re-running detection.
 - A vehicle has to appear in at least three distinct frames
