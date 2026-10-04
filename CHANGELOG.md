@@ -45,6 +45,11 @@ minor releases may change public APIs.
   vision backbone (DINOv2 by default) and `MapillaryFeatureExtractor(reid=True)`,
   which merges look-alike objects from different sequences within
   `reid_max_distance_m`, removing the double counts of a repeated pass.
+- Example `examples/street_detections_map.py`: writes a self-contained HTML
+  map of street-level detections on a Bing aerial basemap, with each
+  object's attributes, its crops tiled, a link to every source image on
+  Mapillary and lines from the cameras to the object; filters by
+  localisation type, image count and position uncertainty.
 - **Street-level object discovery.** `MapillaryFeatureExtractor` (a `DETECT`
   step) finds objects of the requested classes in every Mapillary image of a
   region from Mapillary's own segmentation detections, read as metadata with
