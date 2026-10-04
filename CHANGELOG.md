@@ -52,6 +52,13 @@ minor releases may change public APIs.
   (from the sightings, or the complete drive when a Mapillary token is
   given); filters by localisation type, image count and position
   uncertainty.
+- `DetectionVerifier`, a `VERIFY`-stage pipeline step (between cropping and
+  analysis) that shows each object's closest crops to any model from
+  `rapidtools.models.load()` (or a custom classifier callable) and asks
+  whether it is what it claims to be; rejects are dropped (or kept flagged
+  with `keep_rejected=True`). The street vehicle example uses it to screen
+  Mapillary's false detections before the condition analysis, and draws the
+  detection's rotated bounding box as a thin red line on the crops.
 - **Street-level object discovery.** `MapillaryFeatureExtractor` (a `DETECT`
   step) finds objects of the requested classes in every Mapillary image of a
   region from Mapillary's own segmentation detections, read as metadata with
@@ -161,6 +168,14 @@ minor releases may change public APIs.
   track, so a 150-frame track takes milliseconds instead of seconds; the
   range bound now applies to the final position, so a track seen mostly
   from far-away cameras is no longer mistaken for a moving vehicle.
+- Street-level estimates are associated by their lines of sight before any
+  position-based merge (`merge_by_rays`): a single-view fragment joins the
+  triangulated object its bearings point at instead of being placed from
+  unreliable long ranges, and the two halves of a long vehicle seen from
+  both ends merge into one object (the merge gate also grows with the
+  object's measured size). Tracking survives the fast bearing swings of
+  objects close to the camera (45-degree gate, four-frame gaps), and
+  single-view positions use only the nearest frames.
 - `MapillaryFeatureExtractor` reads frames in batches (`frame_batch_size`,
   default 200) and discards each image's full detection payload once the
   requested classes are read, and simplifies detection outlines on arrival

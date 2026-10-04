@@ -171,6 +171,15 @@ Two shortcuts sit on top of this:
   ``aligned_direction``, ``first_seen`` and ``last_seen``). Vehicles are not
   map features and always go through the image route;
   ``detection_source='mapillary'`` forces the image route for everything.
+- **False detections can be screened by a model you choose.** Mapillary's
+  detector sometimes fires on things that are not the requested class.
+  :class:`~rapidtools.processing.DetectionVerifier` is a pipeline step
+  (stage ``VERIFY``, between cropping and analysis) that shows each object's
+  closest crops to any model from :func:`rapidtools.models.load` and asks
+  whether it is what it claims to be, writing ``verify_accepted``,
+  ``verify_confidence`` and ``verify_label`` and removing the rejects (or
+  keeping them flagged with ``keep_rejected=True``). A custom
+  ``classifier`` callable can stand in for the model.
 - **Repeated passes are reconciled by appearance.** With ``reid=True`` the
   extractor crops the closest view of objects from different sequences that
   lie within ``reid_max_distance_m`` of each other, embeds them with a

@@ -49,7 +49,8 @@ that operate on a :class:`~rapidtools.core.PhysicalAssetCollection`:
     - Feature extractors (``SAM3OrthoFeatureExtractor``) discover new assets
       in orthomosaic rasters.
     - Segmenters (``SAM3ImageSegmenter``) and analyzers (``*AssetAnalyzer``)
-      run AI models over the gathered imagery.
+      run AI models over the gathered imagery; ``DetectionVerifier`` confirms
+      detections with a model and drops false positives before analysis.
     - Post-processing tools (``BuildingRegularizer``, ``RoadwayRegularizer``)
       turn raw model outputs into clean vector geometries.
 
@@ -109,6 +110,7 @@ from .postprocessing.buildings import BuildingRegularizer
 from .postprocessing.roads import RoadwayRegularizer
 from .step import PipelineStep, Stage
 from .street_objects import MapillaryFeatureExtractor, MapillaryObjectImageExtractor
+from .verification import DetectionVerifier
 
 # Explicitly define what is available when a user types:
 __all__ = [
@@ -119,6 +121,7 @@ __all__ = [
     'BaseLocalAssetAnalyzer',
     'BuildingRegularizer',
     'ClaudeAssetAnalyzer',
+    'DetectionVerifier',
     'GeminiAssetAnalyzer',
     'Gemma4AssetAnalyzer',
     'GoogleOrthomosaicExtractor',

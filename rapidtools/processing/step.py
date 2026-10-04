@@ -76,6 +76,9 @@ class Stage(IntEnum):
         EXTRACT_IMAGERY: Attach aerial or street-level images to assets.
         REGULARIZE: Clean and regularize asset geometries.
         SEGMENT: Segment the attached images (masks, boxes).
+        VERIFY: Confirm detections with a model and drop false positives;
+            runs after imagery is attached and before analysis, so rejected
+            objects are never sent to the (paid) analysis model.
         ANALYZE: Run vision-language models over the images.
         EXPORT: Reporters and exporters.
         CUSTOM: Steps without a declared stage; run last.
@@ -89,6 +92,7 @@ class Stage(IntEnum):
     EXTRACT_IMAGERY = 20
     REGULARIZE = 30
     SEGMENT = 40
+    VERIFY = 45
     ANALYZE = 50
     EXPORT = 60
     CUSTOM = 99
@@ -122,6 +126,7 @@ _NAME_KEYWORDS: tuple[tuple[str, Stage], ...] = (
     ('extractor', Stage.EXTRACT_IMAGERY),
     ('segmenter', Stage.SEGMENT),
     ('regularizer', Stage.REGULARIZE),
+    ('verifier', Stage.VERIFY),
     ('analyzer', Stage.ANALYZE),
     ('predictor', Stage.ANALYZE),
     ('classifier', Stage.ANALYZE),

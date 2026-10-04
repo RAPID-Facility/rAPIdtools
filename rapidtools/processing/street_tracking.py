@@ -129,6 +129,11 @@ class ObjectEstimate:
             ``'single_view'`` (ground-contact ranges only).
         rms_m: Root-mean-square ray residual of a triangulation, else ``None``.
         parallax_deg: Largest bearing separation among the rays used.
+        rays: ``(camera_x, camera_y, bearing_deg)`` per frame, the geometry
+            that is reliable regardless of range; used to associate
+            fragments and duplicates by their lines of sight.
+        size_m: Physical width of the object as seen (median over frames),
+            or ``None`` when unknown.
     """
 
     x: float
@@ -138,6 +143,8 @@ class ObjectEstimate:
     localization: str
     rms_m: float | None = None
     parallax_deg: float = 0.0
+    rays: list[tuple[float, float, float]] = field(default_factory=list)
+    size_m: float | None = None
 
     @property
     def image_ids(self) -> set[str]:
@@ -288,11 +295,11 @@ def _max_separation(bearings: Iterable[float]) -> float:
 def track_sequence(
     observations: Sequence[Observation],
     project: Project,
-    max_gap_frames: int = 2,
+    max_gap_frames: int = 4,
     base_gate_deg: float = 6.0,
     gate_m: float = 2.5,
     gate_fraction: float = 0.10,
-    loose_gate_deg: float = 25.0,
+    loose_gate_deg: float = 45.0,
 ) -> list[list[Observation]]:
     """
     Link the sightings of one sequence into tracks, one per object.
@@ -536,9 +543,13 @@ def classify_track(
         widths = [physical_width(o, float(o.range_m or 0.0)) for o in located]
         if float(np.median(widths)) < min_object_width_m:
             return None, 'fragment'
+        # The nearest frames carry the best ground-contact ranges; frames far
+        # down the road would only drag the estimate along the ray.
+        nearest = min(float(o.range_m or 0.0) for o in located)
+        close = [o for o in located if float(o.range_m or 0.0) <= 1.5 * nearest + 1.0]
         info = np.zeros((2, 2))
         vec = np.zeros(2)
-        for o in located:
+        for o in close:
             p = np.array(project(*_lon_lat(o)))
             cov = single_view_covariance(
                 float(o.bearing or 0.0), float(o.range_m or 0.0), bearing_sigma_deg
@@ -556,6 +567,8 @@ def classify_track(
                 list(members),
                 'single_view',
                 parallax_deg=_max_separation(b for _, _, b in rays),
+                rays=list(rays),
+                size_m=float(np.median(widths)),
             ),
             'ok',
         )
@@ -657,6 +670,8 @@ def classify_track(
             'triangulated',
             rms_m=rms,
             parallax_deg=_max_separation(rays[k][2] for k in inliers),
+            rays=[rays[k] for k in inliers],
+            size_m=float(np.median(widths)) if widths else None,
         ),
         'ok',
     )
@@ -709,6 +724,133 @@ def _occlusion_explains(
 
 
 # --------------------------------------------------------------- merging
+def merge_by_rays(
+    estimates: Sequence[ObjectEstimate],
+    bearing_sigma_deg: float = BEARING_SIGMA_DEG,
+    search_radius_m: float = 40.0,
+    object_length_m: float = 5.0,
+) -> list[ObjectEstimate]:
+    """
+    Merge estimates whose lines of sight point at the same object.
+
+    Positions of single-view fragments can be metres off along the ray, so
+    they are not compared by position at all: a fragment joins a
+    triangulated object when its bearings all pass within tolerance of that
+    object's position and in front of its cameras. Two triangulated
+    estimates merge when each one's rays pass through the other's position,
+    with a tolerance that grows with the object's measured length, which is
+    what reunites the two halves of a long truck seen from different sides.
+    Estimates that share a frame are never merged (two detections in one
+    image are two objects).
+
+    Args:
+        estimates: Candidates with ``rays`` set.
+        bearing_sigma_deg: One-sigma bearing error.
+        search_radius_m: Only pairs this close are examined.
+        object_length_m: Typical length of the class; the tolerance uses
+            the larger of this and the measured size.
+
+    Returns:
+        list[ObjectEstimate]: The merged candidates.
+    """
+    sigma_rad = math.radians(bearing_sigma_deg)
+    order = sorted(
+        range(len(estimates)),
+        key=lambda i: (
+            estimates[i].localization != 'triangulated',
+            float(np.trace(estimates[i].cov)),
+        ),
+    )
+    merged: list[ObjectEstimate] = []
+    frames: list[set[str]] = []
+    cell = search_radius_m
+    grid: dict[tuple[int, int], list[int]] = defaultdict(list)
+
+    def passes(
+        rays: Sequence[tuple[float, float, float]], target: ObjectEstimate, size: float
+    ) -> bool:
+        if not rays:
+            return False
+        cams, dirs, _ = _ray_arrays(rays)
+        perp, along = _residuals(np.array([target.x, target.y]), cams, dirs)
+        dist = np.linalg.norm(np.array([target.x, target.y]) - cams, axis=1)
+        tol = 2.5 * sigma_rad * dist + 0.3 + 0.5 * size
+        ok = (perp <= tol) & (along > 0.0)
+        return float(np.mean(ok)) >= 0.7
+
+    for i in order:
+        est = estimates[i]
+        gx, gy = int(math.floor(est.x / cell)), int(math.floor(est.y / cell))
+        target = None
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for k in grid.get((gx + dx, gy + dy), ()):
+                    other = merged[k]
+                    if frames[k] & est.image_ids:
+                        continue
+                    size = max(object_length_m, est.size_m or 0.0, other.size_m or 0.0)
+                    if math.hypot(other.x - est.x, other.y - est.y) > max(
+                        search_radius_m, size
+                    ):
+                        continue
+                    if other.localization != 'triangulated':
+                        continue
+                    if est.localization == 'triangulated':
+                        # Two solid estimates: each must look at the other's
+                        # position and they must be within one object length.
+                        if math.hypot(other.x - est.x, other.y - est.y) > size + 1.0:
+                            continue
+                        if passes(est.rays, other, size) and passes(
+                            other.rays, est, size
+                        ):
+                            target = k
+                    elif passes(est.rays, other, size):
+                        target = k
+                    if target is not None:
+                        break
+                if target is not None:
+                    break
+            if target is not None:
+                break
+        if target is None:
+            merged.append(
+                ObjectEstimate(
+                    est.x,
+                    est.y,
+                    est.cov.copy(),
+                    list(est.members),
+                    est.localization,
+                    est.rms_m,
+                    est.parallax_deg,
+                    list(est.rays),
+                    est.size_m,
+                )
+            )
+            frames.append(set(est.image_ids))
+            grid[(gx, gy)].append(len(merged) - 1)
+            continue
+        other = merged[target]
+        if est.localization == 'triangulated':
+            inv_a = np.linalg.inv(other.cov)
+            inv_b = np.linalg.inv(est.cov)
+            cov = np.linalg.inv(inv_a + inv_b)
+            point = cov @ (
+                inv_a @ np.array([other.x, other.y]) + inv_b @ np.array([est.x, est.y])
+            )
+            other.x, other.y, other.cov = float(point[0]), float(point[1]), cov
+            if est.rms_m is not None:
+                other.rms_m = (
+                    est.rms_m if other.rms_m is None else max(other.rms_m, est.rms_m)
+                )
+        other.members.extend(est.members)
+        other.rays.extend(est.rays)
+        other.parallax_deg = max(other.parallax_deg, est.parallax_deg)
+        if est.size_m is not None:
+            other.size_m = max(other.size_m or 0.0, est.size_m)
+        frames[target] |= est.image_ids
+    return merged
+
+
 def merge_estimates(
     estimates: Sequence[ObjectEstimate],
     max_distance_m: float = 6.0,
@@ -754,7 +896,12 @@ def merge_estimates(
                     if frames[k] & est.image_ids:
                         continue
                     delta = np.array([est.x - other.x, est.y - other.y])
-                    gate_cov = other.cov + est.cov + np.eye(2) * (2 * floor_m**2)
+                    # A long vehicle's apparent centre wanders along its body
+                    # with the viewpoint, so the floor grows with its size:
+                    floor = max(
+                        floor_m, 0.35 * max(est.size_m or 0.0, other.size_m or 0.0)
+                    )
+                    gate_cov = other.cov + est.cov + np.eye(2) * (2 * floor**2)
                     try:
                         d2 = float(delta @ np.linalg.solve(gate_cov, delta))
                     except np.linalg.LinAlgError:
@@ -771,12 +918,17 @@ def merge_estimates(
                     est.localization,
                     est.rms_m,
                     est.parallax_deg,
+                    list(est.rays),
+                    est.size_m,
                 )
             )
             frames.append(set(est.image_ids))
             grid[(gx, gy)].append(len(merged) - 1)
             continue
         other = merged[target]
+        other.rays.extend(est.rays)
+        if est.size_m is not None:
+            other.size_m = max(other.size_m or 0.0, est.size_m)
         inv_a = np.linalg.inv(other.cov)
         inv_b = np.linalg.inv(est.cov)
         cov = np.linalg.inv(inv_a + inv_b)
@@ -1045,6 +1197,9 @@ def discover_objects(
                     counts[reason] += 1
                 continue
             estimates.append(est)
+    estimates = merge_by_rays(
+        estimates, bearing_sigma_deg=bearing_sigma_deg, object_length_m=object_size_m
+    )
     merged = merge_estimates(
         estimates, max_distance_m=max_merge_m, floor_m=merge_floor_m
     )

@@ -12,8 +12,11 @@ imagery of Spokane, Washington:
    from frame to frame, each track is triangulated, moving vehicles and the
    survey vehicle itself are dropped, and repeated views of a parked vehicle
    merge into one asset.
-3. Crop the two closest views of each vehicle, with corner brackets marking
-   the detection, so a vision-language model can judge its condition.
+3. Crop the two closest views of each vehicle, with the detection's rotated
+   bounding box drawn as a thin red line, so a vision-language model can
+   judge its condition. Optionally confirm with a model of your choice that
+   each object really is a vehicle, dropping Mapillary's false detections
+   before any further analysis.
 4. Optionally classify each vehicle as intact, damaged or debris with Gemini
    (only when a Google API key is available).
 5. Export the vehicle locations and attributes to GeoJSON.
@@ -54,6 +57,13 @@ END_DATE = ''
 OUTPUT_DIR = Path('output/spokane_vehicles')
 GEOJSON_PATH = OUTPUT_DIR / 'spokane_vehicles.geojson'
 
+# Mapillary's detector also fires on things that are not vehicles. Step 3b asks a
+# model of your choice to confirm each object from its closest crops and drops
+# the rest before any paid analysis. Any backend from rapidtools.models.load()
+# works here; swap the two lines below for e.g. load('gemma4') to verify
+# locally, or load('claude', api_key=...) for another provider.
+VERIFY_DETECTIONS = True  # runs only if a Google API key is found
+VERIFY_MODEL = ('gemini', 'gemini-3.5-flash-lite')  # cheap and quick for yes/no
 CLASSIFY_CONDITION = True  # Step 4 runs only if a Google API key is found
 CONDITION_PROMPT = (
     'This crop from a post-disaster street-view panorama shows a vehicle '
@@ -99,16 +109,35 @@ cropper = rt.MapillaryObjectImageExtractor(
     image_size='2048',  # each panorama is downloaded once, cropped and released
     crop_buffer='40%',
     overlay_asset_outline=True,
-    outline_shape='corners',
-    outline_color='#00ffff',
+    outline_shape='rotated_bbox',  # the detection's minimum rotated rectangle
+    outline_color='red',
+    outline_width=1,  # a thin line, so the vehicle itself stays visible
 )
 
 steps = [detector, cropper]
 
-# --------------------------------------------------------------- Step 4
 api_key = os.environ.get('GOOGLE_API_KEY', '')
 if not api_key and Path('api_key.txt').is_file():
     api_key = Path('api_key.txt').read_text().strip()
+
+# --------------------------------------------------------------- Step 3b
+# The verifier runs between cropping and analysis (its stage is VERIFY), so
+# rejected objects never reach the condition model. Objects it rejects are
+# removed; pass keep_rejected=True to keep them flagged instead.
+if VERIFY_DETECTIONS and api_key:
+    provider, model_id = VERIFY_MODEL
+    steps.append(
+        rt.DetectionVerifier(
+            load(provider, api_key=api_key, model_id=model_id),
+            max_images_per_asset=2,  # the two closest crops
+            min_confidence=0.5,
+            max_workers=4,
+        )
+    )
+elif VERIFY_DETECTIONS:
+    print('No Google API key found; skipping the detection verification step.')
+
+# --------------------------------------------------------------- Step 4
 if CLASSIFY_CONDITION and api_key:
     steps.append(
         rt.AssetAnalyzer(

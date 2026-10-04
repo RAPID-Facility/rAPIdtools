@@ -38,6 +38,7 @@ Pipeline and analysis
    PipelineStep
    AssetAnalyzer
    RateLimitPolicy
+   DetectionVerifier
 
 Imagery extractors
 ------------------

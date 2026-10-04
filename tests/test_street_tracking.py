@@ -431,3 +431,105 @@ def test_long_track_seen_mostly_from_far_away_is_static():
     assert reason == 'ok' and est is not None
     assert est.localization == 'triangulated'
     assert math.hypot(est.x - 60.0, est.y - 12.0) < 0.5
+
+
+# ==========================================
+# Fragments, long vehicles and ray-based association
+# ==========================================
+
+
+def test_car_close_to_the_road_is_one_object_despite_fast_bearing_swing():
+    """Near the camera the bearing jumps 30+ degrees per frame; no fragments."""
+    obs, _, unp = _survey([(12.0, 3.5)], n_frames=14, range_noise=0.3)
+    estimates, counts, unp = discover_objects(obs, camera_height_m=CAM_H)
+    assert len(estimates) == 1, counts
+    assert estimates[0].localization == 'triangulated'
+    assert len(_match([(12.0, 3.5)], estimates, unp, 1.0)[0]) == 1
+
+
+def test_long_vehicle_seen_from_both_ends_is_one_object():
+    """A 9 m truck: the visible centre shifts 6 m between approach and pass."""
+    rng = random.Random(4)
+    project, unproject = local_projection(LON0, LAT0)
+    obs = []
+    for k in range(16):
+        cam = (3.0 * k, 0.0)
+        centre = (24.0 - 3.0, 5.0) if cam[0] < 24.0 else (24.0 + 3.0, 5.0)
+        lon, lat = unproject(*cam)
+        obs.append(
+            Observation(
+                image_id=f't{k:03d}',
+                label=LABEL,
+                polygon=_pano_polygon(cam, 90.0, centre, rng, 0.4, 0.15, width_m=9.0),
+                camera_lon=lon,
+                camera_lat=lat,
+                compass_angle=90.0,
+                is_pano=True,
+                sequence_id='seq-a',
+                captured_at=f'2025-08-20T10:00:{k:02d}',
+                image_width=8192,
+                image_height=4096,
+            )
+        )
+    estimates, counts, unp = discover_objects(obs, camera_height_m=CAM_H)
+    assert len(estimates) == 1, counts
+    assert estimates[0].size_m is not None and estimates[0].size_m > 5.0
+    (lon, lat) = unp(estimates[0].x, estimates[0].y)
+    tlon, tlat = unp(24.0, 5.0)
+    assert haversine_m(lon, lat, tlon, tlat) < 4.0  # somewhere along the body
+
+
+def test_merge_by_rays_attaches_far_fragment_to_triangulated_object():
+    from rapidtools.processing.street_tracking import merge_by_rays
+
+    target = (20.0, 6.0)
+    # A solid triangulation from cameras near the object:
+    near_rays = [
+        (x, 0.0, math.degrees(math.atan2(target[0] - x, target[1])) % 360)
+        for x in (12.0, 15.0, 18.0, 21.0, 24.0)
+    ]
+    solid = ObjectEstimate(
+        20.0,
+        6.0,
+        np.eye(2) * 0.05,
+        [],
+        'triangulated',
+        rms_m=0.1,
+        parallax_deg=60.0,
+        rays=near_rays,
+        size_m=4.0,
+    )
+    # Frames far down the road saw the same car but could not triangulate it;
+    # their ground-contact ranges put it 9 m short of where it is:
+    far_rays = [
+        (x, 0.0, math.degrees(math.atan2(target[0] - x, target[1])) % 360)
+        for x in (-45.0, -42.0, -39.0)
+    ]
+    frag_obs = [
+        Observation(f'far{i}', LABEL, [(0, 0), (0.1, 0), (0.1, 0.1)], LON0, LAT0, 90.0)
+        for i in range(3)
+    ]
+    fragment = ObjectEstimate(
+        12.0,
+        4.0,
+        np.diag([25.0, 1.0]),
+        frag_obs,
+        'single_view',
+        rays=far_rays,
+        size_m=2.0,
+    )
+    # An unrelated fragment pointing elsewhere stays separate:
+    other = ObjectEstimate(
+        12.0,
+        -6.0,
+        np.diag([25.0, 1.0]),
+        [],
+        'single_view',
+        rays=[(-45.0, 0.0, 95.0), (-42.0, 0.0, 95.5)],
+        size_m=2.0,
+    )
+    merged = merge_by_rays([solid, fragment, other])
+    assert len(merged) == 2
+    joined = next(e for e in merged if e.localization == 'triangulated')
+    assert (joined.x, joined.y) == (20.0, 6.0)  # position of the solid estimate kept
+    assert len(joined.members) == 3 and len(joined.rays) == 8
