@@ -826,6 +826,8 @@ def merge_by_rays(
     bearing_sigma_deg: float = BEARING_SIGMA_DEG,
     search_radius_m: float = 40.0,
     object_length_m: float = 5.0,
+    weak_range_m: float = 25.0,
+    weak_along_fraction: float = 0.3,
 ) -> list[ObjectEstimate]:
     """
     Merge estimates whose lines of sight point at the same object.
@@ -833,10 +835,19 @@ def merge_by_rays(
     Positions of single-view fragments can be metres off along the ray, so
     they are not compared by position at all: a fragment joins a
     triangulated object when its bearings all pass within tolerance of that
-    object's position and in front of its cameras. Two triangulated
-    estimates merge when each one's rays pass through the other's position,
-    with a tolerance that grows with the object's measured length, which is
-    what reunites the two halves of a long truck seen from different sides.
+    object's position and in front of its cameras. The same back-check is
+    applied to *weak* triangulations (see :func:`is_weak_estimate`: never
+    seen closer than ``weak_range_m``, large uncertainty or little
+    parallax): a car triangulated from 40 m down the street, with a tree
+    hiding half of it, lands metres along its line of sight from where the
+    close pass put it, so instead of comparing positions its rays are
+    checked against the well-located objects they point at, and it joins
+    the nearest such object within ``weak_along_fraction`` of its range
+    along the ray. The strong object's position is kept. Two solid
+    triangulated estimates merge when each one's rays pass through the
+    other's position and they lie within half an object length, which
+    reunites one car seen from two sides while keeping cars parked
+    alongside each other apart.
     Estimates that share a frame are never merged (two detections in one
     image are two objects).
 
@@ -846,19 +857,27 @@ def merge_by_rays(
         search_radius_m: Only pairs this close are examined.
         object_length_m: Typical length of the class; the tolerance uses
             the larger of this and the measured size.
+        weak_range_m: Nearest sighting beyond which a triangulation is
+            treated like a fragment.
+        weak_along_fraction: How far along its line of sight, as a fraction
+            of its nearest range (at least 4 m), a weak estimate may be from
+            the object it joins.
 
     Returns:
         list[ObjectEstimate]: The merged candidates.
     """
     sigma_rad = math.radians(bearing_sigma_deg)
+    weak = [is_weak_estimate(e, weak_range_m=weak_range_m) for e in estimates]
     order = sorted(
         range(len(estimates)),
         key=lambda i: (
             estimates[i].localization != 'triangulated',
+            weak[i],
             float(np.trace(estimates[i].cov)),
         ),
     )
     merged: list[ObjectEstimate] = []
+    merged_weak: list[bool] = []
     frames: list[set[str]] = []
     cell = search_radius_m
     grid: dict[tuple[int, int], list[int]] = defaultdict(list)
@@ -877,46 +896,61 @@ def merge_by_rays(
 
     for i in order:
         est = estimates[i]
+        est_weak = weak[i]
         gx, gy = int(math.floor(est.x / cell)), int(math.floor(est.y / cell))
+        # Every candidate is scored and the closest match wins. Taking the
+        # first rule that fires would let a car join its neighbour 3 m away
+        # before reaching its own twin from another pass 0.7 m away, after
+        # which the shared-frame rule can no longer keep the neighbours apart.
         target = None
+        attached = False  # joined by its rays: keep the target's position
+        best = (math.inf, math.inf)  # (rule rank, distance)
         for dx in (-1, 0, 1):
             for dy in (-1, 0, 1):
                 for k in grid.get((gx + dx, gy + dy), ()):
                     other = merged[k]
+                    d = math.hypot(other.x - est.x, other.y - est.y)
                     if (
                         est.localization == 'triangulated'
                         and other.localization == 'triangulated'
-                        and math.hypot(other.x - est.x, other.y - est.y)
-                        < MIN_SEPARATION_M
+                        and d < MIN_SEPARATION_M
                     ):
-                        target = k  # two solid fixes on one spot: one object
-                        break
+                        if (0, d) < best:  # one spot: one object
+                            target, attached, best = k, False, (0, d)
+                        continue
                     if frames[k] & est.image_ids:
                         continue
                     size = max(object_length_m, est.size_m or 0.0, other.size_m or 0.0)
-                    if math.hypot(other.x - est.x, other.y - est.y) > max(
-                        search_radius_m, size
-                    ):
+                    if d > max(search_radius_m, size):
                         continue
                     if other.localization != 'triangulated':
                         continue
-                    if est.localization == 'triangulated':
-                        # Two solid estimates: each must look at the other's
-                        # position and they must be within one object length.
-                        if math.hypot(other.x - est.x, other.y - est.y) > size + 1.0:
+                    if est.localization == 'triangulated' and (
+                        not est_weak or merged_weak[k]
+                    ):
+                        # Two solid estimates (or two weak ones from two far
+                        # passes): each must look at the other's position and
+                        # they must be within half an object length. Rays pass
+                        # within metres of a neighbour parked alongside, so
+                        # the distance, not the rays, keeps those apart.
+                        if d > max(MIN_SEPARATION_M, 0.5 * size):
                             continue
-                        if passes(est.rays, other, size) and passes(
-                            other.rays, est, size
+                        if (
+                            passes(est.rays, other, size)
+                            and passes(other.rays, est, size)
+                            and (1, d) < best
                         ):
-                            target = k
+                            target, attached, best = k, False, (1, d)
                     elif passes(est.rays, other, size):
-                        target = k
-                    if target is not None:
-                        break
-                if target is not None:
-                    break
-            if target is not None:
-                break
+                        if est.localization == 'triangulated':
+                            # A weak triangulation may sit metres along its
+                            # line of sight from the object; bound that, and
+                            # prefer the nearest candidate (nose-to-tail cars).
+                            nearest = nearest_range_m(est) or 0.0
+                            if d > max(4.0, weak_along_fraction * nearest):
+                                continue
+                        if (2, d) < best:
+                            target, attached, best = k, True, (2, d)
         if target is None:
             merged.append(
                 ObjectEstimate(
@@ -932,10 +966,11 @@ def merge_by_rays(
                 )
             )
             frames.append(set(est.image_ids))
+            merged_weak.append(est_weak)
             grid[(gx, gy)].append(len(merged) - 1)
             continue
         other = merged[target]
-        if est.localization == 'triangulated':
+        if est.localization == 'triangulated' and not attached:
             inv_a = np.linalg.inv(other.cov)
             inv_b = np.linalg.inv(est.cov)
             cov = np.linalg.inv(inv_a + inv_b)
@@ -1178,6 +1213,7 @@ def merge_estimates(
     chi2: float = CHI2_2D_99,
     floor_m: float = 0.5,
     min_separation_m: float = MIN_SEPARATION_M,
+    max_solid_separation_m: float = 2.5,
 ) -> list[ObjectEstimate]:
     """
     Fuse estimates of the same object; keep different objects apart.
@@ -1190,7 +1226,12 @@ def merge_estimates(
     dragged around by a vague single view. ``floor_m`` is added to both
     covariances for the gate only: an object's apparent centre wanders by
     that much with the viewpoint, which a triangulation covariance does not
-    know about.
+    know about. Two solid triangulations (see :func:`is_weak_estimate`) are
+    never fused when more than ``max_solid_separation_m`` apart: a precise
+    position from one pass and another from a second pass that disagree by
+    more than a car's width are two cars parked next to each other, one of
+    them hidden in each pass, not one car (the halves of a long vehicle are
+    reunited earlier by :func:`merge_by_rays`).
 
     Example:
         >>> import numpy as np
@@ -1203,10 +1244,12 @@ def merge_estimates(
     ordered = sorted(estimates, key=lambda e: float(np.trace(e.cov)))
     merged: list[ObjectEstimate] = []
     frames: list[set[str]] = []
+    solid: list[bool] = []
     cell = max(max_distance_m, 1.0)
     grid: dict[tuple[int, int], list[int]] = defaultdict(list)
     for est in ordered:
         gx, gy = int(math.floor(est.x / cell)), int(math.floor(est.y / cell))
+        est_solid = not is_weak_estimate(est)
         target = None
         best_d2 = chi2
         for dx in (-1, 0, 1):
@@ -1221,11 +1264,13 @@ def merge_estimates(
                         break
                     if frames[k] & est.image_ids:
                         continue
+                    if est_solid and solid[k] and separation > max_solid_separation_m:
+                        continue
                     delta = np.array([est.x - other.x, est.y - other.y])
                     # A long vehicle's apparent centre wanders along its body
                     # with the viewpoint, so the floor grows with its size:
                     floor = max(
-                        floor_m, 0.35 * max(est.size_m or 0.0, other.size_m or 0.0)
+                        floor_m, 0.2 * max(est.size_m or 0.0, other.size_m or 0.0)
                     )
                     gate_cov = other.cov + est.cov + np.eye(2) * (2 * floor**2)
                     try:
@@ -1249,6 +1294,7 @@ def merge_estimates(
                 )
             )
             frames.append(set(est.image_ids))
+            solid.append(est_solid)
             grid[(gx, gy)].append(len(merged) - 1)
             continue
         other = merged[target]
@@ -1271,6 +1317,7 @@ def merge_estimates(
             )
         other.parallax_deg = max(other.parallax_deg, est.parallax_deg)
         frames[target] |= est.image_ids
+        solid[target] = solid[target] or est_solid
     return merged
 
 

@@ -79,6 +79,18 @@ minor releases may change public APIs.
   `min_object_width_m` wide could be, given its angular size, and the
   camera's displacement) instead of a flat 45 degrees, which stops a far
   speck from claiming a near car and localising it from the wrong frames.
+- Weak triangulations (never seen closer than 25 m, parallax under 15
+  degrees or uncertainty over 1 m) now join the well-located object their
+  rays point at, within a fraction of their range along the line of sight,
+  instead of being compared by position (`is_weak_estimate`,
+  `merge_by_rays(weak_range_m, weak_along_fraction)`). A car triangulated
+  from 40 m down the street with a tree in front landed metres from where
+  the close pass put it and was reported twice. Both merge stages now pick
+  the best candidate rather than the first rule that fires, two solid
+  triangulations are fused only within half an object length (rays) or
+  2.5 m (positions), and the viewpoint floor is 0.2 of the object size:
+  in a crowded driveway a car's second-pass twin used to be fused with the
+  neighbour parked alongside it, after which the car itself was lost.
 - Negative evidence in street-level discovery. `MapillaryFeatureExtractor`
   keeps a light `CameraFrame` record of every survey frame (including frames
   with no detection) and `street_tracking.prune_unwitnessed` drops a weak

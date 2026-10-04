@@ -169,8 +169,14 @@ How it works:
    covariance-aware gate (narrow across a ray, wide along it), so one car
    seen from two passes becomes one object while two cars seen in the same
    frame never do, unless their positions are closer than a car is wide,
-   which only a split outline can produce. Two checks then remove what the
-   geometry cannot vouch for. A single-view position whose nearest sighting
+   which only a split outline can produce. A *weak* triangulation (never
+   seen closer than 25 m, little parallax or a large uncertainty) is not
+   compared by position at all, because a bearing bias from a tree hiding
+   half the car moves a 40 m intersection metres along the line of sight:
+   its rays are checked against the well-located objects they point at and
+   it joins the nearest one within a fraction of its range, keeping the
+   close pass's position. Two checks then remove what the geometry cannot
+   vouch for. A single-view position whose nearest sighting
    is beyond ``max_single_view_range_m`` (30 m) is not reported: at that
    distance the ground-contact range is a guess and the track tends to hop
    between neighbouring cars in a distant row. And the frames in which the

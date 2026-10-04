@@ -475,13 +475,17 @@ def test_car_close_to_the_road_is_one_object_despite_fast_bearing_swing():
 
 
 def test_long_vehicle_seen_from_both_ends_is_one_object():
-    """A 9 m truck: the visible centre shifts 6 m between approach and pass."""
+    """A 9 m truck: the visible centre shifts 4 m between approach and pass.
+
+    Halves farther apart than half the measured length are not reunited:
+    that distance is also what separates two cars parked side by side.
+    """
     rng = random.Random(4)
     project, unproject = local_projection(LON0, LAT0)
     obs = []
     for k in range(16):
         cam = (3.0 * k, 0.0)
-        centre = (24.0 - 3.0, 5.0) if cam[0] < 24.0 else (24.0 + 3.0, 5.0)
+        centre = (24.0 - 2.0, 5.0) if cam[0] < 24.0 else (24.0 + 2.0, 5.0)
         lon, lat = unproject(*cam)
         obs.append(
             Observation(
@@ -914,3 +918,156 @@ def test_witness_votes_are_tallied_per_survey_day():
     far_only = ObjectEstimate(1.5, 4.0, np.eye(2) * 4.0, day1[2:], 'single_view')
     kept, dropped = prune_unwitnessed([far_only], frames, {}, project)
     assert kept == [] and dropped == 1
+
+
+# ==========================================
+# Weak triangulations attach by their rays
+# ==========================================
+
+
+def _ray_estimate(x, y, rays, range_m, sigma=1.5, parallax=16.0, prefix='w'):
+    members = []
+    for k, _ in enumerate(rays):
+        o = Observation(
+            f'{prefix}-{k}',
+            LABEL,
+            [(0.5, 0.5), (0.51, 0.5), (0.51, 0.51)],
+            LON0,
+            LAT0,
+            0.0,
+        )
+        o.range_m = range_m
+        members.append(o)
+    est = ObjectEstimate(x, y, np.eye(2) * sigma**2, members, 'triangulated')
+    est.parallax_deg = parallax
+    est.rays = list(rays)
+    return est
+
+
+def _strong(x, y):
+    members = [
+        Observation(
+            f's-{k}', LABEL, [(0.5, 0.5), (0.52, 0.5), (0.52, 0.55)], LON0, LAT0, 0.0
+        )
+        for k in range(3)
+    ]
+    for o in members:
+        o.range_m = 8.0
+    est = ObjectEstimate(x, y, np.eye(2) * 0.05**2, members, 'triangulated')
+    est.parallax_deg = 60.0
+    est.rays = [(x - 8.0, y - 2.0, 76.0), (x, y - 8.0, 0.0), (x + 8.0, y - 2.0, 284.0)]
+    return est
+
+
+def _rays_towards(target_x, target_y, cams):
+    return [
+        (cx, cy, math.degrees(math.atan2(target_x - cx, target_y - cy)) % 360)
+        for cx, cy in cams
+    ]
+
+
+def test_far_triangulation_joins_the_close_object_its_rays_point_at():
+    strong = _strong(0.0, 10.0)
+    # A pass 40 m south triangulated the same car, but 6 m too far along the ray:
+    cams = [(-4.0, -30.0), (0.0, -30.0), (4.0, -30.0)]
+    weak = _ray_estimate(0.0, 16.0, _rays_towards(0.0, 10.5, cams), range_m=40.0)
+    merged = merge_by_rays([weak, strong], bearing_sigma_deg=0.75)
+    assert len(merged) == 1
+    kept = merged[0]
+    assert (kept.x, kept.y) == (0.0, 10.0)  # the close pass decides the position
+    assert kept.n_images == 6 and kept.sigma_m < 0.1
+
+
+def test_far_triangulation_too_far_along_its_ray_stays_separate():
+    strong = _strong(0.0, 10.0)
+    cams = [(-4.0, -30.0), (0.0, -30.0), (4.0, -30.0)]
+    # Rays point at the car, but the estimate sits 25 m beyond it: another object.
+    weak = _ray_estimate(0.0, 35.0, _rays_towards(0.0, 10.0, cams), range_m=40.0)
+    assert len(merge_by_rays([weak, strong], bearing_sigma_deg=0.75)) == 2
+
+
+def test_weak_estimate_prefers_the_nearest_of_two_cars_in_line():
+    near_car = _strong(0.0, 10.0)
+    far_car = _strong(0.0, 16.0)
+    far_car.members = [
+        Observation(
+            f't-{k}', LABEL, [(0.5, 0.5), (0.52, 0.5), (0.52, 0.55)], LON0, LAT0, 0.0
+        )
+        for k in range(3)
+    ]
+    for o in far_car.members:
+        o.range_m = 8.0
+    cams = [(-4.0, -30.0), (0.0, -30.0), (4.0, -30.0)]
+    weak = _ray_estimate(0.0, 14.0, _rays_towards(0.0, 12.0, cams), range_m=42.0)
+    merged = merge_by_rays([weak, near_car, far_car], bearing_sigma_deg=0.75)
+    assert len(merged) == 2
+    joined = next(e for e in merged if e.n_images == 6)
+    assert (joined.x, joined.y) == (0.0, 16.0)  # nearest to the weak position
+
+
+def test_solid_triangulations_still_need_mutual_rays():
+    a = _strong(0.0, 10.0)
+    b = _strong(0.0, 14.0)  # a second car right behind: not weak, no mutual passage
+    b.members = [
+        Observation(
+            f'u-{k}', LABEL, [(0.5, 0.5), (0.52, 0.5), (0.52, 0.55)], LON0, LAT0, 0.0
+        )
+        for k in range(3)
+    ]
+    for o in b.members:
+        o.range_m = 8.0
+    assert len(merge_by_rays([a, b], bearing_sigma_deg=0.75)) == 2
+
+
+# ==========================================
+# Crowded driveways across passes
+# ==========================================
+
+
+def _pass(cars, seq, day, y_cam=0.0, hidden=(), n=10, step=3.0, x0=-13.5):
+    """One drive past ``cars`` (x, y) along y=``y_cam``; ``hidden`` cars are
+    not detected in this pass (parked behind another car from this side)."""
+    obs = []
+    for k in range(n):
+        cx = x0 + k * step
+        for j, (x, y) in enumerate(cars):
+            if j in hidden:
+                continue
+            dx, dy = x - cx, y - y_cam
+            r = math.hypot(dx, dy)
+            az = math.degrees(math.atan2(dx, dy)) % 360
+            o = _pano_sighting(
+                f'{seq}-{k}',
+                az,
+                math.degrees(math.atan(0.9 / r)),
+                math.degrees(math.atan(CAM_H / r)),
+                lon=LON0 + cx / 74_900.0,
+                lat=LAT0 + y_cam / 111_320.0,
+                day=f'{day}T10:00:00',
+            )
+            o.sequence_id = seq
+            obs.append(o)
+    return obs
+
+
+def test_side_by_side_cars_survive_two_passes_with_one_hidden_each_time():
+    # Two cars 2.8 m apart in a driveway 10 m back. The first pass sees only
+    # the left one, the second (another day, other direction) only the right one,
+    # and a third pass sees both. They must stay two objects.
+    cars = [(-1.4, 10.0), (1.4, 10.0)]
+    obs = (
+        _pass(cars, 'p1', '2025-08-20', hidden=(1,))
+        + _pass(cars, 'p2', '2025-08-21', hidden=(0,))
+        + _pass(cars, 'p3', '2025-08-22')
+    )
+    ests, counts, unproject = discover_objects(obs, track_gap_frames=4)
+    xs = sorted(round((unproject(e.x, e.y)[0] - LON0) * 74_900, 1) for e in ests)
+    assert len(ests) == 2, xs
+    assert abs(xs[0] + 1.4) < 0.7 and abs(xs[1] - 1.4) < 0.7
+
+
+def test_one_car_seen_from_two_passes_is_one_object():
+    cars = [(0.0, 10.0)]
+    obs = _pass(cars, 'p1', '2025-08-20') + _pass(cars, 'p2', '2025-08-21', y_cam=-4.0)
+    ests, counts, _ = discover_objects(obs, track_gap_frames=4)
+    assert len(ests) == 1 and ests[0].n_images == 20
