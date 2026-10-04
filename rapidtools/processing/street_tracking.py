@@ -291,6 +291,85 @@ def _max_separation(bearings: Iterable[float]) -> float:
     return max(_angle_diff(a, b) for i, a in enumerate(degs) for b in degs[i + 1 :])
 
 
+# --------------------------------------------------------------- frame cleanup
+def suppress_duplicate_sightings(
+    observations: Sequence[Observation],
+    overlap_fraction: float = 0.6,
+) -> tuple[list[Observation], int]:
+    """
+    Drop a detector's duplicate outlines within each frame.
+
+    Mapillary sometimes returns one object twice: a second outline nested in
+    the first (a wheel, a window, the part of a car visible past a tree), or
+    the two halves of a panorama's seam. Each would start a separate track
+    that could never merge (two detections in one frame are normally two
+    objects), so they are resolved here:
+
+    * an outline whose box lies mostly (``overlap_fraction``) inside another
+      of the same class is dropped, keeping the larger one;
+    * on a panorama, an outline touching the left edge and one touching the
+      right edge at the same height are one object cut by the seam: the
+      smaller piece is dropped.
+
+    Adjacent pieces are deliberately *not* joined: two cars parked side by
+    side, or one behind another, look exactly like a split outline, and are
+    far more common than one.
+
+    Returns:
+        tuple[list[Observation], int]: The cleaned sightings and how many
+        were removed.
+    """
+    by_frame: dict[str, list[Observation]] = defaultdict(list)
+    for o in observations:
+        by_frame[o.image_id].append(o)
+    kept: list[Observation] = []
+    removed = 0
+    for frame in by_frame.values():
+        if len(frame) < 2:
+            kept.extend(frame)
+            continue
+        frame = sorted(frame, key=lambda o: -o.area)
+        alive: list[Observation | None] = list(frame)
+        boxes = [o.bbox for o in frame]
+        for i, big in enumerate(frame):
+            if alive[i] is None:
+                continue
+            for j in range(i + 1, len(frame)):
+                small = alive[j]
+                if small is None or small.label != big.label:
+                    continue
+                ax0, ay0, ax1, ay1 = boxes[i]
+                bx0, by0, bx1, by1 = boxes[j]
+                inter = max(0.0, min(ax1, bx1) - max(ax0, bx0)) * max(
+                    0.0, min(ay1, by1) - max(ay0, by0)
+                )
+                area_small = max((bx1 - bx0) * (by1 - by0), 1e-12)
+                if inter / area_small >= overlap_fraction or (
+                    big.is_pano and _seam_halves(boxes[i], boxes[j])
+                ):
+                    alive[j] = None
+                    removed += 1
+        kept.extend(o for o in alive if o is not None)
+    return kept, removed
+
+
+def _seam_halves(
+    box_a: tuple[float, float, float, float],
+    box_b: tuple[float, float, float, float],
+    edge: float = 0.01,
+) -> bool:
+    """Two boxes on opposite edges of a panorama at the same height."""
+    ax0, ay0, ax1, ay1 = box_a
+    bx0, by0, bx1, by1 = box_b
+    on_edges = (ax0 <= edge and bx1 >= 1.0 - edge) or (
+        bx0 <= edge and ax1 >= 1.0 - edge
+    )
+    if not on_edges:
+        return False
+    overlap = min(ay1, by1) - max(ay0, by0)
+    return overlap >= 0.5 * min(ay1 - ay0, by1 - by0)
+
+
 # --------------------------------------------------------------- tracking
 def track_sequence(
     observations: Sequence[Observation],
@@ -300,6 +379,7 @@ def track_sequence(
     gate_m: float = 2.5,
     gate_fraction: float = 0.10,
     loose_gate_deg: float = 45.0,
+    min_object_width_m: float = 1.0,
 ) -> list[list[Observation]]:
     """
     Link the sightings of one sequence into tracks, one per object.
@@ -321,7 +401,13 @@ def track_sequence(
         base_gate_deg: Minimum angular gate for a track with a position.
         gate_m: Ground-distance tolerance behind the angular gate.
         gate_fraction: Extra tolerance as a fraction of the distance.
-        loose_gate_deg: Gate for tracks that have no position estimate yet.
+        loose_gate_deg: Widest gate ever used, for a close object whose
+            bearing swings quickly between frames.
+        min_object_width_m: Narrowest real object of this class. With the
+            outline's angular width it bounds how close the object can be,
+            hence how far its bearing can move while the camera advances;
+            a track without a reliable position is gated by that bound
+            instead of ``loose_gate_deg``.
 
     Returns:
         list[list[Observation]]: The tracks, each in capture order.
@@ -361,6 +447,17 @@ def track_sequence(
             cost = np.full((len(live), len(dets)), 1e6)
             for i, track in enumerate(live):
                 last = track.members[-1]
+                # How far can a static object's bearing have moved? At most
+                # the angle subtended by the camera's displacement at the
+                # closest distance an object this narrow could be.
+                last_cam = track.rays.get(last.image_id, cam)
+                step = math.hypot(cam[0] - last_cam[0], cam[1] - last_cam[1])
+                width_deg, _ = polygon_angular_size(last)
+                nearest = min_object_width_m / math.tan(
+                    math.radians(min(max(width_deg, 0.05), 89.0))
+                )
+                motion_gate = math.degrees(math.atan2(step + gate_m, max(nearest, 0.5)))
+                motion_gate = min(loose_gate_deg, max(base_gate_deg, motion_gate))
                 if track.estimate is not None:
                     dist = math.hypot(
                         track.estimate[0] - cam[0], track.estimate[1] - cam[1]
@@ -374,10 +471,10 @@ def track_sequence(
                     if not track.triangulated:
                         # A single-view position can be metres off along the
                         # ray, so do not trust its predicted bearing too much:
-                        gate = max(gate, loose_gate_deg)
+                        gate = max(gate, motion_gate)
                 else:
                     predicted = float(last.bearing or 0.0)
-                    gate = loose_gate_deg
+                    gate = motion_gate
                 for j, det in enumerate(dets):
                     if det.label != last.label:
                         continue
@@ -786,6 +883,14 @@ def merge_by_rays(
             for dy in (-1, 0, 1):
                 for k in grid.get((gx + dx, gy + dy), ()):
                     other = merged[k]
+                    if (
+                        est.localization == 'triangulated'
+                        and other.localization == 'triangulated'
+                        and math.hypot(other.x - est.x, other.y - est.y)
+                        < MIN_SEPARATION_M
+                    ):
+                        target = k  # two solid fixes on one spot: one object
+                        break
                     if frames[k] & est.image_ids:
                         continue
                     size = max(object_length_m, est.size_m or 0.0, other.size_m or 0.0)
@@ -851,11 +956,17 @@ def merge_by_rays(
     return merged
 
 
+#: Two estimates closer than this are one object whatever else is known:
+#: two vehicles cannot occupy the same spot.
+MIN_SEPARATION_M = 1.5
+
+
 def merge_estimates(
     estimates: Sequence[ObjectEstimate],
     max_distance_m: float = 6.0,
     chi2: float = CHI2_2D_99,
     floor_m: float = 0.5,
+    min_separation_m: float = MIN_SEPARATION_M,
 ) -> list[ObjectEstimate]:
     """
     Fuse estimates of the same object; keep different objects apart.
@@ -891,8 +1002,12 @@ def merge_estimates(
             for dy in (-1, 0, 1):
                 for k in grid.get((gx + dx, gy + dy), ()):
                     other = merged[k]
-                    if math.hypot(other.x - est.x, other.y - est.y) > max_distance_m:
+                    separation = math.hypot(other.x - est.x, other.y - est.y)
+                    if separation > max_distance_m:
                         continue
+                    if separation < min_separation_m:
+                        target, best_d2 = k, -1.0  # physically the same spot
+                        break
                     if frames[k] & est.image_ids:
                         continue
                     delta = np.array([est.x - other.x, est.y - other.y])
@@ -1125,7 +1240,8 @@ def discover_objects(
 
     Returns:
         tuple: ``(estimates, counts, unproject)`` where ``counts`` reports
-        ``'sightings'``, ``'with_bearing'``, ``'tracks'``, ``'moving'``,
+        ``'sightings'``, ``'with_bearing'``, ``'duplicates'`` (detector
+        outlines resolved within a frame), ``'tracks'``, ``'moving'``,
         ``'fragment'``, ``'on_path'`` and ``'objects'``, and ``unproject``
         converts local metres back to ``(lon, lat)``.
     """
@@ -1135,6 +1251,7 @@ def discover_objects(
         'sightings': len(observations),
         'with_bearing': 0,
         'tracks': 0,
+        'duplicates': 0,
         'moving': 0,
         'fragment': 0,
         'on_path': 0,
@@ -1156,6 +1273,8 @@ def discover_objects(
     counts['with_bearing'] = len(usable)
     if not usable:
         return [], counts, lambda x, y: (0.0, 0.0)
+    usable, duplicates = suppress_duplicate_sightings(usable)
+    counts['duplicates'] = duplicates
     project, unproject = local_projection(usable[0].camera_lon, usable[0].camera_lat)
 
     if method == 'voting':
@@ -1179,7 +1298,12 @@ def discover_objects(
         frame_sightings[obs.image_id].append(obs)
     estimates = []
     for members in by_sequence.values():
-        for track in track_sequence(members, project, max_gap_frames=track_gap_frames):
+        for track in track_sequence(
+            members,
+            project,
+            max_gap_frames=track_gap_frames,
+            min_object_width_m=min_object_width_m,
+        ):
             counts['tracks'] += 1
             est, reason = classify_track(
                 track,

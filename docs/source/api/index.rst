@@ -89,7 +89,9 @@ baseline and appearance re-identification.
    street_localization.estimate_ego_mask
    street_localization.thin_frames
    street_tracking.discover_objects
+   street_tracking.suppress_duplicate_sightings
    street_tracking.track_sequence
+   street_tracking.merge_by_rays
    street_tracking.triangulate_track
    street_tracking.merge_estimates
    street_tracking.vote_rays

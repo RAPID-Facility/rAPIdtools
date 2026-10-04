@@ -85,11 +85,22 @@ logger = logging.getLogger(__name__)
 Classifier = Callable[[list[Path], str], list[tuple[bool, float, str]]]
 
 #: What common street-level asset types must look like to be accepted.
+_VEHICLE = (
+    'a motor vehicle: a car, SUV, van, pickup, truck, bus or motorcycle. Not a '
+    'trailer, camper or caravan, boat, jet ski, bicycle, lawn mower, piece of '
+    'equipment or a part of a vehicle on its own (a wheel, a bumper)'
+)
 DEFAULT_DESCRIPTIONS: dict[str, str] = {
-    'vehicle': 'a vehicle (car, truck, bus, van, pickup, trailer or motorcycle)',
-    'vehicles': 'a vehicle (car, truck, bus, van, pickup, trailer or motorcycle)',
-    'car': 'a vehicle (car, truck, bus, van, pickup, trailer or motorcycle)',
-    'cars': 'a vehicle (car, truck, bus, van, pickup, trailer or motorcycle)',
+    'vehicle': _VEHICLE,
+    'vehicles': _VEHICLE,
+    'motor_vehicle': _VEHICLE,
+    'motor_vehicles': _VEHICLE,
+    'car': _VEHICLE,
+    'cars': _VEHICLE,
+    'trailer': 'a trailer, camper or caravan (towed, no engine of its own)',
+    'trailers': 'a trailer, camper or caravan (towed, no engine of its own)',
+    'boat': 'a boat (on a trailer, in a driveway or on the water)',
+    'boats': 'a boat (on a trailer, in a driveway or on the water)',
     'utility_pole': 'a utility pole (a wooden, concrete or steel pole carrying '
     'power or telecommunication lines)',
     'utility_poles': 'a utility pole (a wooden, concrete or steel pole carrying '
@@ -111,15 +122,23 @@ _UNTYPED_DESCRIPTION = 'the object it was detected as'
 
 DEFAULT_PROMPT = (
     'You are checking the output of an automatic object detector. The image '
-    'is a crop from a street-level photograph; the marker outline shows which '
-    'object to judge. Ignore everything outside the outline. The object may '
-    'be partly hidden, cut off at the edge of the crop, blurred or far away.\n\n'
-    'Question: is the marked object {description}?\n\n'
+    'is a crop from a street-level photograph; the thin outline marks the '
+    'detection to judge. Judge only the object inside the outline, not the '
+    'rest of the crop.\n\n'
+    'Question: is the outlined object {description}?\n\n'
+    'Be strict. Answer true only if you can clearly recognise the outlined '
+    'object as {description}. Answer false if the outline contains something '
+    'else, only a small part of such an object, or an object so hidden, '
+    'distant or blurred that you cannot tell what it is.\n\n'
     'Reply with a single JSON object and nothing else, with these keys:\n'
-    '  "match": true if the marked object is {description}, false otherwise;\n'
-    '  "confidence": a number from 0 to 1 giving how sure you are;\n'
-    '  "label": a short noun phrase naming what the image actually shows '
-    '(for example "parked sedan", "recycling bin", "tree trunk").'
+    '  "match": true or false as defined above;\n'
+    '  "confidence": a number from 0 to 1 giving how sure you are of "match";\n'
+    '  "visible_fraction": a number from 0 to 1 estimating how much of the '
+    'outlined object is actually visible (1 = fully visible, 0.3 = mostly '
+    'hidden by other things or cut off);\n'
+    '  "label": a short noun phrase naming what the outline actually contains '
+    '(for example "parked sedan", "utility trailer", "recycling bin", '
+    '"tree trunk").'
 )
 
 _TRUE_WORDS = frozenset({'true', 'yes', 'y', '1', 'match', 'correct'})
@@ -243,6 +262,9 @@ class _VerificationAnalyzer(AssetAnalyzer):
         asset.attributes[f'{prefix}_confidence'] = normalize_confidence(
             data.get('confidence')
         )
+        asset.attributes[f'{prefix}_visible_fraction'] = normalize_confidence(
+            data.get('visible_fraction')
+        )
         label = data.get('label')
         asset.attributes[f'{prefix}_label'] = (
             str(label).strip() if label is not None else None
@@ -286,6 +308,10 @@ class DetectionVerifier:
             a JSON object holding ``match``, ``confidence`` and ``label``.
         max_images_per_asset (int):
             Nearest images sent per asset. Defaults to 2.
+        min_visible_fraction (float):
+            Objects the model reports as less visible than this fraction
+            (hidden behind other things, cut off, too distant to tell) are
+            rejected even when it says they match. Defaults to 0.5.
         min_confidence (float):
             Minimum ``confidence`` for a positive ``match`` to count. A
             missing confidence counts as 1.0. Defaults to 0.5.
@@ -351,6 +377,7 @@ class DetectionVerifier:
         prompt: str | None = None,
         max_images_per_asset: int = 2,
         min_confidence: float = 0.5,
+        min_visible_fraction: float = 0.5,
         keep_rejected: bool = False,
         attribute_prefix: str = 'verify',
         generation: GenerationConfig | None = None,
@@ -383,6 +410,12 @@ class DetectionVerifier:
         self.prompt = prompt if prompt is not None else DEFAULT_PROMPT
         self.max_images_per_asset = int(max_images_per_asset)
         self.min_confidence = float(min_confidence)
+        if not 0.0 <= min_visible_fraction <= 1.0:
+            raise ValueError(
+                'min_visible_fraction must be between 0 and 1, got '
+                f'{min_visible_fraction!r}.'
+            )
+        self.min_visible_fraction = float(min_visible_fraction)
         self.keep_rejected = keep_rejected
         self.attribute_prefix = attribute_prefix
         self.generation = (
@@ -438,7 +471,15 @@ class DetectionVerifier:
 
     def _clear_verdict(self, asset: PhysicalAsset) -> None:
         """Drop any verdict left by a previous run."""
-        for suffix in ('match', 'confidence', 'label', 'accepted', 'model', 'raw'):
+        for suffix in (
+            'match',
+            'confidence',
+            'visible_fraction',
+            'label',
+            'accepted',
+            'model',
+            'raw',
+        ):
             asset.attributes.pop(f'{self.attribute_prefix}_{suffix}', None)
 
     def _decide(self, asset: PhysicalAsset) -> bool | None:
@@ -452,6 +493,11 @@ class DetectionVerifier:
         confidence = normalize_confidence(asset.attributes.get(f'{prefix}_confidence'))
         if confidence is None:
             confidence = 1.0
+        visible = normalize_confidence(
+            asset.attributes.get(f'{prefix}_visible_fraction')
+        )
+        if visible is not None and visible < self.min_visible_fraction:
+            return False  # too hidden to trust, as asked
         return confidence >= self.min_confidence
 
     # ---------------------------------------------------------- model route

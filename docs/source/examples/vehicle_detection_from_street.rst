@@ -25,7 +25,7 @@ Source: ``examples/vehicle_detection_from_street.py``.
            region=REGION,
            filter_rapid_only=True,
            frame_spacing_m=3.0,
-           min_observations=2,
+           min_observations=3,
        ),
        # 2. The two closest views of each vehicle, with corner brackets.
        rt.MapillaryObjectImageExtractor(
@@ -62,8 +62,13 @@ What to look at in the output
   many.
 - ``observations`` lists every sighting with its image ID, so the crops can be
   regenerated later without re-running detection.
-- Vehicles detected only in one frame are dropped by ``min_observations=2``;
-  lower it to 1 to keep them.
+- A vehicle has to appear in at least three distinct frames
+  (``min_observations=3``); lower it to keep vehicles glimpsed once or
+  twice, at the price of more false detections.
+- ``'vehicles'`` means motor vehicles. Trailers, caravans and boats are
+  their own classes (``'trailers'``, ``'boats'``), and the verifier's
+  question excludes them too, so a boat on a trailer is not counted as a
+  car.
 
 The detection stage downloads no images, only detection metadata, so it runs
 in minutes over a whole city. The crop stage fetches two 2048 pixel

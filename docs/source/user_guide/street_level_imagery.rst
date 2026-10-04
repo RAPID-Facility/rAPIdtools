@@ -111,7 +111,7 @@ inventory from the imagery itself, mirroring what
            region=spokane,
            start_date='2025-08-01',
            frame_spacing_m=3,        # one frame every 3 m is enough
-           min_observations=2,       # drop single-frame sightings
+           min_observations=3,       # seen in at least three frames
        ),
        MapillaryObjectImageExtractor(
            'output/crops', access_token='MLY|...',
@@ -129,12 +129,23 @@ How it works:
    image and downloads no pixels. Plain-English class names such as
    ``'cars'`` or ``'utility poles'`` are translated to Mapillary labels; a
    :class:`~rapidtools.processing.MapillaryLabelMapper` can be supplied for
-   names the built-in aliases miss.
+   names the built-in aliases miss. ``'vehicles'`` means motor vehicles
+   (cars, trucks, buses, motorcycles); trailers, caravans, boats and
+   Mapillary's catch-all "other vehicle" are separate classes, asked for as
+   ``'trailers'``, ``'boats'`` or ``'all vehicles'``.
 2. **The survey vehicle is removed.** The camera car appears at the same
    place in every frame of a sequence, while a parked car drifts across the
    frame. Detections that recur at the same position in most frames are
    dropped before anything else happens.
-3. **Each sighting becomes a ray.** The polygon's centre column and the full
+3. **Duplicate outlines are dropped frame by frame.** Mapillary's detector
+   sometimes returns one object twice: a second outline nested in the
+   first (a wheel, a window, the part visible past a tree) or the two
+   halves of a panorama's seam. The smaller piece is dropped. Without this,
+   each piece would start its own track and the two could never merge,
+   since two detections in one frame normally are two objects. Adjacent
+   pieces are not joined: two cars parked side by side look exactly like a
+   split outline and are far more common.
+4. **Each sighting becomes a ray.** The polygon's centre column and the full
    camera pose (Mapillary's ``computed_rotation``, camera type and lens
    parameters, so pitch and roll are accounted for) give an accurate bearing
    from the camera. The polygon's lowest point gives the elevation of the
@@ -143,20 +154,26 @@ How it works:
    stage: once a track has a distance, outlines narrower than
    ``min_object_width_m`` (1 m) are dropped as fragments, and positions
    farther than ``max_range_m`` (60 m) are not reported.
-4. **Sightings are tracked, triangulated and merged.** Within each sequence,
+5. **Sightings are tracked, triangulated and merged.** Within each sequence,
    detections are linked from frame to frame by bearing continuity, where the
-   data is precise, rather than by their noisy ground positions. Each track
+   data is precise, rather than by their noisy ground positions. How far a
+   bearing may jump between frames is bounded physically: the outline's
+   angular width says how close an object at least ``min_object_width_m``
+   wide can be, and with the camera's displacement that caps the swing, so
+   a speck far down the road cannot claim a car that appears beside it.
+   Each track
    is triangulated robustly from all its rays; a track whose rays do not
    agree, or whose ground-contact ranges contradict the intersection, was a
    moving vehicle and is dropped, as is anything on the line the camera
    itself drove. Tracks and single views are then merged with a
    covariance-aware gate (narrow across a ray, wide along it), so one car
    seen from two passes becomes one object while two cars seen in the same
-   frame never do. Objects carry ``localization='triangulated'`` or
+   frame never do, unless their positions are closer than a car is wide,
+   which only a split outline can produce. Objects carry ``localization='triangulated'`` or
    ``'single_view'`` (no parallax), plus ``position_sigma_m``,
    ``parallax_deg`` and ``n_images`` so you can filter by quality.
 
-``localization_method='voting'`` swaps step 4 for a ray-voting baseline (rays
+``localization_method='voting'`` swaps step 5 for a ray-voting baseline (rays
 deposit votes on a ground grid; objects are the peaks), and ``'cluster'``
 restores the earlier radius clustering, both useful to compare against.
 
@@ -176,10 +193,16 @@ Two shortcuts sit on top of this:
   :class:`~rapidtools.processing.DetectionVerifier` is a pipeline step
   (stage ``VERIFY``, between cropping and analysis) that shows each object's
   closest crops to any model from :func:`rapidtools.models.load` and asks
-  whether it is what it claims to be, writing ``verify_accepted``,
-  ``verify_confidence`` and ``verify_label`` and removing the rejects (or
-  keeping them flagged with ``keep_rejected=True``). A custom
-  ``classifier`` callable can stand in for the model.
+  whether it is what it claims to be. The question is strict: a motor
+  vehicle is not a trailer, boat, jet ski or lawn mower, and a wheel or a
+  bumper on its own does not count. The model also reports how much of the
+  object is visible, and objects below ``min_visible_fraction`` (half by
+  default: hidden behind a fence, cut off, too distant to tell) are
+  rejected whatever else it said. It writes ``verify_accepted``,
+  ``verify_confidence``, ``verify_visible_fraction`` and ``verify_label``
+  and removes the rejects (or keeps them flagged with
+  ``keep_rejected=True``). A custom ``classifier`` callable can stand in
+  for the model.
 - **Repeated passes are reconciled by appearance.** With ``reid=True`` the
   extractor crops the closest view of objects from different sequences that
   lie within ``reid_max_distance_m`` of each other, embeds them with a

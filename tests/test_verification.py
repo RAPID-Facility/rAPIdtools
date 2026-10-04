@@ -54,6 +54,13 @@ class FakeModel:
             reply = {'match': True, 'label': 'pickup'}
         elif 'lowconf' in name:
             reply = {'match': True, 'confidence': 0.3, 'label': 'maybe a car'}
+        elif 'hidden' in name:
+            reply = {
+                'match': True,
+                'confidence': 0.8,
+                'visible_fraction': 0.2,
+                'label': 'car behind a fence',
+            }
         elif 'car' in name:
             reply = {'match': True, 'confidence': 0.9, 'label': 'parked sedan'}
         else:  # trees, bins, ...
@@ -169,6 +176,40 @@ def test_min_confidence_threshold(tmp_path, min_confidence, expected):
 
 
 @pytest.mark.parametrize(
+    ('min_visible', 'expected'),
+    [(0.5, ['v_car']), (0.1, ['v_car', 'v_hidden']), (0.0, ['v_car', 'v_hidden'])],
+)
+def test_heavily_occluded_objects_are_discarded(tmp_path, min_visible, expected):
+    col = PhysicalAssetCollection()
+    col.add(
+        [
+            _asset('v_car', images=[_image(tmp_path, 'car_1')]),
+            _asset('v_hidden', images=[_image(tmp_path, 'hidden_1')]),
+        ]
+    )
+    verifier = DetectionVerifier(
+        FakeModel(), min_visible_fraction=min_visible, rate_limit=NO_WAIT
+    )
+    out = verifier(col)
+    assert sorted(a.id for a in out) == expected
+    if 'v_hidden' in expected:
+        assert out.get('v_hidden').attributes['verify_visible_fraction'] == 0.2
+    # Reported even when the asset is kept; absent when the model omits it:
+    assert out.get('v_car').attributes['verify_visible_fraction'] is None
+
+
+def test_vehicle_description_excludes_trailers_and_prompt_is_strict():
+    desc = ver.DEFAULT_DESCRIPTIONS['vehicles']
+    assert 'motor vehicle' in desc and 'Not a trailer' in desc
+    assert ver.DEFAULT_DESCRIPTIONS['trailers'].startswith('a trailer')
+    assert (
+        'visible_fraction' in ver.DEFAULT_PROMPT and 'Be strict' in ver.DEFAULT_PROMPT
+    )
+    with pytest.raises(ValueError):
+        DetectionVerifier(FakeModel(), min_visible_fraction=1.5)
+
+
+@pytest.mark.parametrize(
     ('name', 'accepted', 'match'),
     [('yesstr_1', True, True), ('truestr_1', True, True), ('nostr_1', False, False)],
 )
@@ -243,14 +284,14 @@ def test_default_prompt_describes_known_and_unknown_types(tmp_path):
     )
     DetectionVerifier(model, rate_limit=NO_WAIT)(col)
     prompts = {c[0][0].stem: c[1] for c in model.calls}
-    assert 'is the marked object a vehicle (car, truck, bus' in prompts['car_1']
-    assert 'is the marked object a utility pole' in prompts['car_2']
-    assert 'is the marked object an awning' in prompts['car_3']
+    assert 'is the outlined object a motor vehicle: a car' in prompts['car_1']
+    assert 'is the outlined object a utility pole' in prompts['car_2']
+    assert 'is the outlined object an awning' in prompts['car_3']
     for prompt in prompts.values():
         assert '{description}' not in prompt
         assert '"match"' in prompt and '"confidence"' in prompt
         assert '"label"' in prompt
-        assert 'partly hidden' in prompt and 'outline' in prompt
+        assert 'visible_fraction' in prompt and 'outline' in prompt
 
 
 def test_descriptions_and_prompt_override(tmp_path):

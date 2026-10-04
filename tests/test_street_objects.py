@@ -232,6 +232,23 @@ def test_resolve_classes_aliases_and_labels():
     assert all(label in mapillary_vocabulary() for label in VEHICLE_LABELS)
 
 
+def test_vehicles_means_motor_vehicles_and_trailers_are_their_own_class():
+    # A trailer, caravan, boat or jet ski is not a vehicle for a damage survey.
+    assert 'object--vehicle--trailer' not in VEHICLE_LABELS
+    assert 'object--vehicle--caravan' not in VEHICLE_LABELS
+    assert 'object--vehicle--other-vehicle' not in VEHICLE_LABELS
+    assert 'object--vehicle--motorcycle' in VEHICLE_LABELS
+    resolved, unresolved = resolve_classes(['trailers', 'boats', 'all vehicles'])
+    assert unresolved == []
+    assert resolved['trailers'] == (
+        'object--vehicle--trailer',
+        'object--vehicle--caravan',
+    )
+    assert resolved['boats'] == ('object--vehicle--boat',)
+    assert set(VEHICLE_LABELS) < set(resolved['all vehicles'])
+    assert 'object--vehicle--trailer' in resolved['all vehicles']
+
+
 def test_resolve_classes_uses_label_mapper_for_the_rest():
     class Mapper:
         def map_classes(self, classes):

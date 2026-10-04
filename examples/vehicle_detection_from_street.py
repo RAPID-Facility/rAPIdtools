@@ -83,14 +83,14 @@ MAPILLARY_TOKEN = token_path.read_text().strip()
 
 # --------------------------------------------------------------- Steps 2 + 3
 detector = rt.MapillaryFeatureExtractor(
-    classes=['vehicles'],  # cars, trucks, buses, trailers, ... (Mapillary labels)
+    classes=['vehicles'],  # motor vehicles: cars, trucks, buses, motorcycles
     access_token=MAPILLARY_TOKEN,
     region=REGION,
     start_date=START_DATE,
     end_date=END_DATE,
     filter_rapid_only=True,  # only imagery uploaded by the RAPID Facility
     frame_spacing_m=3.0,  # one frame every 3 m is plenty for triangulation
-    min_observations=2,  # ignore vehicles seen in a single frame
+    min_observations=3,  # a vehicle must appear in at least three frames
     save_directory=OUTPUT_DIR / 'detections',
     # The geometry needs no tuning: each sighting becomes a ray from the
     # camera pose Mapillary computed, sightings are tracked and triangulated,
@@ -131,6 +131,7 @@ if VERIFY_DETECTIONS and api_key:
             load(provider, api_key=api_key, model_id=model_id),
             max_images_per_asset=2,  # the two closest crops
             min_confidence=0.5,
+            min_visible_fraction=0.5,  # heavily hidden objects are discarded
             max_workers=4,
         )
     )

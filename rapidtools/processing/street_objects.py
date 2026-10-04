@@ -126,15 +126,23 @@ from .street_tracking import discover_objects, estimate_attributes
 logger = logging.getLogger(__name__)
 
 #: Mapillary labels that describe motor vehicles.
+#: Motor vehicles. Trailers, caravans, boats, bicycles and Mapillary's
+#: catch-all "other vehicle" (jet skis, equipment, towed loads) are not
+#: vehicles in the sense a damage survey means; ask for them by name.
 VEHICLE_LABELS: tuple[str, ...] = (
     'object--vehicle--car',
     'object--vehicle--truck',
     'object--vehicle--bus',
+    'object--vehicle--motorcycle',
+)
+#: Everything Mapillary files under ``object--vehicle--*`` except bicycles
+#: and rail vehicles, for callers who really want all of it.
+ALL_VEHICLE_LABELS: tuple[str, ...] = VEHICLE_LABELS + (
     'object--vehicle--other-vehicle',
     'object--vehicle--vehicle-group',
     'object--vehicle--trailer',
     'object--vehicle--caravan',
-    'object--vehicle--motorcycle',
+    'object--vehicle--boat',
 )
 
 # Plain-English class names that resolve without a language model. Keys are
@@ -142,10 +150,12 @@ VEHICLE_LABELS: tuple[str, ...] = (
 _CLASS_ALIASES: dict[str, tuple[str, ...]] = {
     'vehicle': VEHICLE_LABELS,
     'motor vehicle': VEHICLE_LABELS,
+    'all vehicle': ALL_VEHICLE_LABELS,
+    'any vehicle': ALL_VEHICLE_LABELS,
     'car': ('object--vehicle--car',),
     'truck': ('object--vehicle--truck',),
     'bus': ('object--vehicle--bus',),
-    'trailer': ('object--vehicle--trailer',),
+    'trailer': ('object--vehicle--trailer', 'object--vehicle--caravan'),
     'caravan': ('object--vehicle--caravan',),
     'rv': ('object--vehicle--caravan',),
     'motorcycle': ('object--vehicle--motorcycle',),
@@ -432,8 +442,9 @@ class MapillaryFeatureExtractor:
             (or anything with ``embed(images)``) to use instead of loading
             ``reid_model``.
         min_observations (int):
-            Sightings required to keep an object; ``2`` drops single-frame
-            noise. Defaults to 1.
+            Distinct frames an object must have been seen in; ``3`` is a
+            sound choice for a survey sampled every few metres. Defaults
+            to 1.
         frame_spacing_m (float):
             Keep one frame per this many metres along each sequence before
             detecting; ``0`` keeps every frame. Defaults to 0.
@@ -1123,13 +1134,14 @@ class MapillaryFeatureExtractor:
         )
         logger.info(
             f"'{cls}': {counts['with_bearing']} sightings with a bearing, "
+            f'{counts.get("duplicates", 0)} duplicate outlines dropped, '
             f'{counts["tracks"]} tracks, {counts["moving"]} moving dropped, '
             f'{counts["fragment"]} too small dropped, {counts["on_path"]} on the '
             f'driven path dropped -> {counts["objects"]} objects.'
         )
         assets = []
         for est in estimates:
-            if len(est.members) < self.min_observations:
+            if est.n_images < self.min_observations:
                 continue
             counter += 1
             assets.append(self._asset_from_estimate(cls, est, unproject, counter))

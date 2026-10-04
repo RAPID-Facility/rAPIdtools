@@ -57,12 +57,15 @@ from rapidtools.core import Observation
 from rapidtools.processing.street_localization import (
     haversine_m,
     local_projection,
+    localize,
 )
 from rapidtools.processing.street_tracking import (
     ObjectEstimate,
     discover_objects,
+    merge_by_rays,
     merge_estimates,
     single_view_covariance,
+    suppress_duplicate_sightings,
     track_sequence,
     triangulate_track,
     vote_rays,
@@ -293,16 +296,38 @@ def test_single_view_covariance_is_elongated_along_the_ray():
 def test_merge_estimates_fuses_same_object_and_keeps_shared_frame_apart():
     a = ObjectEstimate(0.0, 0.0, np.eye(2) * 0.2, [], 'triangulated')
     b = ObjectEstimate(0.5, 0.3, np.eye(2) * 0.8, [], 'single_view')
-    # c is as close as b but was seen in the same frame as a: different object.
+    # c is within the statistical gate of a but was seen in the same frame
+    # as a, and far enough away to be a second car: different object.
     o1 = Observation('frame-1', LABEL, [(0, 0), (0.1, 0), (0.1, 0.1)], LON0, LAT0, 0.0)
     o2 = Observation('frame-1', LABEL, [(0, 0), (0.1, 0), (0.1, 0.1)], LON0, LAT0, 0.0)
     a.members.append(o1)
-    c = ObjectEstimate(0.5, -0.3, np.eye(2) * 0.8, [o2], 'single_view')
+    c = ObjectEstimate(1.8, -0.3, np.eye(2) * 0.8, [o2], 'single_view')
+    assert (
+        len(
+            merge_estimates(
+                [a, ObjectEstimate(1.8, -0.3, np.eye(2) * 0.8, [], 'single_view')]
+            )
+        )
+        == 1
+    )
     merged = merge_estimates([a, b, c], max_distance_m=6.0)
     assert len(merged) == 2
     fused = min(merged, key=lambda e: e.x)
     assert fused.localization == 'triangulated'
     assert 0.0 < fused.x < 0.5  # pulled only slightly towards the vaguer view
+
+
+def test_merge_estimates_fuses_two_fixes_on_one_spot_despite_shared_frame():
+    # Mapillary sometimes cuts one car into two outlines in the same frame.
+    # Two solid fixes less than a car apart cannot be two cars.
+    o1 = Observation('frame-1', LABEL, [(0, 0), (0.1, 0), (0.1, 0.1)], LON0, LAT0, 0.0)
+    o2 = Observation(
+        'frame-1', LABEL, [(0.2, 0), (0.3, 0), (0.3, 0.1)], LON0, LAT0, 0.0
+    )
+    a = ObjectEstimate(0.0, 0.0, np.eye(2) * 0.2, [o1], 'triangulated')
+    b = ObjectEstimate(1.1, 0.2, np.eye(2) * 0.2, [o2], 'triangulated')
+    assert len(merge_estimates([a, b], max_distance_m=6.0)) == 1
+    assert len(merge_by_rays([a, b], bearing_sigma_deg=0.75)) == 1
 
 
 def test_merge_estimates_respects_max_distance():
@@ -480,7 +505,6 @@ def test_long_vehicle_seen_from_both_ends_is_one_object():
 
 
 def test_merge_by_rays_attaches_far_fragment_to_triangulated_object():
-    from rapidtools.processing.street_tracking import merge_by_rays
 
     target = (20.0, 6.0)
     # A solid triangulation from cameras near the object:
@@ -533,3 +557,151 @@ def test_merge_by_rays_attaches_far_fragment_to_triangulated_object():
     joined = next(e for e in merged if e.localization == 'triangulated')
     assert (joined.x, joined.y) == (20.0, 6.0)  # position of the solid estimate kept
     assert len(joined.members) == 3 and len(joined.rays) == 8
+
+
+# ==========================================
+# Duplicate outlines within a frame
+# ==========================================
+
+
+def _pano_sighting(image_id, az_deg, half_width_deg, bottom_deg, label=LABEL):
+    """A rectangle (normalised coordinates) in an equirectangular frame."""
+    x0 = 0.5 + (az_deg - half_width_deg) / 360.0
+    x1 = 0.5 + (az_deg + half_width_deg) / 360.0
+    y1 = 0.5 + bottom_deg / 180.0  # ground contact below the horizon
+    y0 = y1 - 1.2 * (x1 - x0)
+    o = Observation(
+        image_id,
+        label,
+        [(x0, y0), (x1, y0), (x1, y1), (x0, y1)],
+        LON0,
+        LAT0,
+        0.0,
+        is_pano=True,
+        image_width=8192,
+        image_height=4096,
+    )
+    localize(o, camera_height_m=CAM_H, max_range_m=80)
+    return o
+
+
+def test_nested_duplicate_outline_is_dropped():
+    big = _pano_sighting('f1', 30.0, 6.0, 8.0)
+    small = _pano_sighting('f1', 31.0, 2.0, 7.5)
+    other = _pano_sighting('f1', -60.0, 6.0, 8.0)
+    kept, removed = suppress_duplicate_sightings([small, big, other])
+    assert removed == 1
+    assert len(kept) == 2
+    assert all(o.area >= big.area or o is other for o in kept)
+
+
+def test_separate_cars_in_one_frame_are_kept():
+    a = _pano_sighting('f1', 20.0, 3.0, 8.0)
+    b = _pano_sighting('f1', 40.0, 3.0, 8.0)  # a clear gap between them
+    c = _pano_sighting('f1', 27.0, 3.0, 3.0)  # adjacent but twice as far
+    d = _pano_sighting('f1', 26.5, 3.0, 8.0)  # touching a, same distance: next to it
+    kept, removed = suppress_duplicate_sightings([a, b, c, d])
+    assert removed == 0 and len(kept) == 4
+
+
+def test_different_labels_are_never_merged():
+    a = _pano_sighting('f1', 28.0, 3.0, 8.0)
+    b = _pano_sighting('f1', 34.5, 3.0, 8.0, label='object--vehicle--truck')
+    kept, removed = suppress_duplicate_sightings([a, b])
+    assert removed == 0 and len(kept) == 2
+
+
+def test_seam_halves_keep_the_larger_piece():
+    w = 8192
+    left = Observation(
+        'f1',
+        LABEL,
+        [(0.0, 0.52), (0.025, 0.52), (0.025, 0.566), (0.0, 0.566)],
+        LON0,
+        LAT0,
+        0.0,
+        is_pano=True,
+        image_width=w,
+        image_height=w // 2,
+    )
+    right = Observation(
+        'f1',
+        LABEL,
+        [(0.98, 0.519), (1.0, 0.519), (1.0, 0.562), (0.98, 0.562)],
+        LON0,
+        LAT0,
+        0.0,
+        is_pano=True,
+        image_width=w,
+        image_height=w // 2,
+    )
+    for o in (left, right):
+        localize(o, camera_height_m=CAM_H, max_range_m=80)
+    kept, removed = suppress_duplicate_sightings([right, left])
+    assert removed == 1 and kept == [left]
+
+
+def test_car_behind_another_is_not_joined():
+    near = _pano_sighting('f1', 30.0, 5.0, 10.0)
+    x0, y0, x1, y1 = near.bbox
+    # A smaller, farther car whose box bottom lies a third of the way down
+    # the near car's box (same columns): two objects in a row.
+    h = y1 - y0
+    far = Observation(
+        'f1',
+        LABEL,
+        [
+            (x0 + 0.01, y0 - 0.02),
+            (x1 - 0.02, y0 - 0.02),
+            (x1 - 0.02, y0 + 0.35 * h),
+            (x0 + 0.01, y0 + 0.35 * h),
+        ],
+        LON0,
+        LAT0,
+        0.0,
+        is_pano=True,
+        image_width=8192,
+        image_height=4096,
+    )
+    localize(far, camera_height_m=CAM_H, max_range_m=80)
+    kept, removed = suppress_duplicate_sightings([near, far])
+    assert removed == 0 and len(kept) == 2
+
+
+def test_far_speck_cannot_claim_a_near_car():
+    """A track of a tiny far object must not swallow a near detection 40 deg away."""
+    project, _ = local_projection(LON0, LAT0)
+    frames = []
+    for k in range(6):
+        lat = LAT0 + k * 3.0 / 111_320.0  # driving north, 3 m per frame
+        # A speck straight ahead (1.5 deg wide, at the horizon):
+        speck = Observation(
+            f'f{k}',
+            LABEL,
+            [(0.498, 0.498), (0.502, 0.498), (0.502, 0.503), (0.498, 0.503)],
+            LON0,
+            lat,
+            0.0,
+            is_pano=True,
+            image_width=8192,
+            image_height=4096,
+        )
+        localize(speck, camera_height_m=CAM_H, max_range_m=80)
+        frames.append(speck)
+    # Then a car appears 45 deg to the right in the next frame:
+    lat = LAT0 + 6 * 3.0 / 111_320.0
+    car = Observation(
+        'f6',
+        LABEL,
+        [(0.615, 0.5), (0.635, 0.5), (0.635, 0.53), (0.615, 0.53)],
+        LON0,
+        lat,
+        0.0,
+        is_pano=True,
+        image_width=8192,
+        image_height=4096,
+    )
+    localize(car, camera_height_m=CAM_H, max_range_m=80)
+    frames.append(car)
+    tracks = track_sequence(frames, project)
+    assert sorted(len(t) for t in tracks) == [1, 6]

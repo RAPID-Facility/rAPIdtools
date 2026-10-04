@@ -58,7 +58,27 @@ minor releases may change public APIs.
   whether it is what it claims to be; rejects are dropped (or kept flagged
   with `keep_rejected=True`). The street vehicle example uses it to screen
   Mapillary's false detections before the condition analysis, and draws the
-  detection's rotated bounding box as a thin red line on the crops.
+  detection's rotated bounding box as a thin red line on the crops. The
+  question it asks is strict (a motor vehicle is not a trailer, boat or
+  jet ski, nor a wheel on its own), and the model's estimate of how much of
+  the object is visible rejects heavily hidden ones below
+  `min_visible_fraction` (`verify_visible_fraction` is recorded).
+- `suppress_duplicate_sightings` in `street_tracking`: Mapillary's nested
+  and seam-split outlines of one object are dropped within each frame
+  before tracking (`discover_objects` reports them as
+  `'duplicates'`), so one car no longer becomes two objects that can never
+  merge. Two estimates closer than `MIN_SEPARATION_M` (1.5 m) merge even
+  when they share a frame, as only a split outline can produce that.
+- `'vehicles'` now means motor vehicles (car, truck, bus, motorcycle).
+  Trailers, caravans, boats and Mapillary's "other vehicle" are no longer
+  included; ask for `'trailers'`, `'boats'` or `'all vehicles'`
+  (`ALL_VEHICLE_LABELS`). `MapillaryFeatureExtractor(min_observations=...)`
+  counts distinct frames rather than sightings, and the vehicle example
+  requires three. The tracker's gate for a track without a reliable
+  position is bounded by physics (the closest an object at least
+  `min_object_width_m` wide could be, given its angular size, and the
+  camera's displacement) instead of a flat 45 degrees, which stops a far
+  speck from claiming a near car and localising it from the wrong frames.
 - **Street-level object discovery.** `MapillaryFeatureExtractor` (a `DETECT`
   step) finds objects of the requested classes in every Mapillary image of a
   region from Mapillary's own segmentation detections, read as metadata with
