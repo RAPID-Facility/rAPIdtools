@@ -48,8 +48,10 @@ minor releases may change public APIs.
 - Example `examples/street_detections_map.py`: writes a self-contained HTML
   map of street-level detections on a Bing aerial basemap, with each
   object's attributes, its crops tiled, a link to every source image on
-  Mapillary and lines from the cameras to the object; filters by
-  localisation type, image count and position uncertainty.
+  Mapillary, lines from the cameras to the object and the collection route
+  (from the sightings, or the complete drive when a Mapillary token is
+  given); filters by localisation type, image count and position
+  uncertainty.
 - **Street-level object discovery.** `MapillaryFeatureExtractor` (a `DETECT`
   step) finds objects of the requested classes in every Mapillary image of a
   region from Mapillary's own segmentation detections, read as metadata with

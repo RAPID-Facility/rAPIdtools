@@ -47,19 +47,19 @@ TEMPLATE = r"""<!doctype html>
   :root {
     --bg: #ffffff; --panel: #f6f7f9; --text: #1b1f24; --muted: #5c6670;
     --line: #d9dee4; --accent: #0b6e99; --tri: #1ea672; --single: #e8912d;
-    --sel: #d62828;
+    --sel: #d62828; --route: #2b7bff;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #14171b; --panel: #1d2127; --text: #e6e9ed; --muted: #9aa4af;
       --line: #313843; --accent: #5cb3dc; --tri: #3ccf8e; --single: #f2a94a;
-      --sel: #ff5c5c;
+      --sel: #ff5c5c; --route: #6ea8ff;
     }
   }
   :root[data-theme="dark"] {
     --bg: #14171b; --panel: #1d2127; --text: #e6e9ed; --muted: #9aa4af;
     --line: #313843; --accent: #5cb3dc; --tri: #3ccf8e; --single: #f2a94a;
-    --sel: #ff5c5c;
+    --sel: #ff5c5c; --route: #6ea8ff;
   }
   html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text);
     font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
@@ -75,6 +75,7 @@ TEMPLATE = r"""<!doctype html>
   .controls input[type=number] { width: 64px; }
   .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
   .tri { background: var(--tri); } .single { background: var(--single); }
+  .route { background: var(--route); } .frame { background: #fff; border: 1px solid var(--route); }
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
   td { padding: 2px 4px; vertical-align: top; border-bottom: 1px solid var(--line); }
   td:first-child { color: var(--muted); white-space: nowrap; width: 38%; }
@@ -107,6 +108,8 @@ TEMPLATE = r"""<!doctype html>
       <label><input type="checkbox" id="f-single" checked> <span class="swatch single"></span> single view</label>
       <label>min images <input type="number" id="f-images" value="1" min="1"></label>
       <label>max sigma (m) <input type="number" id="f-sigma" value="" min="0" step="0.1" placeholder="any"></label>
+      <label><input type="checkbox" id="f-route" checked> <span class="swatch route"></span> collection route</label>
+      <label><input type="checkbox" id="f-frames"> <span class="swatch frame"></span> camera positions</label>
     </div>
     <div id="detail" class="muted">Click a marker to see its attributes and crops.
       Use the left and right arrow keys to step through the vehicles in view.</div>
@@ -115,6 +118,7 @@ TEMPLATE = r"""<!doctype html>
 <script>
 const DATA = __DATA__;
 const CROPS_DIR = __CROPS_DIR__;
+const ROUTES = __ROUTES__;   // [{seq, date, frames: [[lon, lat], ...]}] in capture order
 
 // Bing aerial tiles, addressed by quadkey (the same keyless endpoint rapidtools uses).
 const BingAerial = L.TileLayer.extend({
@@ -135,6 +139,29 @@ const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
 const map = L.map('map', {layers: [bing], preferCanvas: true});
 L.control.layers({'Bing aerial': bing, 'OpenStreetMap': osm}).addTo(map);
 L.control.scale({imperial: true}).addTo(map);
+
+// The collection route: one polyline per sequence (white casing under a
+// coloured line), and the individual camera positions on demand.
+const routeLayer = L.layerGroup().addTo(map);
+const frameLayer = L.layerGroup();
+const routeColour = getComputedStyle(document.documentElement).getPropertyValue('--route').trim();
+for (const r of ROUTES) {
+  const latlngs = r.frames.map(f => [f[1], f[0]]);
+  if (latlngs.length < 2) continue;
+  L.polyline(latlngs, {color: '#fff', weight: 6, opacity: 0.6, interactive: false}).addTo(routeLayer);
+  L.polyline(latlngs, {color: routeColour, weight: 2.5, opacity: 0.95})
+    .bindTooltip(`sequence ${r.seq} · ${r.frames.length} frames · ${r.date || ''}`, {sticky: true})
+    .addTo(routeLayer);
+}
+const frameRenderer = L.canvas({padding: 0.5});
+for (const r of ROUTES)
+  for (const f of r.frames)
+    L.circleMarker([f[1], f[0]], {renderer: frameRenderer, radius: 2.5, weight: 1, color: routeColour,
+      fillColor: '#fff', fillOpacity: 1, interactive: false}).addTo(frameLayer);
+document.getElementById('f-route').addEventListener('change', e =>
+  e.target.checked ? routeLayer.addTo(map) : map.removeLayer(routeLayer));
+document.getElementById('f-frames').addEventListener('change', e =>
+  e.target.checked ? frameLayer.addTo(map) : map.removeLayer(frameLayer));
 
 const renderer = L.canvas({padding: 0.5});
 const markers = new Map();
@@ -169,8 +196,10 @@ function applyFilters() {
     if (keep.has(id)) { if (!group.hasLayer(m)) group.addLayer(m); }
     else if (group.hasLayer(m)) group.removeLayer(m);
   }
+  const nFrames = ROUTES.reduce((n, r) => n + r.frames.length, 0);
+  const nSeq = new Set(ROUTES.map(r => r.seq)).size;
   document.getElementById('summary').textContent =
-    `${keep.size} of ${DATA.length} vehicles shown`;
+    `${keep.size} of ${DATA.length} vehicles shown · route: ${nSeq} sequences, ${nFrames} frames`;
 }
 for (const id of ['f-tri', 'f-single', 'f-images', 'f-sigma'])
   document.getElementById(id).addEventListener('input', applyFilters);
@@ -264,9 +293,140 @@ def crops_by_asset(crops_dir: Path, asset_ids: list[str]) -> dict[str, list[dict
     return found
 
 
-def build(geojson_path: Path, crops_dir: Path, output: Path, title: str) -> int:
+GAP_M = 60.0  # a jump longer than this between consecutive frames starts a new segment
+
+
+def _segments(frames: list[tuple[str, str, float, float]]) -> list[list[list[float]]]:
+    """Split one sequence's frames (sorted by time) at gaps of ``GAP_M``."""
+    from rapidtools.processing.street_localization import haversine_m
+
+    segments: list[list[list[float]]] = []
+    for _, _, lon, lat in frames:
+        if (
+            segments
+            and haversine_m(segments[-1][-1][0], segments[-1][-1][1], lon, lat) <= GAP_M
+        ):
+            segments[-1].append([round(lon, 6), round(lat, 6)])
+        else:
+            segments.append([[round(lon, 6), round(lat, 6)]])
+    return segments
+
+
+def routes_from_observations(features: list[dict]) -> list[dict]:
+    """Camera positions of every sighting, grouped by sequence in capture order."""
+    frames: dict[str, dict[str, tuple[str, str, float, float]]] = defaultdict(dict)
+    for f in features:
+        for o in f['properties'].get('observations') or []:
+            if o.get('camera_lon') is None:
+                continue
+            seq = str(o.get('sequence_id') or 'unknown')
+            frames[seq].setdefault(
+                str(o['image_id']),
+                (
+                    str(o.get('captured_at') or ''),
+                    str(o['image_id']),
+                    o['camera_lon'],
+                    o['camera_lat'],
+                ),
+            )
+    return _routes(frames)
+
+
+def routes_from_listing(features: list[dict], token: str) -> list[dict]:
+    """Every frame Mapillary lists in the detections' extent (complete drive)."""
+    from rapidtools import BoundingBox, MapillaryClient
+
+    lons = [f['geometry']['coordinates'][0] for f in features]
+    lats = [f['geometry']['coordinates'][1] for f in features]
+    pad = 0.0008  # about 60-90 m
+    bbox = BoundingBox(
+        min(lons) - pad, min(lats) - pad, max(lons) + pad, max(lats) + pad
+    )
+    client = MapillaryClient(token, save_dir='.')
+    frames: dict[str, dict[str, tuple[str, str, float, float]]] = defaultdict(dict)
+    min_lon, min_lat, max_lon, max_lat = bbox.bounds
+    for image in client.fetch_images_in_bbox(bbox, filter_rapid_only=True):
+        p = image.properties
+        # The listing covers whole coverage tiles (about 2 km); keep the box.
+        if not (
+            min_lon <= p['longitude'] <= max_lon and min_lat <= p['latitude'] <= max_lat
+        ):
+            continue
+        seq = str(p.get('sequence') or 'unknown')
+        when = str(p.get('captured_at') or p.get('capture_date') or '')
+        frames[seq][str(image.id)] = (
+            when,
+            str(image.id),
+            p['longitude'],
+            p['latitude'],
+        )
+    return _routes(frames)
+
+
+def _chain(
+    frames: list[tuple[str, str, float, float]],
+) -> list[tuple[str, str, float, float]]:
+    """
+    Put frames in driving order when they carry no time of capture.
+
+    Starts at the frame farthest from the sequence's centre (an end of the
+    drive) and repeatedly steps to the nearest unvisited frame; a survey
+    sampled every few metres chains almost perfectly this way.
+    """
+    import math
+
+    if len(frames) < 3:
+        return frames
+    lat0 = frames[0][3]
+    kx = 111_320.0 * math.cos(math.radians(lat0))
+    ky = 110_540.0
+    pts = [((f[2] - frames[0][2]) * kx, (f[3] - frames[0][3]) * ky) for f in frames]
+    cx = sum(x for x, _ in pts) / len(pts)
+    cy = sum(y for _, y in pts) / len(pts)
+    current = max(
+        range(len(pts)), key=lambda i: (pts[i][0] - cx) ** 2 + (pts[i][1] - cy) ** 2
+    )
+    remaining = set(range(len(pts))) - {current}
+    order = [current]
+    while remaining:
+        x, y = pts[current]
+        current = min(
+            remaining, key=lambda i: (pts[i][0] - x) ** 2 + (pts[i][1] - y) ** 2
+        )
+        remaining.remove(current)
+        order.append(current)
+    return [frames[i] for i in order]
+
+
+def _routes(frames: dict[str, dict[str, tuple[str, str, float, float]]]) -> list[dict]:
+    routes = []
+    for seq, by_id in frames.items():
+        values = list(by_id.values())
+        # Full timestamps order the drive exactly; a bare date does not.
+        if all(len(v[0]) > 10 for v in values):
+            ordered = sorted(values)
+        else:
+            ordered = _chain(values)
+        date = min((v[0][:10] for v in values if v[0]), default='')
+        for segment in _segments(ordered):
+            routes.append({'seq': seq, 'date': date, 'frames': segment})
+    return routes
+
+
+def build(
+    geojson_path: Path,
+    crops_dir: Path,
+    output: Path,
+    title: str,
+    token: str | None = None,
+) -> int:
     data = json.loads(geojson_path.read_text())
     features = data['features']
+    routes = (
+        routes_from_listing(features, token)
+        if token
+        else routes_from_observations(features)
+    )
     ids = [str(f.get('id') or f['properties'].get('id')) for f in features]
     crops = crops_by_asset(crops_dir, ids)
     rows = []
@@ -312,6 +472,7 @@ def build(geojson_path: Path, crops_dir: Path, output: Path, title: str) -> int:
         TEMPLATE.replace('__TITLE__', title)
         .replace('__DATA__', json.dumps(rows, separators=(',', ':')))
         .replace('__CROPS_DIR__', json.dumps(rel_crops))
+        .replace('__ROUTES__', json.dumps(routes, separators=(',', ':')))
         .replace('__MAPILLARY_URL__', json.dumps(MAPILLARY_IMAGE_URL))
     )
     output.write_text(html, encoding='utf-8')
@@ -328,8 +489,17 @@ def main(argv=None) -> None:
         '--output', type=Path, default=DEFAULT_RUN / 'vehicles_map.html'
     )
     parser.add_argument('--title', default='Street-level vehicle detections')
+    parser.add_argument(
+        '--token',
+        default=None,
+        help='Mapillary access token (or a file holding it). With it the route is the '
+        'complete drive listed by Mapillary; without it, the frames that saw a vehicle.',
+    )
     args = parser.parse_args(argv)
-    n = build(args.geojson, args.crops, args.output, args.title)
+    token = args.token
+    if token and Path(token).is_file():
+        token = Path(token).read_text().strip()
+    n = build(args.geojson, args.crops, args.output, args.title, token=token)
     print(f'{n} objects written to {args.output}')
 
 
