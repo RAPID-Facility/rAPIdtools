@@ -52,8 +52,12 @@ REGION = rt.BoundingBox(min_x=-117.495, min_y=47.708, max_x=-117.482, max_y=47.7
 #   REGION = rt.BoundingBox(
 #       min_x=-117.535812, min_y=47.688456, max_x=-117.442589, max_y=47.737830
 #   )
-START_DATE = ''  # e.g. '2025-08-01' to restrict to one survey
-END_DATE = ''
+# Only images captured in this window are used. The RAPID Spokane imagery
+# comes from several survey days (late August and mid September 2026); one
+# window keeps the vehicle inventory to a single survey, so a car that moved
+# between surveys is not counted twice or vetoed by a later pass.
+START_DATE = '2026-08-01'
+END_DATE = '2026-08-31'  # inclusive; '' for no bound
 OUTPUT_DIR = Path('output/spokane_vehicles')
 GEOJSON_PATH = OUTPUT_DIR / 'spokane_vehicles.geojson'
 
