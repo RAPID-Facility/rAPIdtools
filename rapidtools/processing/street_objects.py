@@ -1618,6 +1618,27 @@ class MapillaryObjectImageExtractor:
             },
         )
 
+    def _remove_stale_crops(self, assets: Sequence[PhysicalAsset]) -> int:
+        """
+        Delete this extractor's own crop files for ``assets`` from earlier runs.
+
+        Asset IDs are numbered afresh by every detection run, so a crop named
+        for ``street_vehicles_00002`` in the save directory may show a
+        different vehicle than today's ``street_vehicles_00002``. Only files
+        following this extractor's naming scheme (``<prefix>_<asset id>_<image
+        id>.jpg``) are touched.
+        """
+        removed = 0
+        for asset in assets:
+            for path in self.save_directory.glob(
+                f'{self.image_prefix}_{asset.id}_*.jpg'
+            ):
+                rest = path.stem[len(f'{self.image_prefix}_{asset.id}_') :]
+                if rest.isdigit():
+                    path.unlink()
+                    removed += 1
+        return removed
+
     def __call__(
         self, asset_collection: PhysicalAssetCollection
     ) -> PhysicalAssetCollection:
@@ -1648,6 +1669,12 @@ class MapillaryObjectImageExtractor:
             f'{len(targets)} assets from {len(jobs)} images...'
         )
         self.save_directory.mkdir(parents=True, exist_ok=True)
+        stale = self._remove_stale_crops(targets)
+        if stale:
+            logger.info(
+                f'Removed {stale} crops left by an earlier run for assets with the '
+                'same IDs (asset numbering restarts with every run).'
+            )
         crops: dict[tuple[str, str], ImageAsset] = {}
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
             futures = {

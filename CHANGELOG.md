@@ -79,6 +79,11 @@ minor releases may change public APIs.
   `min_object_width_m` wide could be, given its angular size, and the
   camera's displacement) instead of a flat 45 degrees, which stops a far
   speck from claiming a near car and localising it from the wrong frames.
+- `MapillaryObjectImageExtractor` removes its own crop files from earlier
+  runs for the assets it is about to crop, and the street detections map
+  only tiles crops whose source image is among the asset's sightings. Asset
+  numbers restart with every run, so a reused output folder used to show
+  yesterday's vehicle next to today's under the same ID.
 - **Street-level object discovery.** `MapillaryFeatureExtractor` (a `DETECT`
   step) finds objects of the requested classes in every Mapillary image of a
   region from Mapillary's own segmentation detections, read as metadata with

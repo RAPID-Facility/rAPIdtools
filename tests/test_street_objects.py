@@ -585,6 +585,31 @@ def test_crops_closest_views_with_outline(detected, tmp_path):
     assert len(client.session.urls) == len(set(client.session.urls))
 
 
+def test_rerun_removes_stale_crops_of_reused_asset_ids(detected, tmp_path, caplog):
+    client, collection = detected
+    crops_dir = tmp_path / 'crops'
+    cropper = MapillaryObjectImageExtractor(
+        crops_dir, client=client, max_images_per_asset=1, image_size='1024'
+    )
+    car = collection[0]
+    # Files left by an earlier run: asset numbering restarts, so these would
+    # be tiled with today's crops although they show another vehicle.
+    crops_dir.mkdir()
+    stale = crops_dir / f'street_{car.id}_999999.jpg'
+    stale.write_bytes(b'old')
+    other_prefix = crops_dir / f'aerial_{car.id}_999999.jpg'
+    other_prefix.write_bytes(b'keep')
+    notes = crops_dir / 'notes.txt'
+    notes.write_text('keep')
+    with caplog.at_level(logging.INFO):
+        result = cropper(collection)
+    assert not stale.exists()
+    assert other_prefix.exists() and notes.exists()
+    assert len(result[0].image_assets) == 1
+    assert result[0].image_assets[0].path.is_file()
+    assert 'Removed 1 crops left by an earlier run' in caplog.text
+
+
 def test_assets_sharing_an_image_are_cropped_from_one_download(detected, tmp_path):
     client, collection = detected
     car = collection[0]

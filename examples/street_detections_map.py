@@ -273,8 +273,19 @@ if (wanted && markers.has(wanted)) {
 """
 
 
-def crops_by_asset(crops_dir: Path, asset_ids: list[str]) -> dict[str, list[dict]]:
-    """Map asset IDs to their crop files; file names end in ``_<image_id>.<ext>``."""
+def crops_by_asset(
+    crops_dir: Path,
+    asset_ids: list[str],
+    allowed_images: dict[str, set[str]] | None = None,
+) -> dict[str, list[dict]]:
+    """
+    Map asset IDs to their crop files; file names end in ``_<image_id>.<ext>``.
+
+    ``allowed_images`` gives, per asset, the IDs of the images it was actually
+    seen in. Asset numbering restarts with every detection run, so a crop
+    folder reused across runs holds files named for today's IDs but showing
+    yesterday's objects; those are skipped when the sightings are known.
+    """
     found: dict[str, list[dict]] = defaultdict(list)
     ids = sorted(asset_ids, key=len, reverse=True)  # longest first for prefix matching
     for path in sorted(crops_dir.iterdir()):
@@ -288,6 +299,9 @@ def crops_by_asset(crops_dir: Path, asset_ids: list[str]) -> dict[str, list[dict
                 continue
             rest = stem[pos + len(marker) :]
             image_id = rest if re.fullmatch(r'\d+', rest) else None
+            known = (allowed_images or {}).get(asset_id)
+            if known and image_id not in known:
+                break  # a crop of whatever carried this ID in an earlier run
             found[asset_id].append({'file': path.name, 'image_id': image_id})
             break
     return found
@@ -428,7 +442,13 @@ def build(
         else routes_from_observations(features)
     )
     ids = [str(f.get('id') or f['properties'].get('id')) for f in features]
-    crops = crops_by_asset(crops_dir, ids)
+    seen_in = {
+        asset_id: {
+            str(o.get('image_id')) for o in f['properties'].get('observations') or []
+        }
+        for f, asset_id in zip(features, ids, strict=True)
+    }
+    crops = crops_by_asset(crops_dir, ids, seen_in)
     rows = []
     for f, asset_id in zip(features, ids, strict=True):
         p = f['properties']
