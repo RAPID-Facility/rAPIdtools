@@ -475,10 +475,14 @@ class MapillaryFeatureExtractor:
             Only objects this close are compared. Defaults to 6.0.
         reid_min_width_px (float):
             Narrowest detection whose crop is embedded, in pixels of a
-            2048-pixel-wide thumbnail (scaled to ``sam3_image_size``). On
+            2048-pixel-wide thumbnail (scaled to ``reid_image_size``). On
             the Spokane survey, crops below this width scored as alike
             whether or not they showed the same vehicle. ``0`` embeds every
             object. Defaults to 100.
+        reid_image_size (str):
+            Thumbnail size the re-identification crops are cut from:
+            ``'2048'`` (default, the size the thresholds were tuned on) or
+            ``'1024'``.
         reid_embedder (Any | None):
             A ready :class:`~rapidtools.processing.reid.AppearanceEmbedder`
             (or anything with ``embed(images)``) to use instead of loading
@@ -589,6 +593,7 @@ class MapillaryFeatureExtractor:
         reid_min_similarity: float | None = None,
         reid_max_distance_m: float = 6.0,
         reid_min_width_px: float = DEFAULT_MIN_WIDTH_PX,
+        reid_image_size: str = '2048',
         reid_embedder: Any = None,
         min_observations: int = 1,
         frame_spacing_m: float = 0.0,
@@ -670,6 +675,7 @@ class MapillaryFeatureExtractor:
         self.reid_min_similarity = reid_min_similarity
         self.reid_max_distance_m = reid_max_distance_m
         self.reid_min_width_px = float(reid_min_width_px)
+        self.reid_image_size = str(reid_image_size)
         self.reid_embedder = reid_embedder
         self.min_observations = min_observations
         self.frame_spacing_m = frame_spacing_m
@@ -1013,16 +1019,17 @@ class MapillaryFeatureExtractor:
             )
         return self.sam3_model
 
-    def _download_thumbnail(self, frame: dict[str, Any]) -> Path | None:
-        """Fetch a frame's thumbnail into the cache directory."""
+    def _download_thumbnail(
+        self, frame: dict[str, Any], size: str | None = None
+    ) -> Path | None:
+        """Fetch a frame's thumbnail (default ``sam3_image_size``) into the cache."""
+        size = self.sam3_image_size if size is None else str(size)
         target_dir = self.save_directory / 'images'
         target_dir.mkdir(parents=True, exist_ok=True)
-        target = target_dir / f'{frame["id"]}_{self.sam3_image_size}.jpg'
+        target = target_dir / f'{frame["id"]}_{size}.jpg'
         if target.is_file():
             return target
-        url = frame.get('thumb_url') or self.client.get_image_url(
-            frame['id'], self.sam3_image_size
-        )
+        url = frame.get('thumb_url') or self.client.get_image_url(frame['id'], size)
         if not url:
             return None
         return target if self.client._download_image(url, target) else None
@@ -1276,7 +1283,7 @@ class MapillaryFeatureExtractor:
         if not pairs:
             return assets
         crops: dict[str, Image.Image] = {}
-        thumb_width = int(self.sam3_image_size)
+        thumb_width = int(self.reid_image_size)
         for key in sorted({k for pair in pairs for k in pair}):
             # Widest sighting first; none wide enough means no crop, and a
             # candidate without a crop is never merged by appearance.
@@ -1284,7 +1291,8 @@ class MapillaryFeatureExtractor:
                 obs_by_key[key], thumb_width, self.reid_min_width_px
             ):
                 path = self._download_thumbnail(
-                    {'id': sighting.image_id, 'thumb_url': None}
+                    {'id': sighting.image_id, 'thumb_url': None},
+                    size=self.reid_image_size,
                 )
                 if path is None:
                     continue

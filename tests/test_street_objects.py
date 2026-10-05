@@ -919,7 +919,27 @@ def test_reid_merges_duplicates_across_passes(
         assert merged.attributes['n_observations'] == 10
         assert sorted(merged.attributes['sequence_ids']) == ['seq1', 'seq2']
         assert embedder.calls >= 1
-        assert client.downloaded  # one thumbnail per compared object
+        # One thumbnail per compared object, at the re-identification size:
+        assert client.downloaded
+        assert all(url.endswith('_2048.jpg') for url in client.downloaded)
+
+
+def test_reid_thumbnail_size_is_independent_of_sam3_size(region, tmp_path):
+    frames = list(_survey(with_ego=False)) + _second_pass(dx_m=4.0)
+    client = FakeClient(ImageCollection(frames))
+    MapillaryFeatureExtractor(
+        classes=['cars'],
+        client=client,
+        region=region,
+        camera_height_m=CAMERA_HEIGHT,
+        reid=True,
+        reid_embedder=SameLookEmbedder(),
+        reid_max_distance_m=8.0,
+        reid_image_size='1024',
+        save_directory=tmp_path,
+    )()
+    assert client.downloaded
+    assert all(url.endswith('_1024.jpg') for url in client.downloaded)
 
 
 def test_reid_skips_objects_never_seen_wide_enough(region, tmp_path):

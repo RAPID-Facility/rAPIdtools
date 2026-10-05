@@ -101,10 +101,12 @@ detector = rt.MapillaryFeatureExtractor(
     # and moving vehicles are dropped. The only physical constant involved,
     # the camera height above the road, defaults to the RAPID rig (2.4 m)
     # and only shapes the single-view range prior; pass camera_height_m for
-    # a different vehicle. If the survey drove some streets twice, add
-    # reid=True to merge look-alike vehicles seen on separate passes (loads
-    # the CLIP ViT-B/16 image tower and downloads one thumbnail per compared
-    # vehicle; vehicles never seen up close are left as geometry placed them).
+    # a different vehicle.
+    # The survey drove some streets twice, so look-alike vehicles seen on
+    # separate passes are merged by appearance: the CLIP ViT-B/16 image tower
+    # embeds one 2048-pixel crop per compared vehicle. Vehicles never seen up
+    # close are left as geometry placed them.
+    reid=True,
 )
 
 cropper = rt.MapillaryObjectImageExtractor(

@@ -46,11 +46,13 @@ minor releases may change public APIs.
   supported) and `MapillaryFeatureExtractor(reid=True)`, which merges
   look-alike objects from different sequences within `reid_max_distance_m`,
   removing the double counts of a repeated pass. The merge threshold
-  defaults per backbone (`recommended_min_similarity`), and only objects
-  with a sighting at least `reid_min_width_px` wide are compared
-  (`views_for_reid`), since on a Spokane survey crops narrower than 100
-  pixels at 2048 scored as alike whether or not they showed the same
-  vehicle while CLIP separated the wider ones best.
+  defaults per backbone (`recommended_min_similarity`), crops are cut from
+  thumbnails of their own size (`reid_image_size`, 2048 by default, no
+  longer the SAM 3 size), and only objects with a sighting at least
+  `reid_min_width_px` wide are compared (`views_for_reid`), since on a
+  Spokane survey crops narrower than 100 pixels at 2048 scored as alike
+  whether or not they showed the same vehicle while CLIP separated the
+  wider ones best.
 - Example `examples/street_detections_map.py`: writes a self-contained HTML
   map of street-level detections on a Bing aerial basemap, with each
   object's attributes, its crops tiled, a link to every source image on

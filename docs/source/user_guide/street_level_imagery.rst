@@ -222,8 +222,9 @@ Two shortcuts sit on top of this:
   ``keep_rejected=True``). A custom ``classifier`` callable can stand in
   for the model.
 - **Repeated passes are reconciled by appearance.** With ``reid=True`` the
-  extractor crops the widest view of objects from different sequences that
-  lie within ``reid_max_distance_m`` of each other, embeds them with the
+  extractor crops the widest view (from a 2048-pixel thumbnail,
+  ``reid_image_size``) of objects from different sequences that lie within
+  ``reid_max_distance_m`` of each other, embeds them with the
   image tower of CLIP ViT-B/16 (``reid_model`` accepts DINOv2 checkpoints
   too, with the merge threshold picked per backbone) and merges look-alikes,
   which removes the double counts a second drive down the same street would
