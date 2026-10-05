@@ -102,6 +102,12 @@ detector = rt.MapillaryFeatureExtractor(
     # the camera height above the road, defaults to the RAPID rig (2.4 m)
     # and only shapes the single-view range prior; pass camera_height_m for
     # a different vehicle.
+    # Where vehicles line up along the line of sight (a driveway seen end-on)
+    # the tracker can slide from one to the next, and a detector can cut one
+    # car in two past a pole. The second object that leaves is folded into
+    # the vehicle its sightings show. On by default; shown here because the
+    # Spokane driveways are exactly that case.
+    merge_pieces_of_neighbours=True,
     # The survey drove some streets twice, so look-alike vehicles seen on
     # separate passes are merged by appearance: the CLIP ViT-B/16 image tower
     # embeds one 2048-pixel crop per compared vehicle. Vehicles never seen up
