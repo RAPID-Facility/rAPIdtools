@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 10-03-2026
+# 10-05-2026
 
 """
 Appearance re-identification of street-level object candidates.
@@ -44,15 +44,19 @@ When a survey drives the same street twice, one parked car is discovered as
 two candidates a few metres apart, each backed by sightings from a different
 capture sequence. Position alone cannot tell such a pair from two cars parked
 nose to tail, but their image crops can: this module embeds the best crop of
-each candidate with a self-supervised vision backbone (DINOv2 by default) and
-merges nearby candidates whose embeddings are close in cosine similarity.
+each candidate with a vision backbone (CLIP ViT-B/16 by default) and merges
+nearby candidates whose embeddings are close in cosine similarity.
 
-Two rules keep the merge conservative. Candidates that share a frame were
+Three rules keep the merge conservative. Candidates that share a frame were
 seen at the same instant and are therefore different objects, so they are
 never merged, directly or through a chain. By default candidates from the
 same sequence are not compared either: duplicates within one pass are handled
 upstream by the localisation clustering, and two objects visible to one camera
-at once are distinct.
+at once are distinct. And a candidate whose every sighting is narrower than
+:data:`DEFAULT_MIN_WIDTH_PX` on a 2048-pixel thumbnail is not compared at
+all: small crops of different vehicles look alike to the embedder and small
+crops of one vehicle do not, so appearance can only add merges between
+well-seen objects (see :func:`views_for_reid`).
 
 The heavy work is split so that a caller can download only the imagery it
 needs: :func:`pairs_to_compare` lists the candidate pairs worth comparing,
@@ -65,7 +69,7 @@ Example:
     ... )
     >>> a = ReidCandidate('a', -117.41, 47.66, frozenset({'s1'}), ('img-1',))
     >>> b = ReidCandidate('b', -117.41001, 47.66, frozenset({'s2'}), ('img-9',))
-    >>> embedder = AppearanceEmbedder()  # loads facebook/dinov2-small lazily
+    >>> embedder = AppearanceEmbedder()  # loads the default backbone lazily
     >>> merge_by_appearance(  # doctest: +SKIP
     ...     [a, b], {'a': crop_a, 'b': crop_b}, embedder
     ... )
@@ -90,7 +94,49 @@ from .street_localization import haversine_m, local_projection
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_REID_MODEL = 'facebook/dinov2-small'
+DEFAULT_REID_MODEL = 'openai/clip-vit-base-patch16'
+
+#: Merge threshold that gives about one false merge per hundred comparisons of
+#: neighbouring parked vehicles, per backbone, from a survey of Spokane
+#: driveways. Unknown backbones fall back to the CLIP value.
+RECOMMENDED_MIN_SIMILARITY: dict[str, float] = {
+    'openai/clip-vit-base-patch16': 0.89,
+    'openai/clip-vit-large-patch14': 0.89,
+    'facebook/dinov2-small': 0.83,
+    'facebook/dinov2-base': 0.83,
+    'facebook/dinov2-large': 0.83,
+}
+
+#: Narrowest detection, in pixels of a 2048-pixel-wide thumbnail, whose crop
+#: is worth embedding. Below it the embeddings of different vehicles become
+#: as similar as those of one vehicle.
+DEFAULT_MIN_WIDTH_PX = 100
+
+
+def recommended_min_similarity(model_id: str) -> float:
+    """
+    Cosine-similarity threshold that suits a backbone.
+
+    Backbones place their scores on different scales: CLIP packs both
+    matching and non-matching vehicles into a narrow band near 1, DINOv2
+    spreads them out. The values are the 99th percentile of the similarity
+    between neighbouring, different, parked vehicles in a street survey.
+
+    Args:
+        model_id: Hugging Face model identifier.
+
+    Returns:
+        float: Threshold at or above which two crops count as one object.
+
+    Example:
+        >>> recommended_min_similarity('facebook/dinov2-small')
+        0.83
+        >>> recommended_min_similarity('some/other-backbone')
+        0.89
+    """
+    return RECOMMENDED_MIN_SIMILARITY.get(
+        model_id, RECOMMENDED_MIN_SIMILARITY[DEFAULT_REID_MODEL]
+    )
 
 
 # ------------------------------------------------------------- embedding
@@ -126,14 +172,19 @@ class AppearanceEmbedder:
     """
     L2-normalised image embeddings from a Hugging Face vision backbone.
 
-    The default checkpoint is DINOv2-small, whose CLS token is a strong
-    generic descriptor for "is this the same object" comparisons without
-    any fine-tuning. Weights are loaded on first use, so constructing the
-    embedder is free and ``torch`` is only imported when an image is embedded.
+    The default checkpoint is the image tower of CLIP ViT-B/16, whose
+    projected embedding separates "same parked vehicle, second pass" from
+    "the car next to it" better than DINOv2 on street-level crops. A CLIP
+    checkpoint loads its vision tower and projection only; any other
+    checkpoint :class:`transformers.AutoModel` can load is pooled through
+    its ``pooler_output`` (the CLS token for DINOv2) or, failing that, the
+    mean of its last hidden state. Weights are loaded on first use, so
+    constructing the embedder is free and ``torch`` is only imported when
+    an image is embedded.
 
     Args:
-        model_id: Hugging Face model identifier of a vision backbone that
-            :class:`transformers.AutoModel` can load.
+        model_id: Hugging Face model identifier of a vision backbone: a CLIP
+            checkpoint or one :class:`transformers.AutoModel` can load.
         device: ``'auto'`` picks CUDA when available and falls back to the
             CPU; any other value is passed to ``torch`` unchanged.
         batch_size: Number of images per forward pass.
@@ -144,12 +195,12 @@ class AppearanceEmbedder:
     Example:
         >>> from PIL import Image
         >>> from rapidtools.processing.reid import AppearanceEmbedder
-        >>> embedder = AppearanceEmbedder('facebook/dinov2-small')
+        >>> embedder = AppearanceEmbedder('openai/clip-vit-base-patch16')
         >>> vectors = embedder.embed(  # doctest: +SKIP
         ...     [Image.open('car_a.jpg'), Image.open('car_b.jpg')]
         ... )
         >>> vectors.shape, float(vectors[0] @ vectors[1])  # doctest: +SKIP
-        ((2, 384), 0.91)
+        ((2, 512), 0.93)
     """
 
     def __init__(
@@ -176,7 +227,7 @@ class AppearanceEmbedder:
     def _load(self) -> None:
         """Import torch/transformers and load the backbone once."""
         import torch
-        from transformers import AutoImageProcessor, AutoModel
+        from transformers import AutoConfig, AutoImageProcessor, AutoModel
 
         from rapidtools.auth import ensure_huggingface_login
 
@@ -185,10 +236,54 @@ class AppearanceEmbedder:
         if device == 'auto':
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
         logger.info(f'Loading re-identification backbone {self.model_id} on {device}.')
+        config = AutoConfig.from_pretrained(self.model_id)
+        if getattr(config, 'model_type', None) == 'clip':
+            # The text tower is dead weight here; the projected image
+            # embedding is what CLIP was trained to compare. Loading only
+            # the vision side makes transformers report the text weights as
+            # unexpected, which is the intent, so that report is silenced.
+            from transformers import CLIPVisionModelWithProjection
+            from transformers import logging as hf_logging
+
+            level = hf_logging.get_verbosity()
+            hf_logging.set_verbosity_error()
+            try:
+                model = CLIPVisionModelWithProjection.from_pretrained(self.model_id)
+            finally:
+                hf_logging.set_verbosity(level)
+        else:
+            model = AutoModel.from_pretrained(self.model_id)
         self._processor = AutoImageProcessor.from_pretrained(self.model_id)
-        self._model = AutoModel.from_pretrained(self.model_id).to(device).eval()
+        self._model = model.to(device).eval()
         self._torch = torch
         self._resolved_device = device
+
+    @staticmethod
+    def pool_outputs(outputs: Any) -> Any:
+        """
+        One vector per image from a backbone's output.
+
+        Prefers CLIP's projected ``image_embeds``, then a ``pooler_output``
+        (DINOv2's CLS token), then the mean of ``last_hidden_state``.
+
+        Args:
+            outputs: Model output object or mapping.
+
+        Returns:
+            Any: Tensor of shape ``(n, d)``.
+
+        Example:
+            >>> import numpy as np
+            >>> from types import SimpleNamespace
+            >>> out = SimpleNamespace(pooler_output=np.ones((2, 3)), image_embeds=None)
+            >>> AppearanceEmbedder.pool_outputs(out).shape
+            (2, 3)
+        """
+        for name in ('image_embeds', 'pooler_output'):
+            pooled = getattr(outputs, name, None)
+            if pooled is not None:
+                return pooled
+        return outputs.last_hidden_state.mean(dim=1)
 
     def _embed_with_model(self, images: Sequence[Image.Image]) -> np.ndarray:
         """Run the backbone over ``images`` in batches and pool each output."""
@@ -203,10 +298,7 @@ class AppearanceEmbedder:
             inputs = inputs.to(self._resolved_device)
             with torch.inference_mode():
                 outputs = self._model(**inputs)
-            pooled = getattr(outputs, 'pooler_output', None)
-            if pooled is None:
-                pooled = outputs.last_hidden_state.mean(dim=1)
-            rows.append(pooled.float().cpu().numpy())
+            rows.append(self.pool_outputs(outputs).float().cpu().numpy())
         return np.concatenate(rows, axis=0)
 
     def embed(self, images: Sequence[Image.Image]) -> np.ndarray:
@@ -315,6 +407,80 @@ class ReidCandidate:
 
 
 # -------------------------------------------------------------- cropping
+def polygon_width_px(
+    polygon: Sequence[tuple[float, float]], image_width: int, panorama: bool = True
+) -> float:
+    """
+    Width of a detection outline in pixels of the image it was drawn on.
+
+    Args:
+        polygon: Detection outline in normalised image coordinates.
+        image_width: Width in pixels of the image the width is wanted for.
+        panorama: Treat a span wider than half the image as an object that
+            straddles the seam of an equirectangular panorama.
+
+    Returns:
+        float: Width in pixels; zero for an empty polygon.
+
+    Example:
+        >>> round(polygon_width_px([(0.40, 0.5), (0.45, 0.5), (0.45, 0.6)], 2048), 1)
+        102.4
+        >>> round(polygon_width_px([(0.98, 0.5), (0.02, 0.5)], 2048), 1)  # seam
+        81.9
+    """
+    xs = [float(x) for x, _ in polygon]
+    if not xs:
+        return 0.0
+    span = max(xs) - min(xs)
+    if panorama and span > 0.5:
+        span = 1.0 - span
+    return span * image_width
+
+
+def views_for_reid(
+    observations: Sequence[Observation],
+    image_width: int,
+    min_width_px: float = DEFAULT_MIN_WIDTH_PX,
+    reference_width: int = 2048,
+) -> list[Observation]:
+    """
+    The sightings of a candidate worth cropping for re-identification.
+
+    Sightings are ordered widest first, so the first one that can be
+    cropped is the most informative, and those narrower than
+    ``min_width_px`` (measured on a thumbnail ``reference_width`` pixels
+    wide, then scaled to ``image_width``) are left out. A candidate with no
+    sighting wide enough gets no crop and is never merged by appearance.
+
+    Args:
+        observations: Sightings of one candidate.
+        image_width: Width in pixels of the thumbnails that will be cropped.
+        min_width_px: Narrowest acceptable detection on the reference
+            thumbnail. ``0`` keeps every sighting.
+        reference_width: Thumbnail width the threshold is quoted for.
+
+    Returns:
+        list[Observation]: Acceptable sightings, widest first.
+
+    Example:
+        >>> from rapidtools.core import Observation
+        >>> wide = Observation('i1', 'car', [(0.4, 0.5), (0.5, 0.5), (0.5, 0.6)],
+        ...                    0.0, 0.0, 0.0)
+        >>> narrow = Observation('i2', 'car', [(0.4, 0.5), (0.41, 0.5), (0.41, 0.6)],
+        ...                      0.0, 0.0, 0.0)
+        >>> [o.image_id for o in views_for_reid([narrow, wide], 1024)]
+        ['i1']
+    """
+    threshold = float(min_width_px) * image_width / reference_width
+    widths = [
+        (polygon_width_px(o.polygon, image_width), i, o)
+        for i, o in enumerate(observations)
+    ]
+    return [
+        o for w, _, o in sorted(widths, key=lambda t: (-t[0], t[1])) if w >= threshold
+    ]
+
+
 def crop_observation(
     image: Image.Image,
     polygon: Sequence[tuple[float, float]],
@@ -484,7 +650,7 @@ def merge_by_appearance(
     crops: Mapping[str, Image.Image],
     embedder: AppearanceEmbedder,
     max_distance_m: float = 6.0,
-    min_similarity: float = 0.80,
+    min_similarity: float | None = None,
     require_different_sequence: bool = True,
 ) -> list[list[str]]:
     """
@@ -502,6 +668,8 @@ def merge_by_appearance(
         embedder: Produces unit-norm embeddings of the crops.
         max_distance_m: Largest separation of two candidates to compare.
         min_similarity: Cosine similarity at or above which a pair merges.
+            ``None`` takes :func:`recommended_min_similarity` for the
+            embedder's backbone.
         require_different_sequence: Only compare candidates from different
             capture sequences.
 
@@ -516,6 +684,10 @@ def merge_by_appearance(
         >>> [g for g in groups if len(g) > 1]  # doctest: +SKIP
         [['car-12', 'car-57']]
     """
+    if min_similarity is None:
+        min_similarity = recommended_min_similarity(
+            getattr(embedder, 'model_id', DEFAULT_REID_MODEL)
+        )
     all_pairs = pairs_to_compare(candidates, max_distance_m, require_different_sequence)
     pairs = [(a, b) for a, b in all_pairs if a in crops and b in crops]
     order = [c.key for c in candidates]

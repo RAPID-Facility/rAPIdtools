@@ -1,6 +1,7 @@
 """Tests for appearance re-identification of street-level candidates."""
 
 import ast
+import math
 import subprocess
 import sys
 
@@ -18,6 +19,9 @@ from rapidtools.processing.reid import (
     merged_position,
     normalise_rows,
     pairs_to_compare,
+    polygon_width_px,
+    recommended_min_similarity,
+    views_for_reid,
 )
 from rapidtools.processing.street_localization import destination_point, haversine_m
 
@@ -65,8 +69,72 @@ def test_embedder_with_fake_backend_returns_unit_rows():
     assert np.linalg.norm(out[:2], axis=1) == pytest.approx([1.0, 1.0])
     assert out[2] == pytest.approx([0.0, 0.0])  # zero rows stay zero, no NaN
     assert calls == [3]
-    assert embedder.model_id == 'facebook/dinov2-small'
+    assert embedder.model_id == 'openai/clip-vit-base-patch16'
     assert not embedder.is_loaded
+
+
+def test_pool_outputs_prefers_clip_projection_then_cls_then_mean():
+    from types import SimpleNamespace
+
+    class Hidden:
+        def mean(self, dim):
+            return ('mean', dim)
+
+    clip = SimpleNamespace(image_embeds='proj', pooler_output='cls')
+    dino = SimpleNamespace(image_embeds=None, pooler_output='cls')
+    bare = SimpleNamespace(last_hidden_state=Hidden())
+    assert AppearanceEmbedder.pool_outputs(clip) == 'proj'
+    assert AppearanceEmbedder.pool_outputs(dino) == 'cls'
+    assert AppearanceEmbedder.pool_outputs(bare) == ('mean', 1)
+
+
+def test_recommended_min_similarity_per_backbone():
+    assert recommended_min_similarity('openai/clip-vit-base-patch16') == 0.89
+    assert recommended_min_similarity('facebook/dinov2-small') == 0.83
+    assert recommended_min_similarity('unknown/backbone') == 0.89
+
+
+def test_merge_threshold_defaults_to_the_embedder_backbone():
+    # Two crops at similarity 0.85: merged under DINOv2's 0.83, not CLIP's 0.89.
+    def backend(images):
+        return np.array([[1.0, 0.0], [0.85, math.sqrt(1 - 0.85**2)]])
+
+    a, b = _candidate('a'), _candidate('b', east_m=2.0, sequences=('s2',))
+    crops = {'a': _solid(RED), 'b': _solid(RED_ISH)}
+    dino = AppearanceEmbedder('facebook/dinov2-small', backend=backend)
+    clip = AppearanceEmbedder('openai/clip-vit-base-patch16', backend=backend)
+    assert merge_by_appearance([a, b], crops, dino) == [['a', 'b']]
+    assert merge_by_appearance([a, b], crops, clip) == [['a'], ['b']]
+
+
+# ----------------------------------------------------------- width gate
+def _obs(image_id, x0, x1):
+    return Observation(
+        image_id, 'car', [(x0, 0.5), (x1, 0.5), (x1, 0.6), (x0, 0.6)], 0.0, 0.0, 0.0
+    )
+
+
+def test_polygon_width_px_handles_seam():
+    assert polygon_width_px([(0.40, 0.5), (0.45, 0.6)], 2048) == pytest.approx(102.4)
+    assert polygon_width_px([(0.98, 0.5), (0.02, 0.6)], 2048) == pytest.approx(81.92)
+    assert polygon_width_px([(0.98, 0.5), (0.02, 0.6)], 2048, panorama=False) == (
+        pytest.approx(0.96 * 2048)
+    )
+    assert polygon_width_px([], 2048) == 0.0
+
+
+def test_views_for_reid_orders_widest_first_and_drops_narrow():
+    narrow = _obs('narrow', 0.40, 0.42)  # 41 px at 2048
+    wide = _obs('wide', 0.40, 0.50)  # 205 px
+    medium = _obs('medium', 0.40, 0.45)  # 102 px, just over the default gate
+    views = views_for_reid([narrow, medium, wide], 2048)
+    assert [o.image_id for o in views] == ['wide', 'medium']
+    # The threshold scales with the thumbnail actually in use (1024 -> 50 px):
+    assert [o.image_id for o in views_for_reid([narrow, medium], 1024)] == ['medium']
+    assert views_for_reid([narrow], 2048) == []
+    assert [o.image_id for o in views_for_reid([narrow], 2048, min_width_px=0)] == [
+        'narrow'
+    ]
 
 
 def test_embedder_empty_input_and_row_count_check():

@@ -36,7 +36,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 09-29-2026
+# 10-05-2026
 
 """
 Discover and photograph objects along a street-level survey.
@@ -109,6 +109,7 @@ from rapidtools.data_sources import MapillaryClient, MapillaryLabels
 from rapidtools.data_sources.mapillary_client import is_map_feature_value
 
 from . import outlines
+from .reid import DEFAULT_MIN_WIDTH_PX, DEFAULT_REID_MODEL
 from .step import Stage
 from .street_localization import (
     DEFAULT_MAX_RANGE_M,
@@ -460,15 +461,24 @@ class MapillaryFeatureExtractor:
             different sequences that lie within ``reid_max_distance_m`` and
             merge look-alikes, removing double counts from repeated passes.
             Downloads one thumbnail per compared object and loads
-            ``reid_model``. Defaults to ``False``.
+            ``reid_model``. Appearance only ever adds merges: an object
+            without a sighting at least ``reid_min_width_px`` wide is left
+            as geometry placed it. Defaults to ``False``.
         reid_model (str):
             Hugging Face vision backbone for the embeddings. Defaults to
-            ``'facebook/dinov2-small'``.
-        reid_min_similarity (float):
+            ``'openai/clip-vit-base-patch16'``; DINOv2 checkpoints work too.
+        reid_min_similarity (float | None):
             Cosine similarity at which two crops count as the same object.
-            Defaults to 0.80.
+            ``None`` (the default) takes the value recommended for
+            ``reid_model``: 0.89 for CLIP, 0.83 for DINOv2.
         reid_max_distance_m (float):
             Only objects this close are compared. Defaults to 6.0.
+        reid_min_width_px (float):
+            Narrowest detection whose crop is embedded, in pixels of a
+            2048-pixel-wide thumbnail (scaled to ``sam3_image_size``). On
+            the Spokane survey, crops below this width scored as alike
+            whether or not they showed the same vehicle. ``0`` embeds every
+            object. Defaults to 100.
         reid_embedder (Any | None):
             A ready :class:`~rapidtools.processing.reid.AppearanceEmbedder`
             (or anything with ``embed(images)``) to use instead of loading
@@ -575,9 +585,10 @@ class MapillaryFeatureExtractor:
         min_path_distance_m: float = 1.5,
         object_size_m: float = 4.5,
         reid: bool = False,
-        reid_model: str = 'facebook/dinov2-small',
-        reid_min_similarity: float = 0.80,
+        reid_model: str = DEFAULT_REID_MODEL,
+        reid_min_similarity: float | None = None,
         reid_max_distance_m: float = 6.0,
+        reid_min_width_px: float = DEFAULT_MIN_WIDTH_PX,
         reid_embedder: Any = None,
         min_observations: int = 1,
         frame_spacing_m: float = 0.0,
@@ -658,6 +669,7 @@ class MapillaryFeatureExtractor:
         self.reid_model = reid_model
         self.reid_min_similarity = reid_min_similarity
         self.reid_max_distance_m = reid_max_distance_m
+        self.reid_min_width_px = float(reid_min_width_px)
         self.reid_embedder = reid_embedder
         self.min_observations = min_observations
         self.frame_spacing_m = frame_spacing_m
@@ -1242,6 +1254,7 @@ class MapillaryFeatureExtractor:
             merge_by_appearance,
             merged_position,
             pairs_to_compare,
+            views_for_reid,
         )
 
         by_key = {a.id: a for a in assets}
@@ -1263,8 +1276,13 @@ class MapillaryFeatureExtractor:
         if not pairs:
             return assets
         crops: dict[str, Image.Image] = {}
+        thumb_width = int(self.sam3_image_size)
         for key in sorted({k for pair in pairs for k in pair}):
-            for sighting in obs_by_key[key]:
+            # Widest sighting first; none wide enough means no crop, and a
+            # candidate without a crop is never merged by appearance.
+            for sighting in views_for_reid(
+                obs_by_key[key], thumb_width, self.reid_min_width_px
+            ):
                 path = self._download_thumbnail(
                     {'id': sighting.image_id, 'thumb_url': None}
                 )

@@ -922,6 +922,28 @@ def test_reid_merges_duplicates_across_passes(
         assert client.downloaded  # one thumbnail per compared object
 
 
+def test_reid_skips_objects_never_seen_wide_enough(region, tmp_path):
+    frames = list(_survey(with_ego=False)) + _second_pass(dx_m=4.0)
+    client = FakeClient(ImageCollection(frames))
+    embedder = SameLookEmbedder()
+    # The survey's boxes are 5 % of the frame (102 px at 2048): above the
+    # default gate, below a stricter one. Nothing is downloaded or embedded.
+    objects = MapillaryFeatureExtractor(
+        classes=['cars'],
+        client=client,
+        region=region,
+        camera_height_m=CAMERA_HEIGHT,
+        reid=True,
+        reid_embedder=embedder,
+        reid_max_distance_m=8.0,
+        reid_min_width_px=150,
+        save_directory=tmp_path,
+    )()
+    assert len(objects) == 2
+    assert embedder.calls == 0
+    assert not client.downloaded
+
+
 def test_min_area_fraction_is_deprecated_but_honoured():
     with pytest.warns(DeprecationWarning):
         ext = MapillaryFeatureExtractor(

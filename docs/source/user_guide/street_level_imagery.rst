@@ -222,11 +222,16 @@ Two shortcuts sit on top of this:
   ``keep_rejected=True``). A custom ``classifier`` callable can stand in
   for the model.
 - **Repeated passes are reconciled by appearance.** With ``reid=True`` the
-  extractor crops the closest view of objects from different sequences that
-  lie within ``reid_max_distance_m`` of each other, embeds them with a
-  DINOv2 backbone and merges look-alikes, which removes the double counts a
-  second drive down the same street would otherwise leave
-  (``reid_merged`` on the merged asset).
+  extractor crops the widest view of objects from different sequences that
+  lie within ``reid_max_distance_m`` of each other, embeds them with the
+  image tower of CLIP ViT-B/16 (``reid_model`` accepts DINOv2 checkpoints
+  too, with the merge threshold picked per backbone) and merges look-alikes,
+  which removes the double counts a second drive down the same street would
+  otherwise leave (``reid_merged`` on the merged asset). Appearance only
+  ever adds merges: an object whose sightings are all narrower than
+  ``reid_min_width_px`` (100 pixels on a 2048-pixel thumbnail) is not
+  compared, because crops that small score as alike whether or not they
+  show the same vehicle.
 
 Every object is a point :class:`~rapidtools.core.PhysicalAsset` whose
 attributes include the class, the most common label, the number of

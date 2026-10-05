@@ -101,7 +101,10 @@ baseline and appearance re-identification.
    reid.AppearanceEmbedder
    reid.merge_by_appearance
    reid.pairs_to_compare
+   reid.views_for_reid
+   reid.polygon_width_px
    reid.crop_observation
+   reid.recommended_min_similarity
 
 Provider-specific analyzers
 ---------------------------

@@ -103,7 +103,8 @@ detector = rt.MapillaryFeatureExtractor(
     # and only shapes the single-view range prior; pass camera_height_m for
     # a different vehicle. If the survey drove some streets twice, add
     # reid=True to merge look-alike vehicles seen on separate passes (loads
-    # a small DINOv2 model and downloads one thumbnail per compared vehicle).
+    # the CLIP ViT-B/16 image tower and downloads one thumbnail per compared
+    # vehicle; vehicles never seen up close are left as geometry placed them).
 )
 
 cropper = rt.MapillaryObjectImageExtractor(
