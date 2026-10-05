@@ -96,6 +96,8 @@ baseline and appearance re-identification.
    street_tracking.merge_by_rays
    street_tracking.triangulate_track
    street_tracking.merge_estimates
+   street_tracking.merge_pieces
+   street_tracking.sighting_shows
    street_tracking.vote_rays
    street_tracking.ObjectEstimate
    reid.AppearanceEmbedder

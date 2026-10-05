@@ -245,10 +245,13 @@ class AppearanceEmbedder:
             from transformers import CLIPVisionModelWithProjection
             from transformers import logging as hf_logging
 
+            # transformers types from_pretrained through a wrapper that mypy
+            # cannot see through; the call is the documented one.
+            vision_tower: Any = CLIPVisionModelWithProjection
             level = hf_logging.get_verbosity()
             hf_logging.set_verbosity_error()
             try:
-                model = CLIPVisionModelWithProjection.from_pretrained(self.model_id)
+                model = vision_tower.from_pretrained(self.model_id)
             finally:
                 hf_logging.set_verbosity(level)
         else:
