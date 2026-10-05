@@ -456,6 +456,16 @@ class MapillaryFeatureExtractor:
             to 1.5.
         object_size_m (float):
             Object footprint used by the voting method. Defaults to 4.5.
+        merge_pieces_of_neighbours (bool):
+            After localisation, fold an object whose closest sightings show
+            a better-located neighbour into that neighbour: the second
+            track left by a split outline (a car cut in two by a pole, or
+            into a front and a rear) or by the tracker sliding between
+            vehicles lined up along the line of sight. Such pairs share
+            frames, which the position merge takes as proof of two
+            objects, so they are judged on what their sightings show (see
+            :func:`~rapidtools.processing.street_tracking.merge_pieces`).
+            Defaults to ``True``.
         reid (bool):
             After localisation, compare the appearance of objects from
             different sequences that lie within ``reid_max_distance_m`` and
@@ -588,6 +598,7 @@ class MapillaryFeatureExtractor:
         track_gap_frames: int = 2,
         min_path_distance_m: float = 1.5,
         object_size_m: float = 4.5,
+        merge_pieces_of_neighbours: bool = True,
         reid: bool = False,
         reid_model: str = DEFAULT_REID_MODEL,
         reid_min_similarity: float | None = None,
@@ -670,6 +681,7 @@ class MapillaryFeatureExtractor:
         self.track_gap_frames = track_gap_frames
         self.min_path_distance_m = min_path_distance_m
         self.object_size_m = object_size_m
+        self.merge_pieces_of_neighbours = merge_pieces_of_neighbours
         self.reid = reid
         self.reid_model = reid_model
         self.reid_min_similarity = reid_min_similarity
@@ -1201,14 +1213,16 @@ class MapillaryFeatureExtractor:
             min_object_width_m=self.min_object_width_m,
             object_height_m=self.object_height_m,
             object_size_m=self.object_size_m,
+            merge_pieces_of_neighbours=self.merge_pieces_of_neighbours,
         )
         logger.info(
             f"'{cls}': {counts['with_bearing']} sightings with a bearing, "
             f'{counts.get("duplicates", 0)} duplicate outlines dropped, '
             f'{counts["tracks"]} tracks, {counts["moving"]} moving dropped, '
             f'{counts["fragment"]} too small dropped, {counts["on_path"]} on the '
-            f'driven path dropped, {counts.get("far_single_view", 0)} far single '
-            f'views dropped, {counts.get("unwitnessed", 0)} contradicted by nearby '
+            f'driven path dropped, {counts.get("pieces", 0)} pieces of a neighbour '
+            f'folded in, {counts.get("far_single_view", 0)} far single views '
+            f'dropped, {counts.get("unwitnessed", 0)} contradicted by nearby '
             f'frames -> {counts["objects"]} objects.'
         )
         assets = []

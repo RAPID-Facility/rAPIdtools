@@ -996,6 +996,286 @@ def merge_by_rays(
 MIN_SEPARATION_M = 1.5
 
 
+# ----------------------------------------------------------------- pieces
+def _sighting_geometry(
+    obs: Observation, target: tuple[float, float], project: Project
+) -> tuple[float, float, float, np.ndarray] | None:
+    """Distance, along- and across-ray offsets of ``target`` from a sighting's ray."""
+    if obs.bearing is None or obs.camera_lon is None or obs.camera_lat is None:
+        return None
+    cam = np.array(project(obs.camera_lon, obs.camera_lat))
+    direction = _unit(float(obs.bearing))
+    offset = np.array(target) - cam
+    along = float(offset @ direction)
+    across = abs(float(offset[0] * direction[1] - offset[1] * direction[0]))
+    return (
+        float(np.linalg.norm(offset)),
+        along,
+        across,
+        cam + direction * (obs.range_m or 0.0),
+    )
+
+
+def sighting_shows(
+    obs: Observation,
+    target: tuple[float, float],
+    project: Project,
+    bearing_sigma_deg: float = BEARING_SIGMA_DEG,
+    size_m: float = 5.0,
+    range_ratio_bounds: tuple[float, float] = (0.6, 1.6),
+) -> bool:
+    """
+    Whether a sighting can be of an object at ``target``.
+
+    The ray must pass within a quarter of the object's size of the target
+    (plus bearing noise) with the target in front of the camera, and the
+    ground-contact range, when there is one, must agree with the distance
+    to the target within ``range_ratio_bounds``. The lateral tolerance is
+    deliberately tighter than :func:`merge_by_rays` uses: a car parked
+    alongside is 2.5 m across and must fail this test, while a piece of
+    the object itself (half a car past a pole, its rear or front) is within
+    about 1 m of the centre.
+
+    Args:
+        obs: The sighting (``bearing`` set).
+        target: ``(x, y)`` in the local metre frame.
+        project: Local metre projection.
+        bearing_sigma_deg: One-sigma bearing error.
+        size_m: Object size the lateral tolerance scales with.
+        range_ratio_bounds: Accepted band for range over distance.
+
+    Returns:
+        bool: ``True`` when the sighting is consistent with the target.
+
+    Example:
+        >>> from rapidtools.core import Observation
+        >>> from rapidtools.processing.street_localization import local_projection
+        >>> project, _ = local_projection(-117.4, 47.7)
+        >>> box = [(0.5, 0.5), (0.52, 0.5), (0.52, 0.55)]
+        >>> o = Observation('i', 'car', box, -117.4, 47.7, 0.0, bearing=90.0)
+        >>> o.range_m = 10.0
+        >>> sighting_shows(o, (10.0, 0.5), project)
+        True
+        >>> sighting_shows(o, (10.0, 3.0), project)  # 3 m across: the car alongside
+        False
+    """
+    geometry = _sighting_geometry(obs, target, project)
+    if geometry is None:
+        return False
+    dist, along, across, _ = geometry
+    sigma_rad = math.radians(bearing_sigma_deg)
+    if along <= 0 or across > 2.5 * sigma_rad * dist + 0.3 + 0.25 * size_m:
+        return False
+    if obs.range_m is None or dist <= 0:
+        return True
+    return range_ratio_bounds[0] <= obs.range_m / dist <= range_ratio_bounds[1]
+
+
+def merge_pieces(
+    estimates: Sequence[ObjectEstimate],
+    project: Project,
+    bearing_sigma_deg: float = BEARING_SIGMA_DEG,
+    object_length_m: float = 5.0,
+    search_radius_m: float = 15.0,
+    judge_range_m: float = 20.0,
+    closest_k: int = 5,
+    on_fraction: float = 0.6,
+    evidence_fraction: float = 0.25,
+    size_ratio: float = 1.3,
+    solid_distance_m: float = 2.5,
+    solid_parallax_deg: float = 45.0,
+    solid_sigma_m: float = 0.25,
+) -> list[ObjectEstimate]:
+    """
+    Fold objects that are really pieces of a neighbour into that neighbour.
+
+    Where several vehicles line up along the camera's line of sight (a
+    driveway seen end-on, cars down the street) the tracker can slide from
+    one to the next, and a detector can cut one car in two past a pole or
+    into a front and a rear. The result is a second object a few metres
+    from a well-located one, made of sightings that show the same vehicle.
+    The two share frames, which the other merge stages take as proof of two
+    objects, so they are judged here on what their sightings show instead.
+
+    A less precise object ``B`` joins a more precise triangulated ``A``
+    when:
+
+    * most of ``B``'s rays pass near ``A`` (as :func:`merge_by_rays` tests),
+    * ``B``'s ``closest_k`` sightings within ``judge_range_m``, the ones that
+      define what ``B`` is, mostly (``on_fraction``) show ``A``: the ray
+      passes within a quarter object size of ``A`` and the ground-contact
+      range lands within ``max(2.5 m, 35 %)`` of ``A``'s position,
+    * no more than ``evidence_fraction`` of those frames contradict it,
+      where a contradiction is a frame in which ``A``'s own sighting shows
+      ``A`` while ``B``'s does not (both sightings showing ``A`` are two
+      pieces of one vehicle; ``A``'s sighting not showing ``A`` was the
+      tracker astray and proves nothing),
+    * ``B`` is not larger than ``size_ratio`` times ``A`` (or the class
+      size): a motorhome behind a pickup lines up and fails only on size,
+    * and, when ``B`` is solid (parallax over ``solid_parallax_deg`` and
+      uncertainty under ``solid_sigma_m``) so that its own position is
+      trustworthy, it lies within ``solid_distance_m`` of ``A``.
+
+    ``A`` keeps its position; it gains the sightings of ``B`` that show it.
+
+    Args:
+        estimates: Merged candidates with ``members`` set.
+        project: Local metre projection.
+        bearing_sigma_deg: One-sigma bearing error.
+        object_length_m: Typical size of the class.
+        search_radius_m: Only pairs this close are examined.
+        judge_range_m: Sightings farther than this carry ranges too noisy
+            to judge and are ignored.
+        closest_k: How many of ``B``'s closest sightings are judged.
+        on_fraction: Share of them that must show ``A``.
+        evidence_fraction: Share of contradicting frames that blocks the
+            merge.
+        size_ratio: Largest size of ``B`` relative to ``A`` (at least the
+            class size) still taken for one object.
+        solid_distance_m: Farthest a solid ``B`` may lie from ``A``.
+        solid_parallax_deg: Parallax from which ``B`` counts as solid.
+        solid_sigma_m: Uncertainty below which ``B`` counts as solid.
+
+    Returns:
+        list[ObjectEstimate]: The remaining objects, in input order.
+
+    Example:
+        >>> merged = merge_pieces(estimates, project)  # doctest: +SKIP
+    """
+    sigma_rad = math.radians(bearing_sigma_deg)
+    n = len(estimates)
+    alive = [True] * n
+    members = [list(e.members) for e in estimates]
+    order = sorted(range(n), key=lambda i: -float(np.trace(estimates[i].cov)))
+    cell = max(search_radius_m, 1.0)
+    grid: dict[tuple[int, int], list[int]] = defaultdict(list)
+    for i, est in enumerate(estimates):
+        grid[(int(math.floor(est.x / cell)), int(math.floor(est.y / cell)))].append(i)
+
+    def by_image(index: int) -> dict[str, Observation]:
+        out: dict[str, Observation] = {}
+        for o in members[index]:
+            out.setdefault(o.image_id, o)
+        return out
+
+    for b in order:  # least precise first
+        est = estimates[b]
+        if not alive[b]:
+            continue
+        rays = [
+            o for o in members[b] if o.bearing is not None and o.camera_lon is not None
+        ]
+        if not rays:
+            continue
+        judged = sorted(
+            (
+                o
+                for o in rays
+                if o.range_m is not None and 0 < o.range_m <= judge_range_m
+            ),
+            key=lambda o: float(o.range_m or 0.0),
+        )[:closest_k]
+        if not judged:
+            continue
+        b_solid = (
+            est.localization == 'triangulated'
+            and est.parallax_deg >= solid_parallax_deg
+            and est.sigma_m <= solid_sigma_m
+        )
+        b_size = est.size_m
+        gx, gy = int(math.floor(est.x / cell)), int(math.floor(est.y / cell))
+        target = None
+        best = (-1.0, math.inf)  # (share of judged sightings showing A, -distance)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for a in grid.get((gx + dx, gy + dy), ()):
+                    other = estimates[a]
+                    if (
+                        a == b
+                        or not alive[a]
+                        or other.localization != 'triangulated'
+                        or float(np.trace(other.cov)) > float(np.trace(est.cov))
+                    ):
+                        continue
+                    d = math.hypot(other.x - est.x, other.y - est.y)
+                    if d > search_radius_m or (b_solid and d > solid_distance_m):
+                        continue
+                    size = max(object_length_m, other.size_m or 0.0)
+                    if b_size is not None and b_size > size_ratio * size + 0.5:
+                        continue
+                    point = (other.x, other.y)
+                    hits = 0
+                    for o in rays:
+                        geometry = _sighting_geometry(o, point, project)
+                        if geometry is None:
+                            continue
+                        dist, along, across, _ = geometry
+                        if (
+                            along > 0
+                            and across <= 2.5 * sigma_rad * dist + 0.3 + 0.5 * size
+                        ):
+                            hits += 1
+                    if hits < 0.7 * len(rays):
+                        continue
+                    on_a = 0
+                    for o in judged:
+                        geometry = _sighting_geometry(o, point, project)
+                        if geometry is None:
+                            continue
+                        dist, along, across, foot = geometry
+                        if (
+                            along > 0
+                            and across <= 2.5 * sigma_rad * dist + 0.3 + 0.25 * size
+                            and math.hypot(foot[0] - point[0], foot[1] - point[1])
+                            <= max(2.5, 0.35 * float(o.range_m or 0.0))
+                        ):
+                            on_a += 1
+                    share = on_a / len(judged)
+                    if share < on_fraction:
+                        continue
+                    a_frames = by_image(a)
+                    contradictions = 0
+                    for o in judged:
+                        own = a_frames.get(o.image_id)
+                        if own is None:
+                            continue
+                        if sighting_shows(
+                            own, point, project, bearing_sigma_deg, size
+                        ) and not sighting_shows(
+                            o, point, project, bearing_sigma_deg, size
+                        ):
+                            contradictions += 1
+                    if contradictions > evidence_fraction * len(judged):
+                        continue
+                    if (share, -d) > best:
+                        best, target = (share, -d), a
+        if target is None:
+            continue
+        other = estimates[target]
+        point = (other.x, other.y)
+        size = max(object_length_m, other.size_m or 0.0)
+        taken = [
+            o
+            for o in members[b]
+            if o.image_id not in other.image_ids
+            and sighting_shows(o, point, project, bearing_sigma_deg, size)
+        ]
+        members[target].extend(taken)
+        other.members = members[target]
+        other.parallax_deg = max(other.parallax_deg, est.parallax_deg)
+        alive[b] = False
+        logger.debug(
+            f'Object at ({est.x:.1f}, {est.y:.1f}) is a piece of the one at '
+            f'({other.x:.1f}, {other.y:.1f}): {len(taken)} sightings moved.'
+        )
+    kept = []
+    for i, est in enumerate(estimates):
+        if alive[i]:
+            est.members = members[i]
+            kept.append(est)
+    return kept
+
+
 # --------------------------------------------------------------- witnesses
 @dataclass
 class CameraFrame:
@@ -1458,6 +1738,7 @@ def discover_objects(
     max_merge_m: float = 6.0,
     merge_floor_m: float = 0.5,
     track_gap_frames: int = 2,
+    merge_pieces_of_neighbours: bool = True,
     min_path_distance_m: float = 1.5,
     min_object_width_m: float = 1.0,
     object_height_m: float = 1.5,
@@ -1488,6 +1769,11 @@ def discover_objects(
         merge_floor_m: Viewpoint-dependent centre wander added to the merge
             gate.
         track_gap_frames: Frames a track may miss before it is closed.
+        merge_pieces_of_neighbours: After the position merge, fold objects
+            whose closest sightings show a better-located neighbour into
+            that neighbour (see :func:`merge_pieces`): the second track a
+            detector's split outline or a tracker sliding between vehicles
+            lined up along the line of sight leaves behind.
         min_path_distance_m: Objects closer than this to the line the camera
             drove are discarded: the survey vehicle passed through that spot,
             so whatever was seen there was moving (or is the vehicle itself).
@@ -1528,6 +1814,7 @@ def discover_objects(
         'moving': 0,
         'fragment': 0,
         'on_path': 0,
+        'pieces': 0,
         'far_single_view': 0,
         'unwitnessed': 0,
         'objects': 0,
@@ -1602,6 +1889,15 @@ def discover_objects(
     merged = merge_estimates(
         estimates, max_distance_m=max_merge_m, floor_m=merge_floor_m
     )
+    if merge_pieces_of_neighbours:
+        before = len(merged)
+        merged = merge_pieces(
+            merged,
+            project,
+            bearing_sigma_deg=bearing_sigma_deg,
+            object_length_m=object_size_m,
+        )
+        counts['pieces'] = before - len(merged)
     if min_path_distance_m > 0:
         paths = camera_paths(usable, project)
         kept = []

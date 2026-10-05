@@ -65,7 +65,9 @@ from rapidtools.processing.street_tracking import (
     discover_objects,
     merge_by_rays,
     merge_estimates,
+    merge_pieces,
     prune_unwitnessed,
+    sighting_shows,
     single_view_covariance,
     suppress_duplicate_sightings,
     track_sequence,
@@ -1071,3 +1073,116 @@ def test_one_car_seen_from_two_passes_is_one_object():
     obs = _pass(cars, 'p1', '2025-08-20') + _pass(cars, 'p2', '2025-08-21', y_cam=-4.0)
     ests, counts, _ = discover_objects(obs, track_gap_frames=4)
     assert len(ests) == 1 and ests[0].n_images == 20
+
+
+# ---------------------------------------------------------- piece merging
+def _sightings_of(
+    point, frames, project, unproject, offset=(0.0, 0.0), range_bias=1.0, prefix='f'
+):
+    """Sightings of ``point`` from cameras at ``frames`` (x along the road, y=0)."""
+    out = []
+    for i, cam_x in enumerate(frames):
+        lon, lat = unproject(cam_x, 0.0)
+        tx, ty = point[0] + offset[0], point[1] + offset[1]
+        bearing = math.degrees(math.atan2(tx - cam_x, ty)) % 360
+        o = Observation(
+            f'{prefix}{i:02d}',
+            LABEL,
+            [(0.5, 0.5), (0.52, 0.5), (0.52, 0.55), (0.5, 0.55)],
+            lon,
+            lat,
+            0.0,
+            captured_at=f'2025-08-20T10:00:{i:02d}',
+            sequence_id='s1',
+        )
+        o.bearing = bearing
+        o.range_m = math.hypot(tx - cam_x, ty) * range_bias
+        out.append(o)
+    return out
+
+
+def _estimate(point, members, sigma, parallax, size=4.5):
+    return ObjectEstimate(
+        point[0],
+        point[1],
+        np.eye(2) * sigma**2,
+        members,
+        'triangulated',
+        parallax_deg=parallax,
+        size_m=size,
+    )
+
+
+def test_sighting_shows_tolerates_a_piece_but_not_the_car_alongside():
+    project, unproject = local_projection(LON0, LAT0)
+    car = (10.0, 6.0)  # seen abeam from the road at y = 0
+    whole = _sightings_of(car, [10.0], project, unproject)[0]
+    rear = _sightings_of(car, [10.0], project, unproject, offset=(1.0, 0.3))[0]
+    beside = _sightings_of(car, [10.0], project, unproject, offset=(2.7, 0.0))[0]
+    far = _sightings_of(car, [10.0], project, unproject, range_bias=1.9)[0]
+    assert sighting_shows(whole, car, project)
+    assert sighting_shows(rear, car, project)
+    assert not sighting_shows(beside, car, project)
+    assert not sighting_shows(far, car, project)  # range says twice as far
+
+
+def test_merge_pieces_folds_a_split_track_into_the_car_it_shows():
+    project, unproject = local_projection(LON0, LAT0)
+    car = (10.0, 6.0)
+    frames = [float(x) for x in range(0, 22, 2)]
+    a = _estimate(car, _sightings_of(car, frames, project, unproject), 0.06, 150)
+    # The rear half of the same car, tracked separately over the same frames
+    # and triangulated 2.9 m along the line of sight from a far approach:
+    piece = _sightings_of(
+        car, frames[:6], project, unproject, offset=(0.9, 0.2), prefix='f'
+    )
+    b = _estimate((12.0, 8.1), piece, 0.4, 30)
+    merged = merge_pieces([a, b], project)
+    assert len(merged) == 1
+    assert merged[0].x == car[0] and merged[0].y == car[1]  # A's position kept
+    assert merged[0].n_images == len(frames)  # B's sightings joined A
+
+
+def test_merge_pieces_keeps_the_car_alongside_and_the_one_behind():
+    project, unproject = local_projection(LON0, LAT0)
+    car = (10.0, 6.0)
+    frames = [float(x) for x in range(0, 22, 2)]
+    a = _estimate(car, _sightings_of(car, frames, project, unproject), 0.06, 150)
+    beside = (12.7, 6.0)  # parked alongside at the kerb, in the same frames
+    b = _estimate(
+        beside, _sightings_of(beside, frames, project, unproject, prefix='f'), 0.4, 30
+    )
+    behind = (10.0, 11.5)  # nose to tail behind, along the line of sight
+    c = _estimate(
+        behind, _sightings_of(behind, frames, project, unproject, prefix='f'), 0.4, 30
+    )
+    assert len(merge_pieces([a, b], project)) == 2
+    assert len(merge_pieces([a, c], project)) == 2
+
+
+def test_merge_pieces_refuses_a_larger_object_and_a_distant_solid_one():
+    project, unproject = local_projection(LON0, LAT0)
+    car = (10.0, 6.0)
+    frames = [float(x) for x in range(0, 22, 2)]
+    a = _estimate(car, _sightings_of(car, frames, project, unproject), 0.06, 150)
+    piece = _sightings_of(
+        car, frames[:6], project, unproject, offset=(0.9, 0.2), prefix='f'
+    )
+    motorhome = _estimate((12.0, 8.1), piece, 0.4, 30, size=9.0)
+    assert len(merge_pieces([a, motorhome], project)) == 2
+    solid_far = _estimate(
+        (12.0, 9.0), piece, 0.1, 120
+    )  # trustworthy position 3.6 m away
+    assert len(merge_pieces([a, solid_far], project)) == 2
+    solid_near = _estimate((11.0, 7.0), piece, 0.1, 120)  # 1.4 m away: a split outline
+    assert len(merge_pieces([a, solid_near], project)) == 1
+
+
+def test_discover_objects_reports_pieces_and_can_skip_the_pass():
+    obs, _, _ = _survey(CARS)
+    on, counts_on, _ = discover_objects(obs, camera_height_m=CAM_H, max_range_m=35.0)
+    off, counts_off, _ = discover_objects(
+        obs, camera_height_m=CAM_H, max_range_m=35.0, merge_pieces_of_neighbours=False
+    )
+    assert counts_off['pieces'] == 0 and counts_on['pieces'] >= 0
+    assert len(on) == len(off) == len(CARS)

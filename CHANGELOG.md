@@ -41,6 +41,16 @@ minor releases may change public APIs.
   (`localization='map_feature'`, with `aligned_direction`, `first_seen` and
   `last_seen`); `detection_source='map_features'` uses them exclusively and
   `'mapillary'` keeps everything on the image route.
+- Street-level duplicates from split outlines and tracker slips are folded
+  into the vehicle they show. A car cut in two by a pole or into a front and
+  a rear, or a track that slid between vehicles lined up along the line of
+  sight, used to leave a second object a few metres from the real one that
+  no merge could touch because the two shared frames. `merge_pieces` in
+  `rapidtools.processing.street_tracking` (on by default through
+  `MapillaryFeatureExtractor(merge_pieces_of_neighbours=True)`) judges such
+  pairs on what their sightings show instead and keeps the better-located
+  object's position; on the Spokane survey it removed 40 of 736 objects, all
+  of them pieces of a neighbour on inspection.
 - `rapidtools.processing.reid`: appearance embeddings from a Hugging Face
   vision backbone (the image tower of CLIP ViT-B/16 by default, DINOv2
   supported) and `MapillaryFeatureExtractor(reid=True)`, which merges

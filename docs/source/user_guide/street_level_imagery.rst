@@ -221,6 +221,17 @@ Two shortcuts sit on top of this:
   and removes the rejects (or keeps them flagged with
   ``keep_rejected=True``). A custom ``classifier`` callable can stand in
   for the model.
+- **Pieces of a neighbour are folded in.** Where vehicles line up along
+  the line of sight, a driveway seen end-on or cars down the street, the
+  tracker can slide from one to the next, and a detector can cut one car in
+  two past a pole or into a front and a rear. Each leaves a second object a
+  few metres from a well-located one, made of sightings that show the same
+  vehicle. Because the two share frames, which the position merge takes as
+  proof of two objects, they are judged on what their sightings show: when
+  the weaker object's closest sightings point at the stronger one, at its
+  range and within a quarter of a car of its centre, and no shared frame
+  shows both objects properly at once, the weaker is folded into the
+  stronger (``merge_pieces_of_neighbours``, on by default).
 - **Repeated passes are reconciled by appearance.** With ``reid=True`` the
   extractor crops the widest view (from a 2048-pixel thumbnail,
   ``reid_image_size``) of objects from different sequences that lie within
