@@ -231,7 +231,13 @@ Two shortcuts sit on top of this:
   the weaker object's closest sightings point at the stronger one, at its
   range and within a quarter of a car of its centre, and no shared frame
   shows both objects properly at once, the weaker is folded into the
-  stronger (``merge_pieces_of_neighbours``, on by default).
+  stronger (``merge_pieces_of_neighbours``, on by default). An object never
+  seen within 20 m has no dependable position of its own whatever its
+  parallax, since ground-contact ranges read from that far are off by a
+  third; it is judged on its bearings and folded into the close pass it
+  points at when its triangulation lies within 30 % of its range of it.
+  The close pass keeps the position. The bias is deliberate: a vehicle only
+  ever seen from afar that lines up behind a close one is folded into it.
 - **Repeated passes are reconciled by appearance.** With ``reid=True`` the
   extractor crops the widest view (from a 2048-pixel thumbnail,
   ``reid_image_size``) of objects from different sequences that lie within

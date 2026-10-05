@@ -1178,6 +1178,44 @@ def test_merge_pieces_refuses_a_larger_object_and_a_distant_solid_one():
     assert len(merge_pieces([a, solid_near], project)) == 1
 
 
+def test_merge_pieces_folds_a_far_only_object_into_the_close_pass():
+    project, unproject = local_projection(LON0, LAT0)
+    car = (10.0, 6.0)
+    close = _estimate(
+        car,
+        _sightings_of(car, [float(x) for x in range(0, 22, 2)], project, unproject),
+        0.06,
+        150,
+    )
+    # The same car tracked only during the approach, 34-50 m away, with
+    # ground-contact ranges reading a third short, triangulated 3 m along
+    # the line of sight from where the close pass put it:
+    far_frames = [float(x) for x in range(-40, -24, 2)]  # 34-50 m away
+    far = _estimate(
+        (7.5, 4.5),
+        _sightings_of(car, far_frames, project, unproject, range_bias=0.7, prefix='g'),
+        0.5,
+        30,
+    )
+    assert len(merge_pieces([close, far], project)) == 1
+    # Beyond 30 % of its range it stays a separate object:
+    farther = _estimate(
+        (2.0, 1.0),
+        _sightings_of(car, far_frames, project, unproject, range_bias=0.7, prefix='g'),
+        0.5,
+        30,
+    )
+    assert len(merge_pieces([close, farther], project)) == 2
+    # Two far-only objects have nothing dependable between them:
+    other_far = _estimate(
+        (9.0, 5.0),
+        _sightings_of(car, far_frames, project, unproject, range_bias=0.8, prefix='h'),
+        0.3,
+        40,
+    )
+    assert len(merge_pieces([other_far, far], project)) == 2
+
+
 def test_discover_objects_reports_pieces_and_can_skip_the_pass():
     obs, _, _ = _survey(CARS)
     on, counts_on, _ = discover_objects(obs, camera_height_m=CAM_H, max_range_m=35.0)

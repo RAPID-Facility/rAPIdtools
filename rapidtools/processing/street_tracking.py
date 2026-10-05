@@ -1085,6 +1085,8 @@ def merge_pieces(
     solid_distance_m: float = 2.5,
     solid_parallax_deg: float = 45.0,
     solid_sigma_m: float = 0.25,
+    far_fraction: float = 0.3,
+    far_distance_m: float = 4.0,
 ) -> list[ObjectEstimate]:
     """
     Fold objects that are really pieces of a neighbour into that neighbour.
@@ -1109,12 +1111,26 @@ def merge_pieces(
       where a contradiction is a frame in which ``A``'s own sighting shows
       ``A`` while ``B``'s does not (both sightings showing ``A`` are two
       pieces of one vehicle; ``A``'s sighting not showing ``A`` was the
-      tracker astray and proves nothing),
+      tracker astray and proves nothing). One such frame in which ``A`` was
+      seen within ``judge_range_m`` settles it on its own: the vehicle is
+      right there, large and unmistakable, and ``B``'s outline is
+      something else,
     * ``B`` is not larger than ``size_ratio`` times ``A`` (or the class
       size): a motorhome behind a pickup lines up and fails only on size,
     * and, when ``B`` is solid (parallax over ``solid_parallax_deg`` and
       uncertainty under ``solid_sigma_m``) so that its own position is
       trustworthy, it lies within ``solid_distance_m`` of ``A``.
+
+    A ``B`` never seen within ``judge_range_m`` has no dependable position
+    of its own whatever its parallax: ground-contact ranges read from far
+    away are off by a third, so its triangulation lands metres along the
+    line of sight from the vehicle. Its closest sightings are judged on
+    the bearing, the reliable part, with the range only held to the
+    ``range_ratio_bounds`` band, and its triangulation must lie within
+    ``far_fraction`` of its nearest range (at least ``far_distance_m``) of
+    ``A``. It may only join an ``A`` that was itself seen within
+    ``judge_range_m``: the close pass is the dependable one and keeps the
+    position.
 
     ``A`` keeps its position; it gains the sightings of ``B`` that show it.
 
@@ -1135,6 +1151,9 @@ def merge_pieces(
         solid_distance_m: Farthest a solid ``B`` may lie from ``A``.
         solid_parallax_deg: Parallax from which ``B`` counts as solid.
         solid_sigma_m: Uncertainty below which ``B`` counts as solid.
+        far_fraction: How far, as a fraction of its nearest range, a ``B``
+            never seen within ``judge_range_m`` may lie from ``A``.
+        far_distance_m: Least distance allowed for such a ``B``.
 
     Returns:
         list[ObjectEstimate]: The remaining objects, in input order.
@@ -1167,14 +1186,15 @@ def merge_pieces(
         ]
         if not rays:
             continue
-        judged = sorted(
-            (
-                o
-                for o in rays
-                if o.range_m is not None and 0 < o.range_m <= judge_range_m
-            ),
+        ranged = sorted(
+            (o for o in rays if o.range_m is not None and o.range_m > 0),
             key=lambda o: float(o.range_m or 0.0),
-        )[:closest_k]
+        )
+        judged = [o for o in ranged if float(o.range_m or 0.0) <= judge_range_m]
+        judged = judged[:closest_k]
+        far_only = not judged
+        if far_only:
+            judged = ranged[:closest_k]
         if not judged:
             continue
         b_solid = (
@@ -1185,7 +1205,12 @@ def merge_pieces(
         b_size = est.size_m
         gx, gy = int(math.floor(est.x / cell)), int(math.floor(est.y / cell))
         target = None
-        best = (-1.0, math.inf)  # (share of judged sightings showing A, -distance)
+        # Rank: share of judged sightings showing A, then how well A's distance
+        # from the judged cameras matches their ground ranges (the tie-break
+        # that tells the vehicle in front from the one behind along the same
+        # line of sight, which the triangulated distance cannot for a far-only
+        # B), then the triangulated distance.
+        best = (-1.0, -math.inf, -math.inf)
         for dx in (-1, 0, 1):
             for dy in (-1, 0, 1):
                 for a in grid.get((gx + dx, gy + dy), ()):
@@ -1200,6 +1225,12 @@ def merge_pieces(
                     d = math.hypot(other.x - est.x, other.y - est.y)
                     if d > search_radius_m or (b_solid and d > solid_distance_m):
                         continue
+                    if far_only:
+                        if (nearest_range_m(other) or math.inf) > judge_range_m:
+                            continue  # neither was seen up close: nothing to trust
+                        nearest = float(judged[0].range_m or 0.0)
+                        if d > max(far_distance_m, far_fraction * nearest):
+                            continue
                     size = max(object_length_m, other.size_m or 0.0)
                     if b_size is not None and b_size > size_ratio * size + 0.5:
                         continue
@@ -1218,16 +1249,30 @@ def merge_pieces(
                     if hits < 0.7 * len(rays):
                         continue
                     on_a = 0
+                    log_ratios: list[float] = []
                     for o in judged:
                         geometry = _sighting_geometry(o, point, project)
                         if geometry is None:
                             continue
+                        log_ratios.append(
+                            abs(
+                                math.log(
+                                    float(o.range_m or 0.0) / max(geometry[0], 1e-6)
+                                )
+                            )
+                        )
                         dist, along, across, foot = geometry
                         if (
-                            along > 0
-                            and across <= 2.5 * sigma_rad * dist + 0.3 + 0.25 * size
-                            and math.hypot(foot[0] - point[0], foot[1] - point[1])
-                            <= max(2.5, 0.35 * float(o.range_m or 0.0))
+                            along <= 0
+                            or across > 2.5 * sigma_rad * dist + 0.3 + 0.25 * size
+                        ):
+                            continue
+                        if far_only:
+                            ratio = float(o.range_m or 0.0) / max(dist, 1e-6)
+                            if 0.6 <= ratio <= 1.6:
+                                on_a += 1
+                        elif math.hypot(foot[0] - point[0], foot[1] - point[1]) <= max(
+                            2.5, 0.35 * float(o.range_m or 0.0)
                         ):
                             on_a += 1
                     share = on_a / len(judged)
@@ -1235,6 +1280,7 @@ def merge_pieces(
                         continue
                     a_frames = by_image(a)
                     contradictions = 0
+                    plain = False  # A seen up close while B's outline is elsewhere
                     for o in judged:
                         own = a_frames.get(o.image_id)
                         if own is None:
@@ -1245,10 +1291,14 @@ def merge_pieces(
                             o, point, project, bearing_sigma_deg, size
                         ):
                             contradictions += 1
-                    if contradictions > evidence_fraction * len(judged):
+                            if (own.range_m or math.inf) <= judge_range_m:
+                                plain = True
+                    if plain or contradictions > evidence_fraction * len(judged):
                         continue
-                    if (share, -d) > best:
-                        best, target = (share, -d), a
+                    fit = -float(np.median(log_ratios)) if log_ratios else -math.inf
+                    key = (share, fit, -d) if far_only else (share, -d, fit)
+                    if key > best:
+                        best, target = key, a
         if target is None:
             continue
         other = estimates[target]

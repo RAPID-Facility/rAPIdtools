@@ -49,8 +49,11 @@ minor releases may change public APIs.
   `rapidtools.processing.street_tracking` (on by default through
   `MapillaryFeatureExtractor(merge_pieces_of_neighbours=True)`) judges such
   pairs on what their sightings show instead and keeps the better-located
-  object's position; on the Spokane survey it removed 40 of 736 objects, all
-  of them pieces of a neighbour on inspection.
+  object's position. An object never seen within 20 m is not trusted on its
+  own whatever its parallax (ranges read from that far are off by a third)
+  and joins the close pass its bearings point at within 30 % of its range.
+  On the Spokane survey it removed 74 of 736 objects, pieces of a neighbour
+  on inspection bar one far-only vehicle lined up behind a close one.
 - `rapidtools.processing.reid`: appearance embeddings from a Hugging Face
   vision backbone (the image tower of CLIP ViT-B/16 by default, DINOv2
   supported) and `MapillaryFeatureExtractor(reid=True)`, which merges
