@@ -994,6 +994,48 @@ def merge_by_rays(
 #: Two estimates closer than this are one object whatever else is known:
 #: two vehicles cannot occupy the same spot.
 MIN_SEPARATION_M = 1.5
+#: A weak object never seen up close, this near one that was, is a far
+#: sighting of it or of its neighbour rather than a vehicle of its own.
+FAR_NEIGHBOUR_M = 15.0
+
+
+def _points_at_a_neighbour(
+    est: ObjectEstimate,
+    close_xy: Sequence[tuple[float, float]],
+    project: Project,
+    sigma_rad: float,
+    object_size_m: float,
+    share: float = 0.7,
+) -> bool:
+    """Whether most of ``est``'s closest rays pass through a close object nearby."""
+    near = [
+        (x, y)
+        for x, y in close_xy
+        if math.hypot(est.x - x, est.y - y) <= FAR_NEIGHBOUR_M
+    ]
+    if not near:
+        return False
+    rays = sorted(
+        (o for o in est.members if o.bearing is not None and o.range_m is not None),
+        key=lambda o: float(o.range_m or 0.0),
+    )[:5]
+    if not rays:
+        return False
+    for x, y in near:
+        hits = 0
+        for o in rays:
+            geometry = _sighting_geometry(o, (x, y), project)
+            if geometry is None:
+                continue
+            dist, along, across, _ = geometry
+            if (
+                along > 0
+                and across <= 2.5 * sigma_rad * dist + 0.3 + 0.5 * object_size_m
+            ):
+                hits += 1
+        if hits >= share * len(rays):
+            return True
+    return False
 
 
 # ----------------------------------------------------------------- pieces
@@ -1106,7 +1148,9 @@ def merge_pieces(
     * ``B``'s ``closest_k`` sightings within ``judge_range_m``, the ones that
       define what ``B`` is, mostly (``on_fraction``) show ``A``: the ray
       passes within a quarter object size of ``A`` and the ground-contact
-      range lands within ``max(2.5 m, 35 %)`` of ``A``'s position,
+      range lands within ``max(2.5 m, 35 %)`` of ``A``'s position. This is
+      decisive on its own, whatever ``B``'s own triangulation says: a
+      low-parallax track lands metres from where its sightings point,
     * no more than ``evidence_fraction`` of those frames contradict it,
       where a contradiction is a frame in which ``A``'s own sighting shows
       ``A`` while ``B``'s does not (both sightings showing ``A`` are two
@@ -1124,9 +1168,11 @@ def merge_pieces(
     A ``B`` never seen within ``judge_range_m`` has no dependable position
     of its own whatever its parallax: ground-contact ranges read from far
     away are off by a third, so its triangulation lands metres along the
-    line of sight from the vehicle. Its closest sightings are judged on
-    the bearing, the reliable part, with the range only held to the
-    ``range_ratio_bounds`` band, and its triangulation must lie within
+    line of sight from the vehicle. Its closest sightings, wherever they
+    are, define it: the ray test above runs over them rather than the whole
+    track, whose far slivers may point anywhere. When their ground points
+    do not land on ``A`` but their ranges fit the ``range_ratio_bounds``
+    band, ``B`` still joins if its triangulation lies within
     ``far_fraction`` of its nearest range (at least ``far_distance_m``) of
     ``A``. It may only join an ``A`` that was itself seen within
     ``judge_range_m``: the close pass is the dependable one and keeps the
@@ -1192,7 +1238,9 @@ def merge_pieces(
         )
         judged = [o for o in ranged if float(o.range_m or 0.0) <= judge_range_m]
         judged = judged[:closest_k]
-        far_only = not judged
+        # One sighting just inside judge_range_m is no basis for the strict
+        # close rules: a track with fewer than two is judged as far-only.
+        far_only = len(judged) < 2
         if far_only:
             judged = ranged[:closest_k]
         if not judged:
@@ -1223,32 +1271,49 @@ def merge_pieces(
                     ):
                         continue
                     d = math.hypot(other.x - est.x, other.y - est.y)
-                    if d > search_radius_m or (b_solid and d > solid_distance_m):
+                    # A far-only B's own position is not to be trusted whatever
+                    # its parallax, so the solid-distance bound is for close ones.
+                    if d > search_radius_m or (
+                        b_solid and not far_only and d > solid_distance_m
+                    ):
                         continue
-                    if far_only:
-                        if (nearest_range_m(other) or math.inf) > judge_range_m:
-                            continue  # neither was seen up close: nothing to trust
-                        nearest = float(judged[0].range_m or 0.0)
-                        if d > max(far_distance_m, far_fraction * nearest):
-                            continue
+                    if (
+                        far_only
+                        and (nearest_range_m(other) or math.inf) > judge_range_m
+                    ):
+                        continue  # neither was seen up close: nothing to trust
+                    # The measured size bounds how much larger B may be; the
+                    # lateral tolerances use the class size, since outlines
+                    # that merged with a neighbour inflate the measurement.
                     size = max(object_length_m, other.size_m or 0.0)
                     if b_size is not None and b_size > size_ratio * size + 0.5:
                         continue
                     point = (other.x, other.y)
+                    # A far-only B is defined by its closest sightings; the far
+                    # slivers of a blended track may point anywhere.
+                    pointing = judged if far_only else rays
                     hits = 0
-                    for o in rays:
+                    for o in pointing:
                         geometry = _sighting_geometry(o, point, project)
                         if geometry is None:
                             continue
                         dist, along, across, _ = geometry
                         if (
                             along > 0
-                            and across <= 2.5 * sigma_rad * dist + 0.3 + 0.5 * size
+                            and across
+                            <= 2.5 * sigma_rad * dist + 0.3 + 0.5 * object_length_m
                         ):
                             hits += 1
-                    if hits < 0.7 * len(rays):
+                    if hits < 0.7 * len(pointing):
                         continue
-                    on_a = 0
+                    # A piece may sit a quarter of the object from its centre;
+                    # the end of a long vehicle cut by a tree, seen only from
+                    # afar, half of it (a neighbour parked alongside would have
+                    # close sightings of its own and not be far-only).
+                    lateral = (0.5 if far_only else 0.25) * object_length_m
+                    b_size_tol = object_length_m * (2.0 if far_only else 1.0)
+                    on_a = 0  # ground point lands on A
+                    in_band = 0  # ray on A, range within the band
                     log_ratios: list[float] = []
                     for o in judged:
                         geometry = _sighting_geometry(o, point, project)
@@ -1264,20 +1329,29 @@ def merge_pieces(
                         dist, along, across, foot = geometry
                         if (
                             along <= 0
-                            or across > 2.5 * sigma_rad * dist + 0.3 + 0.25 * size
+                            or across > 2.5 * sigma_rad * dist + 0.3 + lateral
                         ):
                             continue
-                        if far_only:
-                            ratio = float(o.range_m or 0.0) / max(dist, 1e-6)
-                            if 0.6 <= ratio <= 1.6:
-                                on_a += 1
-                        elif math.hypot(foot[0] - point[0], foot[1] - point[1]) <= max(
+                        ratio = float(o.range_m or 0.0) / max(dist, 1e-6)
+                        if 0.6 <= ratio <= 1.6:
+                            in_band += 1
+                        if math.hypot(foot[0] - point[0], foot[1] - point[1]) <= max(
                             2.5, 0.35 * float(o.range_m or 0.0)
                         ):
                             on_a += 1
                     share = on_a / len(judged)
                     if share < on_fraction:
-                        continue
+                        if not far_only:
+                            continue
+                        # Ranges read from far away are off by a third, so for
+                        # a far-only B the band suffices when its triangulation
+                        # also lies within far_fraction of its range of A.
+                        nearest = float(judged[0].range_m or 0.0)
+                        share = in_band / len(judged)
+                        if share < on_fraction or d > max(
+                            far_distance_m, far_fraction * nearest
+                        ):
+                            continue
                     a_frames = by_image(a)
                     contradictions = 0
                     plain = False  # A seen up close while B's outline is elsewhere
@@ -1286,9 +1360,9 @@ def merge_pieces(
                         if own is None:
                             continue
                         if sighting_shows(
-                            own, point, project, bearing_sigma_deg, size
+                            own, point, project, bearing_sigma_deg, object_length_m
                         ) and not sighting_shows(
-                            o, point, project, bearing_sigma_deg, size
+                            o, point, project, bearing_sigma_deg, b_size_tol
                         ):
                             contradictions += 1
                             if (own.range_m or math.inf) <= judge_range_m:
@@ -1303,7 +1377,7 @@ def merge_pieces(
             continue
         other = estimates[target]
         point = (other.x, other.y)
-        size = max(object_length_m, other.size_m or 0.0)
+        size = object_length_m * (2.0 if far_only else 1.0)
         taken = [
             o
             for o in members[b]
@@ -1324,6 +1398,177 @@ def merge_pieces(
             est.members = members[i]
             kept.append(est)
     return kept
+
+
+# ------------------------------------------------------------ abeam first
+def travel_headings(
+    observations: Sequence[Observation], project: Project, min_step_m: float = 0.5
+) -> dict[str, float]:
+    """
+    Direction of travel of the camera at each frame, per sequence.
+
+    The heading is taken from the camera positions of the neighbouring
+    frames in capture order (the previous and the next, or whichever
+    exists), which is the direction the survey vehicle drove, independent
+    of where the camera happened to point. Frames whose neighbours are
+    closer than ``min_step_m`` (the vehicle was stopped) fall back to the
+    camera's compass angle.
+
+    Args:
+        observations: Sightings with camera positions and sequence ids.
+        project: Local metre projection.
+        min_step_m: Shortest camera displacement that defines a direction.
+
+    Returns:
+        dict[str, float]: Travel heading in degrees clockwise from north,
+        per image id.
+
+    Example:
+        >>> headings = travel_headings(sightings, project)  # doctest: +SKIP
+        >>> round(headings['img-7'])  # doctest: +SKIP
+        90
+    """
+    frames: dict[str, dict[str, tuple[float, float, float, str]]] = defaultdict(dict)
+    for o in observations:
+        if o.camera_lon is None or o.camera_lat is None:
+            continue
+        seq = o.sequence_id or '__none__'
+        if o.image_id not in frames[seq]:
+            x, y = project(o.camera_lon, o.camera_lat)
+            frames[seq][o.image_id] = (
+                x,
+                y,
+                float(o.compass_angle or 0.0),
+                o.captured_at or '',
+            )
+    headings: dict[str, float] = {}
+    for seq_frames in frames.values():
+        ordered = sorted(seq_frames.items(), key=lambda kv: (kv[1][3], kv[0]))
+        for i, (image_id, (x, y, compass, _)) in enumerate(ordered):
+            before = ordered[i - 1][1] if i > 0 else None
+            after = ordered[i + 1][1] if i + 1 < len(ordered) else None
+            x0, y0 = (before[0], before[1]) if before else (x, y)
+            x1, y1 = (after[0], after[1]) if after else (x, y)
+            if math.hypot(x1 - x0, y1 - y0) >= min_step_m:
+                headings[image_id] = math.degrees(math.atan2(x1 - x0, y1 - y0)) % 360.0
+            else:
+                headings[image_id] = compass
+    return headings
+
+
+def split_by_view(
+    observations: Sequence[Observation],
+    headings: Mapping[str, float],
+    window_deg: float = 60.0,
+) -> tuple[list[Observation], list[Observation]]:
+    """
+    Separate the sightings made while passing an object from the rest.
+
+    A sighting is *passing* when its bearing lies within ``window_deg`` of
+    abeam, that is between ``90 - window_deg`` and ``90 + window_deg``
+    degrees off the direction of travel on either side. Sightings in the
+    cones ahead and behind are *approach* sightings: their rays are nearly
+    parallel to the road, so they cannot place an object, and they are
+    where tracks slide between vehicles that line up down the street.
+
+    Args:
+        observations: Sightings with ``bearing`` set.
+        headings: Travel heading per image id (see :func:`travel_headings`).
+        window_deg: Half-width of the passing window about abeam.
+
+    Returns:
+        tuple[list[Observation], list[Observation]]: Passing and approach
+        sightings. A sighting whose frame has no heading counts as passing.
+
+    Example:
+        >>> from rapidtools.core import Observation
+        >>> box = [(0.5, 0.5), (0.52, 0.5), (0.52, 0.55)]
+        >>> abeam = Observation('a', 'car', box, 0.0, 0.0, 0.0, bearing=80.0)
+        >>> ahead = Observation('b', 'car', box, 0.0, 0.0, 0.0, bearing=5.0)
+        >>> p, q = split_by_view([abeam, ahead], {'a': 0.0, 'b': 0.0})
+        >>> [o.image_id for o in p], [o.image_id for o in q]
+        (['a'], ['b'])
+    """
+    passing: list[Observation] = []
+    approach: list[Observation] = []
+    for o in observations:
+        heading = headings.get(o.image_id)
+        if heading is None or o.bearing is None:
+            passing.append(o)
+            continue
+        rel = abs((float(o.bearing) - heading + 180.0) % 360.0 - 180.0)
+        if 90.0 - window_deg <= rel <= 90.0 + window_deg:
+            passing.append(o)
+        else:
+            approach.append(o)
+    return passing, approach
+
+
+def attach_approach_sightings(
+    estimates: Sequence[ObjectEstimate],
+    approach: Sequence[Observation],
+    project: Project,
+    bearing_sigma_deg: float = BEARING_SIGMA_DEG,
+    object_length_m: float = 5.0,
+    range_ratio_bounds: tuple[float, float] = (0.6, 1.6),
+) -> int:
+    """
+    Give placed objects the approach sightings whose rays point at them.
+
+    An approach sighting joins the triangulated object its ray passes
+    within half an object of, in front of the camera, whose distance agrees
+    with the sighting's ground-contact range within ``range_ratio_bounds``
+    when there is one. Among several such objects, lined up down the road,
+    the one whose distance best fits the range wins. Positions are not
+    touched: the sighting only adds to the object's record, so its crops
+    and frame count are complete. Sightings that point at nothing placed
+    are left out.
+
+    Args:
+        estimates: Placed objects; their ``members`` lists are extended.
+        approach: Sightings from the cones ahead and behind.
+        project: Local metre projection.
+        bearing_sigma_deg: One-sigma bearing error.
+        object_length_m: Typical size of the class.
+        range_ratio_bounds: Accepted band for range over distance.
+
+    Returns:
+        int: Number of sightings attached.
+
+    Example:
+        >>> n = attach_approach_sightings(objects, approach, project)  # doctest: +SKIP
+    """
+    targets = [e for e in estimates if e.localization == 'triangulated']
+    if not targets or not approach:
+        return 0
+    xy = np.array([[e.x, e.y] for e in targets], dtype=float)
+    sigma_rad = math.radians(bearing_sigma_deg)
+    attached = 0
+    for o in approach:
+        if o.bearing is None or o.camera_lon is None or o.camera_lat is None:
+            continue
+        cam = np.array(project(o.camera_lon, o.camera_lat))
+        direction = _unit(float(o.bearing))
+        offset = xy - cam
+        along = offset @ direction
+        across = np.abs(offset[:, 0] * direction[1] - offset[:, 1] * direction[0])
+        dist = np.linalg.norm(offset, axis=1)
+        ok = (along > 0) & (
+            across <= 2.5 * sigma_rad * dist + 0.3 + 0.5 * object_length_m
+        )
+        if o.range_m is not None:
+            ratio = float(o.range_m) / np.maximum(dist, 1e-6)
+            ok &= (ratio >= range_ratio_bounds[0]) & (ratio <= range_ratio_bounds[1])
+            score = np.abs(np.log(np.maximum(ratio, 1e-6)))
+        else:
+            score = dist
+        candidates = np.flatnonzero(ok)
+        if len(candidates) == 0:
+            continue
+        best = candidates[int(np.argmin(score[candidates]))]
+        targets[best].members.append(o)
+        attached += 1
+    return attached
 
 
 # --------------------------------------------------------------- witnesses
@@ -1789,6 +2034,12 @@ def discover_objects(
     merge_floor_m: float = 0.5,
     track_gap_frames: int = 2,
     merge_pieces_of_neighbours: bool = True,
+    close_range_m: float = 20.0,
+    far_min_parallax_deg: float = 45.0,
+    far_max_sigma_m: float = 0.5,
+    min_sighting_deg: float = 6.0,
+    report_single_views: bool = False,
+    abeam_window_deg: float = 0.0,
     min_path_distance_m: float = 1.5,
     min_object_width_m: float = 1.0,
     object_height_m: float = 1.5,
@@ -1824,6 +2075,48 @@ def discover_objects(
             that neighbour (see :func:`merge_pieces`): the second track a
             detector's split outline or a tracker sliding between vehicles
             lined up along the line of sight leaves behind.
+        close_range_m: Range within which an object must have been seen to
+            be trusted. Ground-contact ranges read from farther away are
+            off by a third and the tracker hops between vehicles lined up
+            down the road, so an object never seen within this range whose
+            closest rays point at an object within 15 m that was seen up
+            close is a far sighting of that object and is dropped, unless
+            it is well triangulated regardless: parallax of at least
+            ``far_min_parallax_deg`` and uncertainty of at most
+            ``far_max_sigma_m``. One whose rays point elsewhere, a car in a
+            driveway behind the kerb, stays. Also the range the piece
+            merge judges sightings by. ``0`` keeps every object.
+        far_min_parallax_deg: Parallax that lets a far-only object through.
+        far_max_sigma_m: Uncertainty that lets a far-only object through.
+        min_sighting_deg: An object must have been seen at least once with
+            an outline this wide or tall, in degrees of the panorama (6
+            degrees is 34 pixels on a 2048-pixel thumbnail and 225 on the
+            original). What was never more than a speck cannot be
+            identified by anyone and is not reported; a drive-by survey
+            sees anything worth counting properly in some frame. The specks
+            still take part in tracking, where they lend parallax. ``0``
+            keeps every object.
+        report_single_views: Keep objects placed from ground-contact ranges
+            alone, without parallax. Their positions are guesses and, on
+            the surveys tried, none was worth keeping; off by default.
+        abeam_window_deg: Objects are built only from the sightings made
+            while passing them, within this many degrees of abeam on either
+            side of the direction of travel (see :func:`split_by_view`).
+            A drive-by survey passes everything worth counting, and the
+            passing frames carry the widest parallax and the largest
+            outlines; the frames looking ahead or behind down the road
+            have rays nearly parallel to it, cannot place anything, and are
+            where tracks slide between vehicles that line up. Those
+            sightings are attached afterwards to the objects their rays
+            point at (:func:`attach_approach_sightings`), so records stay
+            complete, but they never create an object. Off (``0``) by
+            default: on the Spokane survey a 75-degree window lost 17 of
+            382 verified vehicles, because the track classification (the
+            moving-vehicle, parallax and size tests) was tuned on tracks
+            that include the approach, and a pass alone trips them; with
+            the far-sighting gates in place it removed few duplicates in
+            return. Kept as an option for when the classifier is reworked
+            for passes alone.
         min_path_distance_m: Objects closer than this to the line the camera
             drove are discarded: the survey vehicle passed through that spot,
             so whatever was seen there was moving (or is the vehicle itself).
@@ -1865,6 +2158,11 @@ def discover_objects(
         'fragment': 0,
         'on_path': 0,
         'pieces': 0,
+        'far_only': 0,
+        'indiscernible': 0,
+        'single_view': 0,
+        'approach': 0,
+        'attached': 0,
         'far_single_view': 0,
         'unwitnessed': 0,
         'objects': 0,
@@ -1905,8 +2203,14 @@ def discover_objects(
         counts['objects'] = len(estimates)
         return estimates, counts, unproject
 
+    approach: list[Observation] = []
+    tracked = usable
+    if abeam_window_deg > 0:
+        headings = travel_headings(usable, project)
+        tracked, approach = split_by_view(usable, headings, abeam_window_deg)
+        counts['approach'] = len(approach)
     by_sequence: dict[str, list[Observation]] = defaultdict(list)
-    for obs in usable:
+    for obs in tracked:
         by_sequence[obs.sequence_id or '__none__'].append(obs)
     estimates = []
     for members in by_sequence.values():
@@ -1946,8 +2250,34 @@ def discover_objects(
             project,
             bearing_sigma_deg=bearing_sigma_deg,
             object_length_m=object_size_m,
+            judge_range_m=close_range_m if close_range_m > 0 else 20.0,
         )
         counts['pieces'] = before - len(merged)
+    if close_range_m > 0:
+        # A weak object never seen within close_range_m whose closest rays
+        # point at an object within FAR_NEIGHBOUR_M that was, is a far
+        # sighting of that object: the close pass already counted it. One
+        # pointing elsewhere, a car in a driveway behind the kerb, stays.
+        close_xy = [
+            (e.x, e.y)
+            for e in merged
+            if (nearest_range_m(e) or math.inf) <= close_range_m
+        ]
+        kept = []
+        for est in merged:
+            nearest = nearest_range_m(est)
+            far_weak = (nearest is None or nearest > close_range_m) and not (
+                est.localization == 'triangulated'
+                and est.parallax_deg >= far_min_parallax_deg
+                and est.sigma_m <= far_max_sigma_m
+            )
+            if far_weak and _points_at_a_neighbour(
+                est, close_xy, project, math.radians(bearing_sigma_deg), object_size_m
+            ):
+                counts['far_only'] += 1
+                continue
+            kept.append(est)
+        merged = kept
     if min_path_distance_m > 0:
         paths = camera_paths(usable, project)
         kept = []
@@ -1967,6 +2297,21 @@ def discover_objects(
                     continue
             kept.append(est)
         merged = kept
+    if not report_single_views:
+        kept = [est for est in merged if est.localization != 'single_view']
+        counts['single_view'] = len(merged) - len(kept)
+        merged = kept
+    if min_sighting_deg > 0:
+        kept = []
+        for est in merged:
+            largest = max(
+                (max(polygon_angular_size(o)) for o in est.members), default=0.0
+            )
+            if largest < min_sighting_deg:
+                counts['indiscernible'] += 1
+                continue
+            kept.append(est)
+        merged = kept
     if frames and witness_radius_m > 0:
         merged, unwitnessed = prune_unwitnessed(
             merged,
@@ -1978,6 +2323,14 @@ def discover_objects(
             min_distance_m=max(min_path_distance_m, 1.0),
         )
         counts['unwitnessed'] = unwitnessed
+    if approach:
+        counts['attached'] = attach_approach_sightings(
+            merged,
+            approach,
+            project,
+            bearing_sigma_deg=bearing_sigma_deg,
+            object_length_m=object_size_m,
+        )
     counts['objects'] = len(merged)
     return merged, counts, unproject
 

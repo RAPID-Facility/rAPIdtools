@@ -39,6 +39,7 @@ Pipeline and analysis
    AssetAnalyzer
    RateLimitPolicy
    DetectionVerifier
+   DuplicateResolver
 
 Imagery extractors
 ------------------

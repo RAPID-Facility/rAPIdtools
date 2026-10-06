@@ -69,6 +69,7 @@ Example:
 
 # Import the core pipeline engine:
 # Import feature extractors:
+from .duplicates import DuplicateResolver
 from .feature_extractors import SAM3OrthoFeatureExtractor
 
 # Import the image analyzers:
@@ -122,6 +123,7 @@ __all__ = [
     'BuildingRegularizer',
     'ClaudeAssetAnalyzer',
     'DetectionVerifier',
+    'DuplicateResolver',
     'GeminiAssetAnalyzer',
     'Gemma4AssetAnalyzer',
     'GoogleOrthomosaicExtractor',

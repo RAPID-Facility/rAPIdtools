@@ -47,6 +47,7 @@ give back one object per parked car, close to where it really is, and no
 object for the moving one.
 """
 
+import functools
 import math
 import random
 
@@ -62,6 +63,7 @@ from rapidtools.processing.street_localization import (
 from rapidtools.processing.street_tracking import (
     CameraFrame,
     ObjectEstimate,
+    attach_approach_sightings,
     discover_objects,
     merge_by_rays,
     merge_estimates,
@@ -69,8 +71,10 @@ from rapidtools.processing.street_tracking import (
     prune_unwitnessed,
     sighting_shows,
     single_view_covariance,
+    split_by_view,
     suppress_duplicate_sightings,
     track_sequence,
+    travel_headings,
     triangulate_track,
     vote_rays,
 )
@@ -399,9 +403,13 @@ def test_vote_rays_empty():
 
 def test_discover_objects_keeps_far_cars_within_the_range_bound():
     """Driveway cars 40-55 m out are found once the area knob is gone."""
+    # This test is about geometry: keep specks and single views in play.
+    discover = functools.partial(
+        discover_objects, min_sighting_deg=0.0, report_single_views=True
+    )
     far = [(10.0, 40.0), (25.0, -45.0), (40.0, 52.0)]
     obs, _, _ = _survey(far, n_frames=24, max_range=70.0, range_noise=0.25)
-    estimates, counts, unp = discover_objects(
+    estimates, counts, unp = discover(
         obs, method='tracks', camera_height_m=CAM_H, max_range_m=60.0
     )
     assert len(estimates) == len(far), counts
@@ -745,15 +753,17 @@ def _far_row(range_m, n=3, step_m=1.5, seq='s1', day='2025-08-20T10:00:00'):
 
 
 def test_far_single_view_is_not_reported_but_near_one_is():
-    far = _far_row(45.0)
-    ests, counts, _ = discover_objects(far, track_gap_frames=4)
-    assert ests == [] and counts['far_single_view'] == 1
-    ests, counts, _ = discover_objects(
-        far, track_gap_frames=4, max_single_view_range_m=0
+    # This test is about geometry: keep specks and single views in play.
+    discover = functools.partial(
+        discover_objects, min_sighting_deg=0.0, report_single_views=True
     )
+    far = _far_row(45.0)
+    ests, counts, _ = discover(far, track_gap_frames=4)
+    assert ests == [] and counts['far_single_view'] == 1
+    ests, counts, _ = discover(far, track_gap_frames=4, max_single_view_range_m=0)
     assert len(ests) == 1 and ests[0].localization == 'single_view'
     near = _far_row(12.0, n=4, step_m=3.0)  # enough parallax to triangulate
-    ests, counts, _ = discover_objects(near, track_gap_frames=4)
+    ests, counts, _ = discover(near, track_gap_frames=4)
     assert len(ests) == 1 and counts['far_single_view'] == 0
 
 
@@ -849,26 +859,30 @@ def test_prune_unwitnessed_keeps_estimates_that_nearby_frames_saw():
 
 
 def test_discover_objects_applies_negative_evidence_to_weak_estimates_only():
+    # This test is about geometry: keep specks and single views in play.
+    discover = functools.partial(
+        discover_objects, min_sighting_deg=0.0, report_single_views=True
+    )
     project, _ = local_projection(LON0, LAT0)
     # A car triangulated from a close pass (8 m, wide parallax) is trusted even
     # when a later same-day pass drives by at 3 m and sees nothing:
     near = _far_row(8.0, n=4, step_m=3.0)
     frames = [CameraFrame.from_observation(o) for o in near]
     pass2 = [_witness(f'p-{k}', k * 1.5, 5.0, day='2025-08-20') for k in range(-3, 4)]
-    ests, counts, _ = discover_objects(near, track_gap_frames=4, frames=frames + pass2)
+    ests, counts, _ = discover(near, track_gap_frames=4, frames=frames + pass2)
     assert len(ests) == 1 and counts['unwitnessed'] == 0
     # A car triangulated only from 30 m (weak) is dropped when a same-day pass
     # 3 m from its spot saw nothing there:
     far = _far_row(30.0, n=5, step_m=4.0)
     frames = [CameraFrame.from_observation(o) for o in far]
-    ests, counts, _ = discover_objects(far, track_gap_frames=4, frames=frames)
+    ests, counts, _ = discover(far, track_gap_frames=4, frames=frames)
     assert len(ests) == 1 and ests[0].localization == 'triangulated'
     pass2 = [_witness(f'p-{k}', k * 3.0, 27.0, day='2025-08-20') for k in range(-1, 2)]
-    ests, counts, _ = discover_objects(far, track_gap_frames=4, frames=frames + pass2)
+    ests, counts, _ = discover(far, track_gap_frames=4, frames=frames + pass2)
     assert ests == [] and counts['unwitnessed'] == 1
     # ... but not by a pass on another day:
     pass3 = [_witness(f'q-{k}', k * 3.0, 27.0, day='2025-09-01') for k in range(-1, 2)]
-    ests, counts, _ = discover_objects(far, track_gap_frames=4, frames=frames + pass3)
+    ests, counts, _ = discover(far, track_gap_frames=4, frames=frames + pass3)
     assert len(ests) == 1
 
 
@@ -1216,6 +1230,108 @@ def test_merge_pieces_folds_a_far_only_object_into_the_close_pass():
     assert len(merge_pieces([other_far, far], project)) == 2
 
 
+def test_merge_pieces_trusts_far_sightings_over_a_junk_triangulation():
+    project, unproject = local_projection(LON0, LAT0)
+    car = (10.0, 6.0)
+    close = _estimate(
+        car,
+        _sightings_of(car, [float(x) for x in range(0, 22, 2)], project, unproject),
+        0.06,
+        150,
+    )
+    far_frames = [float(x) for x in range(-40, -24, 2)]
+    # Accurate far sightings of the car, but a low-parallax track whose
+    # intersection landed 12 m away: the sightings decide.
+    junk = _estimate(
+        (20.0, 12.0),
+        _sightings_of(car, far_frames, project, unproject, prefix='g'),
+        2.5,
+        9,
+    )
+    assert len(merge_pieces([close, junk], project)) == 1
+    # A blended track: its closest sightings are the car, its far slivers
+    # point down the road at something else.
+    slivers = _sightings_of(
+        (60.0, 2.0),
+        [float(x) for x in range(-70, -46, 2)],
+        project,
+        unproject,
+        prefix='h',
+    )
+    blend = _estimate(
+        (14.0, 8.0),
+        slivers + _sightings_of(car, far_frames, project, unproject, prefix='g'),
+        1.0,
+        18,
+    )
+    merged = merge_pieces([close, blend], project)
+    assert len(merged) == 1
+    assert not any(o.image_id.startswith('h') for o in merged[0].members)
+
+
+def test_merge_pieces_allows_an_end_piece_only_for_a_far_only_object():
+    project, unproject = local_projection(LON0, LAT0)
+    car = (10.0, 6.0)
+    close_frames = [float(x) for x in range(0, 22, 2)]
+    close = _estimate(
+        car, _sightings_of(car, close_frames, project, unproject), 0.06, 150
+    )
+    # The end of a long vehicle cut by a tree sits 2.7 m from its centre.
+    far_frames = [float(x) for x in range(-40, -24, 2)]
+    far_end = _estimate(
+        (13.0, 7.0),
+        _sightings_of(
+            car, far_frames, project, unproject, offset=(2.7, 0.0), prefix='g'
+        ),
+        0.6,
+        20,
+    )
+    assert len(merge_pieces([close, far_end], project)) == 1
+    # Seen up close, 2.7 m beside the car is the car parked alongside.
+    near_side = _estimate(
+        (12.7, 6.0),
+        _sightings_of(
+            car, close_frames[:6], project, unproject, offset=(2.7, 0.0), prefix='g'
+        ),
+        0.4,
+        30,
+    )
+    assert len(merge_pieces([close, near_side], project)) == 2
+
+
+def test_discover_objects_drops_a_weak_far_object_beside_a_close_one():
+    # This test is about geometry: keep specks and single views in play.
+    discover = functools.partial(
+        discover_objects, min_sighting_deg=0.0, report_single_views=True
+    )
+    # A car set back 28 m from the road, seen only over a short stretch, has
+    # little parallax. Alone it stays: it may well be real. When its rays
+    # pass through a car the survey saw at 15 m, 14 m away from it, it is a
+    # far sighting of that car and goes.
+    far_car = (20.0, 28.0)
+    alone, _, _ = _survey([far_car], n_frames=5, max_range=60.0, seed=3)
+    kept, counts, _ = discover(alone, camera_height_m=CAM_H, max_range_m=60.0)
+    assert len(kept) == 1 and counts['far_only'] == 0
+    assert kept[0].parallax_deg < 45
+    in_line = (15.0, 15.0)
+    beside, _, _ = _survey(
+        [far_car, in_line], n_frames=5, max_range=60.0, seed=3, frame_prefix='b'
+    )
+    close_only, counts, _ = discover(beside, camera_height_m=CAM_H, max_range_m=60.0)
+    assert len(close_only) == 1 and counts['far_only'] == 1
+    both, counts, _ = discover(
+        beside, camera_height_m=CAM_H, max_range_m=60.0, close_range_m=0.0
+    )
+    assert len(both) == 2 and counts['far_only'] == 0
+    # A close car off the far one's line of sight does not take it:
+    off_line = (6.0, 15.0)
+    apart, _, _ = _survey(
+        [far_car, off_line], n_frames=5, max_range=60.0, seed=3, frame_prefix='c'
+    )
+    two, counts, _ = discover(apart, camera_height_m=CAM_H, max_range_m=60.0)
+    assert len(two) == 2 and counts['far_only'] == 0
+
+
 def test_discover_objects_reports_pieces_and_can_skip_the_pass():
     obs, _, _ = _survey(CARS)
     on, counts_on, _ = discover_objects(obs, camera_height_m=CAM_H, max_range_m=35.0)
@@ -1224,3 +1340,106 @@ def test_discover_objects_reports_pieces_and_can_skip_the_pass():
     )
     assert counts_off['pieces'] == 0 and counts_on['pieces'] >= 0
     assert len(on) == len(off) == len(CARS)
+
+
+def test_discover_objects_drops_specks_and_single_views_by_default():
+    # A 2 m wide car 40 m out spans under 3 degrees: no one could identify it.
+    speck = _far_row(40.0, n=6, step_m=3.0)
+    ests, counts, _ = discover_objects(
+        speck, track_gap_frames=4, close_range_m=0.0, report_single_views=True
+    )
+    assert ests == [] and counts['indiscernible'] == 1
+    ests, counts, _ = discover_objects(
+        speck,
+        track_gap_frames=4,
+        close_range_m=0.0,
+        report_single_views=True,
+        min_sighting_deg=0.0,
+    )
+    assert len(ests) == 1 and counts['indiscernible'] == 0
+    # A single view is a guess and is not reported unless asked for.
+    single = _far_row(12.0, n=3, step_m=0.3)  # under 3 degrees of parallax
+    ests, counts, _ = discover_objects(single, track_gap_frames=4)
+    assert ests == [] and counts['single_view'] == 1
+    ests, counts, _ = discover_objects(
+        single, track_gap_frames=4, report_single_views=True
+    )
+    assert len(ests) == 1 and ests[0].localization == 'single_view'
+
+
+# ----------------------------------------------------------- abeam first
+def _ranged_track(ranges, step_m=1.5):
+    """Sightings from cameras ``step_m`` apart driving east, compass 90."""
+    project, unproject = local_projection(LON0, LAT0)
+    track = []
+    for i, r in enumerate(ranges):
+        lon, lat = unproject(step_m * i, 0.0)
+        o = Observation(
+            f'f{i:02d}',
+            LABEL,
+            [(0.5, 0.5), (0.52, 0.5), (0.52, 0.55), (0.5, 0.55)],
+            lon,
+            lat,
+            90.0,
+            captured_at=f'2025-08-20T10:00:{i:02d}',
+            sequence_id='s1',
+        )
+        o.bearing = 0.0
+        o.range_m = r
+        track.append(o)
+    return track, project
+
+
+def test_travel_headings_follow_the_camera_path_and_fall_back_to_compass():
+    project, unproject = local_projection(LON0, LAT0)
+    track, _ = _ranged_track([20, 19, 18, 17], step_m=3.0)  # cameras driving east
+    headings = travel_headings(track, project)
+    assert all(abs(h - 90.0) < 1.0 for h in headings.values())
+    stopped, _ = _ranged_track([20, 19], step_m=0.0)  # no displacement: compass
+    assert travel_headings(stopped, project) == {'f00': 90.0, 'f01': 90.0}
+
+
+def test_split_by_view_keeps_the_pass_and_sets_the_road_ahead_aside():
+    track, _ = _ranged_track([20] * 5, step_m=3.0)
+    for o, bearing in zip(track, (5.0, 20.0, 90.0, 160.0, 178.0), strict=True):
+        o.bearing = bearing  # heading east: 90 looks down the road, 0 is abeam
+    headings = {o.image_id: 90.0 for o in track}
+    passing, approach = split_by_view(track, headings, window_deg=75.0)
+    assert [o.image_id for o in passing] == ['f00', 'f01', 'f03', 'f04']
+    assert [o.image_id for o in approach] == ['f02']
+    everything, nothing = split_by_view(track, {}, window_deg=75.0)
+    assert len(everything) == 5 and nothing == []
+
+
+def test_attach_approach_sightings_adds_only_what_points_at_an_object():
+    project, unproject = local_projection(LON0, LAT0)
+    car = (10.0, 6.0)
+    placed = _estimate(
+        car, _sightings_of(car, [8.0, 10.0, 12.0], project, unproject), 0.06, 150
+    )
+    other = (40.0, 6.0)
+    toward_car = _sightings_of(car, [-20.0, -16.0], project, unproject, prefix='a')
+    toward_other = _sightings_of(other, [-20.0, -16.0], project, unproject, prefix='b')
+    wrong_range = _sightings_of(
+        car, [-20.0], project, unproject, range_bias=3.0, prefix='c'
+    )
+    n = attach_approach_sightings(
+        [placed], toward_car + toward_other + wrong_range, project
+    )
+    assert n == 2
+    assert {o.image_id for o in placed.members if o.image_id.startswith('a')} == {
+        'a00',
+        'a01',
+    }
+    assert not any(o.image_id.startswith(('b', 'c')) for o in placed.members)
+
+
+def test_discover_objects_abeam_window_places_a_passed_car_and_attaches_the_approach():
+    obs, _, unproject = _survey([(20.0, 5.0)], n_frames=14)
+    with_window, counts, unp = discover_objects(
+        obs, camera_height_m=CAM_H, max_range_m=35.0, abeam_window_deg=75.0
+    )
+    assert len(with_window) == 1 and counts['approach'] > 0 and counts['attached'] > 0
+    assert len(_match([(20.0, 5.0)], with_window, unp, 1.5)[0]) == 1
+    without, counts, _ = discover_objects(obs, camera_height_m=CAM_H, max_range_m=35.0)
+    assert len(without) == 1 and counts['approach'] == 0

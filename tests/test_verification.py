@@ -358,6 +358,15 @@ def test_classifier_errors_leave_asset_unverified(tmp_path):
     col = PhysicalAssetCollection([_asset('v', images=[_image(tmp_path, 'car_1')])])
     out = DetectionVerifier(classifier=classifier)(col)
     assert out.get('v').attributes['verify_accepted'] is None
+    # ... unless unverified counts as rejected:
+    col = PhysicalAssetCollection([_asset('v', images=[_image(tmp_path, 'car_1')])])
+    out = DetectionVerifier(classifier=classifier, reject_unverified=True)(col)
+    assert len(out) == 0
+    col = PhysicalAssetCollection([_asset('v', images=[_image(tmp_path, 'car_1')])])
+    out = DetectionVerifier(
+        classifier=classifier, reject_unverified=True, keep_rejected=True
+    )(col)
+    assert out.get('v').attributes['verify_accepted'] is False
 
 
 # -------------------------------------------------------- construction

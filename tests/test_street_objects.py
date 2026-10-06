@@ -390,6 +390,8 @@ def test_extractor_hands_every_frame_to_the_witness_check(
 def test_min_observations_and_frame_spacing(region, tmp_path):
     client = FakeClient(_survey(n_frames=2, spacing_m=1.0))
     ext = MapillaryFeatureExtractor(
+        report_single_views=True,
+        min_sighting_deg=0.0,
         classes=['cars'],
         client=client,
         region=region,
@@ -399,6 +401,8 @@ def test_min_observations_and_frame_spacing(region, tmp_path):
     assert len(ext()) == 0
     # Frames 1 m apart collapse to one with spacing 10 m: a single sighting.
     ext = MapillaryFeatureExtractor(
+        report_single_views=True,
+        min_sighting_deg=0.0,
         classes=['cars'],
         client=client,
         region=region,
@@ -534,6 +538,8 @@ def test_sam3_source_detects_classes_without_labels(region, tmp_path):
     client = FakeClient(_survey(n_frames=3, with_car=False, with_ego=False))
     sam = FakeSAM3()
     ext = MapillaryFeatureExtractor(
+        report_single_views=True,
+        min_sighting_deg=0.0,
         classes=['debris pile'],
         client=client,
         region=region,
@@ -586,6 +592,7 @@ def test_crops_closest_views_with_outline(detected, tmp_path):
     cropper = MapillaryObjectImageExtractor(
         tmp_path / 'crops',
         client=client,
+        view_selection='closest',
         max_images_per_asset=2,
         image_size='1024',
         min_crop_px=200,
@@ -697,6 +704,31 @@ def test_select_observations_prefers_close_distinct_images():
     )
     assert [o.image_id for o in chosen] == ['2', '3', '1']
     assert chosen[0].confidence == 0.9
+
+
+def test_select_observations_can_prefer_the_widest_views():
+    def obs(i, rng, width):
+        o = Observation(
+            str(i), CAR, [(0.5, 0.5), (0.5 + width, 0.5), (0.5, 0.6)], 0, 0, 0
+        )
+        o.range_m = rng
+        return o
+
+    # The closest view is an end-on sliver; the widest is a broadside 12 m out.
+    views = [obs(1, 3.0, 0.02), obs(2, 12.0, 0.12), obs(3, 8.0, 0.06)]
+    assert [
+        o.image_id for o in MapillaryObjectImageExtractor.select_observations(views, 2)
+    ] == ['1', '3']
+    assert [
+        o.image_id
+        for o in MapillaryObjectImageExtractor.select_observations(
+            views, 2, by='widest'
+        )
+    ] == ['2', '3']
+    with pytest.raises(ValueError, match='view_selection'):
+        MapillaryObjectImageExtractor(
+            'out', client=FakeClient(ImageCollection()), view_selection='nearest'
+        )
 
 
 def test_cropper_skips_assets_without_observations(tmp_path, caplog):

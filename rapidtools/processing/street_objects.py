@@ -119,6 +119,7 @@ from .street_localization import (
     intersect_bearings,
     local_projection,
     localize,
+    polygon_angular_size,
     simplify_polygon,
     thin_frames,
 )
@@ -466,6 +467,42 @@ class MapillaryFeatureExtractor:
             objects, so they are judged on what their sightings show (see
             :func:`~rapidtools.processing.street_tracking.merge_pieces`).
             Defaults to ``True``.
+        close_range_m (float):
+            Range within which an object must have been seen to be
+            reported. Ground-contact ranges read from farther away are off
+            by a third and the tracker hops between vehicles lined up down
+            the road, so an object never seen this close whose closest
+            rays point at a vehicle within 15 m already placed from the
+            close pass is a far sighting of that vehicle, and is dropped
+            unless it is well triangulated regardless (parallax of 45
+            degrees or more and uncertainty of half a metre or less). One
+            whose rays point elsewhere, a car set back in a driveway or
+            down a side street, stays. The piece merge judges sightings by
+            the same range. ``0`` keeps every object. Defaults to 20.
+        min_sighting_deg (float):
+            An object must have been seen at least once with an outline
+            this wide or tall, in degrees of the panorama (6 degrees is 34
+            pixels on a 2048-pixel thumbnail, 225 on the original). What was
+            never more than a speck cannot be identified by anyone and is
+            not reported; a drive-by survey sees anything worth counting
+            properly in some frame. ``0`` keeps every object. Defaults to 6.
+        report_single_views (bool):
+            Keep objects placed from ground-contact ranges alone, without
+            parallax (``localization='single_view'``). Their positions are
+            guesses; defaults to ``False``.
+        abeam_window_deg (float):
+            Objects are built only from the sightings made while passing
+            them, within this many degrees of abeam on either side of the
+            direction of travel. A drive-by survey passes everything worth
+            counting, and the passing frames carry the widest parallax and
+            the largest outlines; the frames looking ahead or behind down
+            the road cannot place anything and are where tracks slide
+            between vehicles that line up. Those sightings are attached
+            afterwards to the objects their rays point at, so records and
+            crops stay complete, but never create an object. Off (``0``)
+            by default: the track classification is tuned on tracks that
+            include the approach and a pass alone trips it, losing real
+            vehicles on the surveys tried. Defaults to 0.
         reid (bool):
             After localisation, compare the appearance of objects from
             different sequences that lie within ``reid_max_distance_m`` and
@@ -599,6 +636,10 @@ class MapillaryFeatureExtractor:
         min_path_distance_m: float = 1.5,
         object_size_m: float = 4.5,
         merge_pieces_of_neighbours: bool = True,
+        close_range_m: float = 20.0,
+        min_sighting_deg: float = 6.0,
+        report_single_views: bool = False,
+        abeam_window_deg: float = 0.0,
         reid: bool = False,
         reid_model: str = DEFAULT_REID_MODEL,
         reid_min_similarity: float | None = None,
@@ -682,6 +723,10 @@ class MapillaryFeatureExtractor:
         self.min_path_distance_m = min_path_distance_m
         self.object_size_m = object_size_m
         self.merge_pieces_of_neighbours = merge_pieces_of_neighbours
+        self.close_range_m = float(close_range_m)
+        self.min_sighting_deg = float(min_sighting_deg)
+        self.report_single_views = report_single_views
+        self.abeam_window_deg = float(abeam_window_deg)
         self.reid = reid
         self.reid_model = reid_model
         self.reid_min_similarity = reid_min_similarity
@@ -1214,16 +1259,24 @@ class MapillaryFeatureExtractor:
             object_height_m=self.object_height_m,
             object_size_m=self.object_size_m,
             merge_pieces_of_neighbours=self.merge_pieces_of_neighbours,
+            close_range_m=self.close_range_m,
+            min_sighting_deg=self.min_sighting_deg,
+            report_single_views=self.report_single_views,
+            abeam_window_deg=self.abeam_window_deg,
         )
         logger.info(
             f"'{cls}': {counts['with_bearing']} sightings with a bearing, "
             f'{counts.get("duplicates", 0)} duplicate outlines dropped, '
+            f'{counts.get("approach", 0)} looking down the road set aside '
+            f'({counts.get("attached", 0)} attached afterwards), '
             f'{counts["tracks"]} tracks, {counts["moving"]} moving dropped, '
             f'{counts["fragment"]} too small dropped, {counts["on_path"]} on the '
             f'driven path dropped, {counts.get("pieces", 0)} pieces of a neighbour '
-            f'folded in, {counts.get("far_single_view", 0)} far single views '
-            f'dropped, {counts.get("unwitnessed", 0)} contradicted by nearby '
-            f'frames -> {counts["objects"]} objects.'
+            f'folded in, {counts.get("far_only", 0)} never seen up close dropped, '
+            f'{counts.get("far_single_view", 0) + counts.get("single_view", 0)} '
+            f'single views dropped, {counts.get("indiscernible", 0)} never seen '
+            f'larger than a speck dropped, {counts.get("unwitnessed", 0)} '
+            f'contradicted by nearby frames -> {counts["objects"]} objects.'
         )
         assets = []
         for est in estimates:
@@ -1451,8 +1504,15 @@ class MapillaryObjectImageExtractor:
         access_token (str | None):
             Mapillary API token. Not needed when ``client`` is given.
         max_images_per_asset (int):
-            Views to keep per object, closest first and from distinct images.
-            Defaults to 2.
+            Views to keep per object, from distinct images. Defaults to 2.
+        view_selection (str):
+            Which views to keep: ``'widest'`` (default, by the outline's
+            angular width) or ``'closest'`` (by ground range). The widest
+            views show the most of the object and are what a verifying
+            model should judge; the closest can be an end-on sliver or a
+            bumper at 3 m, and on a labelled block they let a bush through
+            the verifier as a car where the widest views let nothing
+            through.
         image_size (str):
             Thumbnail size to download: ``'1024'``, ``'2048'`` or
             ``'original'``. Defaults to ``'2048'``.
@@ -1509,6 +1569,7 @@ class MapillaryObjectImageExtractor:
         save_directory: str | Path,
         access_token: str | None = None,
         max_images_per_asset: int = 2,
+        view_selection: str = 'widest',
         image_size: str = '2048',
         crop_buffer: float | str = '25%',
         min_crop_px: int = 256,
@@ -1533,6 +1594,11 @@ class MapillaryObjectImageExtractor:
             )
         self.save_directory = Path(save_directory).resolve()
         self.max_images_per_asset = max_images_per_asset
+        if view_selection not in ('closest', 'widest'):
+            raise ValueError(
+                f"view_selection must be 'closest' or 'widest', got {view_selection!r}."
+            )
+        self.view_selection = view_selection
         self.image_size = str(image_size)
         self._crop_buffer_spec = outlines.parse_outline_buffer(crop_buffer)
         self.crop_buffer = crop_buffer
@@ -1566,10 +1632,16 @@ class MapillaryObjectImageExtractor:
 
     @staticmethod
     def select_observations(
-        observations: Sequence[Observation], limit: int
+        observations: Sequence[Observation], limit: int, by: str = 'closest'
     ) -> list[Observation]:
         """
-        Pick the closest views of an object, one per image.
+        Pick the closest (or widest) views of an object, one per image.
+
+        Args:
+            observations: The object's sightings.
+            limit: How many to keep.
+            by: ``'closest'`` ranks by ground range, nearest first;
+                ``'widest'`` by the outline's angular width, widest first.
 
         Example:
             >>> from rapidtools.core import Observation
@@ -1581,13 +1653,19 @@ class MapillaryObjectImageExtractor:
             ...     [obs(1, 9.0), obs(2, 4.0), obs(2, 3.0), obs(3, 6.0)], 2)]
             ['2', '3']
         """
-        ranked = sorted(
-            observations,
-            key=lambda o: (
-                o.range_m if o.range_m is not None else float('inf'),
-                -(o.confidence or 0.0),
-            ),
-        )
+        if by == 'widest':
+            ranked = sorted(
+                observations,
+                key=lambda o: (-polygon_angular_size(o)[0], -(o.confidence or 0.0)),
+            )
+        else:
+            ranked = sorted(
+                observations,
+                key=lambda o: (
+                    o.range_m if o.range_m is not None else float('inf'),
+                    -(o.confidence or 0.0),
+                ),
+            )
         chosen: list[Observation] = []
         seen: set[str] = set()
         for obs in ranked:
@@ -1655,7 +1733,9 @@ class MapillaryObjectImageExtractor:
         """The observations of one asset that will be cropped."""
         records = asset.attributes.get('observations') or []
         observations = [Observation.from_dict(r) for r in records]
-        return self.select_observations(observations, self.max_images_per_asset)
+        return self.select_observations(
+            observations, self.max_images_per_asset, by=self.view_selection
+        )
 
     def _process_image(
         self, image_id: str, jobs: list[tuple[PhysicalAsset, Observation]]
@@ -1707,6 +1787,7 @@ class MapillaryObjectImageExtractor:
                 'bearing': obs.bearing,
                 'crop_box': list(box),
                 'source_image_size': list(image.size),
+                'outline': [[round(x, 1), round(y, 1)] for x, y in pixel_polygon],
                 'source': obs.source,
             },
         )

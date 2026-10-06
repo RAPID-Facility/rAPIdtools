@@ -210,7 +210,7 @@ Two shortcuts sit on top of this:
   detector sometimes fires on things that are not the requested class.
   :class:`~rapidtools.processing.DetectionVerifier` is a pipeline step
   (stage ``VERIFY``, between cropping and analysis) that shows each object's
-  closest crops to any model from :func:`rapidtools.models.load` and asks
+  crops to any model from :func:`rapidtools.models.load` and asks
   whether it is what it claims to be. The question is strict: a motor
   vehicle is not a trailer, boat, jet ski or lawn mower, and a wheel or a
   bumper on its own does not count. The model also reports how much of the
@@ -219,8 +219,13 @@ Two shortcuts sit on top of this:
   rejected whatever else it said. It writes ``verify_accepted``,
   ``verify_confidence``, ``verify_visible_fraction`` and ``verify_label``
   and removes the rejects (or keeps them flagged with
-  ``keep_rejected=True``). A custom ``classifier`` callable can stand in
-  for the model.
+  ``keep_rejected=True``; ``reject_unverified=True`` also removes what the
+  model gave no usable verdict for). A custom ``classifier`` callable can
+  stand in for the model. Give it the widest views rather than the closest
+  (``view_selection='widest'`` on the cropper): a close view can be an
+  end-on sliver or a bumper, and on a labelled block the widest views let
+  the model reject every piece of junk while keeping every vehicle, where
+  the closest views let a bush through as a car.
 - **Pieces of a neighbour are folded in.** Where vehicles line up along
   the line of sight, a driveway seen end-on or cars down the street, the
   tracker can slide from one to the next, and a detector can cut one car in
@@ -234,10 +239,60 @@ Two shortcuts sit on top of this:
   stronger (``merge_pieces_of_neighbours``, on by default). An object never
   seen within 20 m has no dependable position of its own whatever its
   parallax, since ground-contact ranges read from that far are off by a
-  third; it is judged on its bearings and folded into the close pass it
-  points at when its triangulation lies within 30 % of its range of it.
-  The close pass keeps the position. The bias is deliberate: a vehicle only
-  ever seen from afar that lines up behind a close one is folded into it.
+  third and a low-parallax intersection lands metres from where the
+  sightings point; its closest sightings decide. When their ground points
+  land on the close pass it joins it outright, and when only their
+  bearings and the range band agree it joins if its triangulation lies
+  within 30 % of its range. Its bearings may sit up to half a vehicle from
+  the close pass's centre rather than a quarter, since the end of a long
+  vehicle cut by a tree is what such a piece usually is, while a neighbour
+  parked alongside would have close sightings of its own. The close pass
+  keeps the position. What is left of an object never seen within 20 m is
+  then dropped when its closest rays point at an object within 15 m that
+  was seen up close, unless it is well triangulated regardless, with
+  parallax of 45 degrees or more and uncertainty of half a metre or less
+  (``close_range_m``, ``0`` to keep everything): such a far sighting is of
+  a vehicle the close pass already placed. One whose rays point elsewhere,
+  a car set back in a driveway behind the kerb or down a side street,
+  stays. The bias is deliberate: the close pass is the dependable one.
+- **What no one could identify is not reported.** An object must have been
+  seen at least once with an outline at least ``min_sighting_deg`` wide or
+  tall (6 degrees: 34 pixels on a 2048-pixel thumbnail, 225 on the
+  original). A drive-by survey sees anything worth counting properly in
+  some frame, so what was never more than a speck is dropped rather than
+  guessed at. The specks still take part in tracking, where they lend
+  parallax; culling them earlier would cut tracks at the moment of passing
+  and leave short, ill-conditioned pieces. Single views, objects placed
+  from ground-contact ranges alone, are not reported either unless
+  ``report_single_views=True``: their positions are guesses.
+- **An abeam-first mode exists, off by default.** With ``abeam_window_deg``
+  set (75 is the sensible value) objects are built only from the sightings
+  made while passing them, within that many degrees of abeam on either
+  side of the direction of travel; the frames looking down the road ahead
+  or behind, whose rays are nearly parallel to it, are attached afterwards
+  to the objects they point at but never create one. The idea is sound
+  for a drive-by survey, but the track classification was tuned on tracks
+  that include the approach and a pass alone trips its moving-vehicle,
+  parallax and size tests: on the Spokane survey a 75-degree window lost
+  17 of 382 verified vehicles and removed few duplicates in return. It
+  stays an option until the classifier is reworked for passes alone.
+- **A model settles the pairs geometry cannot.** One vehicle reported twice,
+  a long vehicle seen as a cab and a box, a track split by a corner, two
+  passes that geometry could not join, sits a few metres from its twin
+  with good crops each, and no geometric rule separates such a pair from
+  two cars parked side by side. :class:`~rapidtools.processing.DuplicateResolver`
+  (stage ``VERIFY``, after the verifier) shows the model the crops of
+  every pair of objects within ``max_distance_m`` (8 m) as two rows,
+  tells it the viewpoints differ, and merges the pairs it calls one
+  vehicle with at least ``min_confidence`` (0.9). Each crop is zoomed to
+  its outline, drawn thick, so a neighbour in the frame is not what gets
+  judged, and the model is made to name each vehicle's type and colour
+  before answering. The object seen in the most frames is kept with the
+  others' sightings and crops. On a labelled block of 39 vehicles the
+  full chain, localisation, verifier and resolver, went from 81 %
+  precision and 97 % recall to 95 % and 92 %: every duplicate gone, one
+  junk report left, and two real vehicles lost, one to the verifier and
+  one to a mistaken merge.
 - **Repeated passes are reconciled by appearance.** With ``reid=True`` the
   extractor crops the widest view (from a 2048-pixel thumbnail,
   ``reid_image_size``) of objects from different sequences that lie within

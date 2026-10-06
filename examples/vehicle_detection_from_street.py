@@ -118,7 +118,12 @@ detector = rt.MapillaryFeatureExtractor(
 cropper = rt.MapillaryObjectImageExtractor(
     save_directory=OUTPUT_DIR / 'crops',
     access_token=MAPILLARY_TOKEN,
-    max_images_per_asset=2,  # the two closest distinct views
+    max_images_per_asset=2,
+    # The two widest views (the default), not the two closest: a close view
+    # can be an end-on sliver or a bumper, and the verifier judged a bush a
+    # car from one. On a labelled block the widest views let it reject every
+    # piece of junk and keep every vehicle.
+    view_selection='widest',
     image_size='2048',  # each panorama is downloaded once, cropped and released
     crop_buffer='40%',
     overlay_asset_outline=True,
@@ -142,9 +147,22 @@ if VERIFY_DETECTIONS and api_key:
     steps.append(
         rt.DetectionVerifier(
             load(provider, api_key=api_key, model_id=model_id),
-            max_images_per_asset=2,  # the two closest crops
+            max_images_per_asset=2,  # the two widest crops
             min_confidence=0.5,
             min_visible_fraction=0.5,  # heavily hidden objects are discarded
+            max_workers=4,
+        )
+    )
+    # One vehicle reported twice (a long vehicle seen as cab and box, a
+    # track split by a corner, two passes geometry could not join) is the
+    # one error geometry cannot settle without also joining cars parked
+    # side by side. The resolver shows the model the crops of every pair
+    # of objects within 8 m and merges the pairs it is sure are one vehicle.
+    steps.append(
+        rt.DuplicateResolver(
+            load(provider, api_key=api_key, model_id=model_id),
+            max_distance_m=8.0,
+            min_confidence=0.9,
             max_workers=4,
         )
     )

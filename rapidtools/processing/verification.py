@@ -320,6 +320,11 @@ class DetectionVerifier:
         keep_rejected (bool):
             Keep rejected assets (flagged ``<prefix>_accepted = False``)
             instead of removing them. Defaults to ``False``.
+        reject_unverified (bool):
+            Treat an asset the model gave no usable verdict for (a failed
+            call or an unparseable reply) as rejected instead of leaving
+            it accepted with ``<prefix>_accepted = None``. Defaults to
+            ``False``.
         attribute_prefix (str):
             Prefix of the attributes written. Defaults to ``'verify'``.
         generation (GenerationConfig | None):
@@ -381,6 +386,7 @@ class DetectionVerifier:
         min_confidence: float = 0.5,
         min_visible_fraction: float = 0.5,
         keep_rejected: bool = False,
+        reject_unverified: bool = False,
         attribute_prefix: str = 'verify',
         generation: GenerationConfig | None = None,
         max_workers: int | None = None,
@@ -419,6 +425,7 @@ class DetectionVerifier:
             )
         self.min_visible_fraction = float(min_visible_fraction)
         self.keep_rejected = keep_rejected
+        self.reject_unverified = reject_unverified
         self.attribute_prefix = attribute_prefix
         self.generation = (
             generation
@@ -615,6 +622,8 @@ class DetectionVerifier:
         for group in groups.values():
             for asset in group:
                 verdict = self._decide(asset)
+                if verdict is None and self.reject_unverified:
+                    verdict = False  # no usable verdict counts against it
                 asset.attributes[f'{prefix}_accepted'] = verdict
                 asset.attributes[f'{prefix}_model'] = self.model_name
                 if verdict is None:

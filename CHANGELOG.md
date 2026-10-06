@@ -50,10 +50,35 @@ minor releases may change public APIs.
   `MapillaryFeatureExtractor(merge_pieces_of_neighbours=True)`) judges such
   pairs on what their sightings show instead and keeps the better-located
   object's position. An object never seen within 20 m is not trusted on its
-  own whatever its parallax (ranges read from that far are off by a third)
-  and joins the close pass its bearings point at within 30 % of its range.
-  On the Spokane survey it removed 74 of 736 objects, pieces of a neighbour
-  on inspection bar one far-only vehicle lined up behind a close one.
+  own whatever its parallax (ranges read from that far are off by a third,
+  and a low-parallax intersection lands metres from where the sightings
+  point): its closest sightings decide, and it joins the close pass they
+  show, and what is left of it is dropped when its closest rays point at
+  an object within 15 m that was seen up close, unless it is well
+  triangulated regardless (parallax of 45 degrees or more, uncertainty of
+  half a metre or less; `close_range_m`, 0 to keep everything). A far-only
+  object whose rays point elsewhere, a car in a driveway behind the kerb,
+  stays. An object never seen with an outline at least
+  `min_sighting_deg` wide or tall (6 degrees) was never more than a speck
+  and is not reported, and single views are no longer reported unless
+  `report_single_views=True`. `MapillaryObjectImageExtractor(view_selection='widest')`
+  keeps the widest views of each object instead of the closest, which is what
+  `DetectionVerifier` should judge (on a labelled block it then rejected all
+  junk and kept all vehicles, where the closest views let a bush through), and
+  `DetectionVerifier(reject_unverified=True)` removes what the model gave no
+  verdict for. `DuplicateResolver`, a `VERIFY` step to run after the
+  verifier, shows a model the crops of every pair of objects within 8 m as
+  two rows, tells it the viewpoints differ, and merges the pairs it is sure
+  are one vehicle: the long vehicle seen as cab and box, the track split by
+  a corner, the two passes geometry could not join. Crops are zoomed to
+  their outline, which `MapillaryObjectImageExtractor` now records in crop
+  pixels (`outline`), and the model names each vehicle's type and colour
+  before answering. On the labelled block the full chain went from 81 %
+  precision and 97 % recall to 95 % and 92 %, with no duplicates left. An abeam-first mode (`abeam_window_deg`,
+  off by default) builds objects from the passing frames only and attaches
+  the frames looking down the road afterwards; it loses real vehicles until
+  the track classification is reworked for passes alone, and is kept as an
+  option.
 - `rapidtools.processing.reid`: appearance embeddings from a Hugging Face
   vision backbone (the image tower of CLIP ViT-B/16 by default, DINOv2
   supported) and `MapillaryFeatureExtractor(reid=True)`, which merges
