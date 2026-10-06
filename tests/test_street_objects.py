@@ -1009,3 +1009,224 @@ def test_min_area_fraction_is_deprecated_but_honoured():
     ext = MapillaryFeatureExtractor(classes=['cars'], access_token='t')
     assert ext.min_area_fraction < 1e-4
     assert ext.max_range_m == 60.0
+
+
+# ==========================================
+# Error branches and fallbacks
+# ==========================================
+def test_helpers_tolerate_odd_metadata():
+    from rapidtools.processing.street_objects import _camera_pose, _captured_at
+
+    class ExplodingMapper:
+        def map_classes(self, texts):
+            raise RuntimeError('no mapper today')
+
+    resolved, unresolved = resolve_classes(['debris pile'], ExplodingMapper())
+    assert resolved == {} and unresolved == ['debris pile']
+    assert _camera_pose({'longitude': -117.0}) is None
+    assert _captured_at({'captured_at': 1_700_000_000_000}).startswith('2023-11-14')
+    assert _captured_at({}) is None
+    polygons = MapillaryFeatureExtractor._masks_to_polygons
+    assert polygons(None) == []
+    flat = np.zeros((8, 16), bool)
+    assert polygons(flat) == []  # one empty 2-D mask
+    flat[2:4, 4:8] = True
+    assert len(polygons(flat)) == 1
+
+
+def test_region_without_images_or_poses_yields_nothing(region, tmp_path, caplog):
+    client = FakeClient(_survey(n_frames=2))
+    elsewhere = BoundingBox(0.0, 0.0, 0.01, 0.01)
+    ext = MapillaryFeatureExtractor(
+        classes=['cars'], client=client, region=elsewhere, save_directory=tmp_path
+    )
+    with caplog.at_level(logging.WARNING):
+        assert len(ext()) == 0
+    assert 'No images with a camera position' in caplog.text
+
+    class PoselessClient(FakeClient):
+        def fetch_images_by_ids(self, image_ids, fields, **kwargs):
+            stripped = []
+            for img in super().fetch_images_by_ids(image_ids, fields, **kwargs):
+                props = {
+                    k: v for k, v in img.properties.items() if k != 'computed_geometry'
+                }
+                stripped.append(
+                    ImageAsset(
+                        id=img.id,
+                        path=img.path,
+                        allow_missing_file=True,
+                        properties=props,
+                    )
+                )
+            return ImageCollection(stripped)
+
+    ext = MapillaryFeatureExtractor(
+        classes=['cars'],
+        client=PoselessClient(_survey(n_frames=2)),
+        region=region,
+        save_directory=tmp_path,
+    )
+    with caplog.at_level(logging.WARNING):
+        assert len(ext()) == 0
+    assert 'missing camera pose' in caplog.text
+
+
+def test_detections_are_fetched_when_the_listing_has_none(region, tmp_path):
+    frames = []
+    for img in _survey(n_frames=3):
+        props = {k: v for k, v in img.properties.items() if k != 'detections'}
+        frames.append(
+            ImageAsset(
+                id=img.id, path=img.path, allow_missing_file=True, properties=props
+            )
+        )
+    client = FakeClient(ImageCollection(frames))
+    ext = MapillaryFeatureExtractor(
+        classes=['cars'], client=client, region=region, save_directory=tmp_path
+    )
+    assert len(ext()) == 0
+    assert sum(1 for c in client.calls if c[0] == 'detections') == 3
+
+
+def test_sam3_source_without_a_model_loads_one_and_skips_empty_outputs(
+    region, tmp_path, monkeypatch
+):
+    import rapidtools.models
+
+    built = []
+
+    class Quiet:
+        def __init__(self, **kwargs):
+            built.append(kwargs)
+
+        def run_inference(self, image_inputs, prompt, threshold, mask_threshold, **kw):
+            return ModelOutput(masks=[], bounding_boxes=None)
+
+    monkeypatch.setattr(rapidtools.models, 'SAM3Inference', Quiet)
+    client = FakeClient(_survey(n_frames=2, with_car=False, with_ego=False))
+    ext = MapillaryFeatureExtractor(
+        classes=['debris pile'],
+        client=client,
+        region=region,
+        detection_source='sam3',
+        save_directory=tmp_path,
+        ego_filter=False,
+    )
+    assert len(ext()) == 0
+    assert len(built) == 1 and built[0]['device'] == 'auto'
+    # Thumbnails are cached; a frame with no URL is skipped.
+    frame = {'id': 'img0', 'thumb_url': None}
+    first = ext._download_thumbnail(frame)
+    assert first is not None and ext._download_thumbnail(frame) == first
+    assert len(client.downloaded) == 2
+    client.get_image_url = lambda image_id, size='2048': ''
+    assert ext._download_thumbnail({'id': 'new', 'thumb_url': None}) is None
+
+
+def test_cluster_method_drops_small_clusters(region, tmp_path):
+    client = FakeClient(_survey(n_frames=3, with_ego=False))
+    ext = MapillaryFeatureExtractor(
+        classes=['cars'],
+        client=client,
+        region=region,
+        localization_method='cluster',
+        min_observations=5,
+        save_directory=tmp_path,
+    )
+    assert len(ext()) == 0
+    with pytest.raises(ValueError, match='not been localized'):
+        ext._build_asset(
+            'cars',
+            [
+                Observation(
+                    'u', CAR, [(0.5, 0.5), (0.6, 0.5), (0.6, 0.6)], None, None, 0
+                )
+            ],
+            1,
+        )
+
+
+def test_reid_without_pairs_or_readable_thumbnails(region, tmp_path):
+    embedder = SameLookEmbedder()
+    client = FakeClient(_survey(with_ego=False))
+    alone = MapillaryFeatureExtractor(
+        classes=['cars'],
+        client=client,
+        region=region,
+        reid=True,
+        reid_embedder=embedder,
+        save_directory=tmp_path,
+    )()
+    assert len(alone) == 1 and embedder.calls == 0
+
+    class GarbledClient(FakeClient):
+        def _download_image(self, url, destination):
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(b'not a jpeg')
+            return True
+
+    frames = list(_survey(with_ego=False)) + _second_pass(dx_m=4.0)
+    client = GarbledClient(ImageCollection(frames))
+    objects = MapillaryFeatureExtractor(
+        classes=['cars'],
+        client=client,
+        region=region,
+        reid=True,
+        reid_embedder=embedder,
+        reid_max_distance_m=8.0,
+        save_directory=tmp_path / 'garbled',
+    )()
+    assert len(objects) == 2 and embedder.calls == 0
+    client = FakeClient(ImageCollection(frames))
+    client.get_image_url = lambda image_id, size='2048': ''
+    objects = MapillaryFeatureExtractor(
+        classes=['cars'],
+        client=client,
+        region=region,
+        reid=True,
+        reid_embedder=embedder,
+        reid_max_distance_m=8.0,
+        save_directory=tmp_path / 'nourl',
+    )()
+    assert len(objects) == 2 and embedder.calls == 0
+
+
+def test_cropper_survives_missing_or_broken_downloads(detected, tmp_path, caplog):
+    client, collection = detected
+
+    class NoUrlClient(FakeClient):
+        def get_image_url(self, image_id, size='2048'):
+            return ''
+
+    cropper = MapillaryObjectImageExtractor(
+        tmp_path / 'nourl', client=NoUrlClient(client.images), max_images_per_asset=1
+    )
+    out = cropper(collection)
+    assert all(not a.get_image_assets() for a in out)
+
+    class FailingSession:
+        def get(self, url, **kwargs):
+            raise OSError('network down')
+
+    broken = FakeClient(client.images)
+    broken.session = FailingSession()
+    cropper = MapillaryObjectImageExtractor(
+        tmp_path / 'broken', client=broken, max_images_per_asset=1
+    )
+    with caplog.at_level(logging.ERROR):
+        out = cropper(collection)
+    assert all(not a.get_image_assets() for a in out)
+    assert 'Could not download image' in caplog.text
+
+    cropper = MapillaryObjectImageExtractor(
+        tmp_path / 'crash', client=FakeClient(client.images), max_images_per_asset=1
+    )
+
+    def explode(*args, **kwargs):
+        raise RuntimeError('crop failed')
+
+    cropper._process_image = explode
+    with caplog.at_level(logging.ERROR):
+        out = cropper(collection)
+    assert 'Failed to crop image' in caplog.text

@@ -1087,3 +1087,33 @@ def test_set_asset_type_batch(sample_asset_1, sample_asset_2):
     col.set_asset_type('building')  # overwrite defaults to True
     assert all(asset.asset_type == 'building' for asset in col)
     assert all('asset_type' in asset.attributes for asset in col)
+
+
+def test_shapefile_legacy_image_columns_and_sidecars(tmp_path, caplog):
+    col = PhysicalAssetCollection()
+    col.add(
+        [
+            PhysicalAsset(
+                id='a', geometry=Point(0, 0), attributes={'images': '[{"id": "x"}]'}
+            ),
+            PhysicalAsset(
+                id='b', geometry=Point(1, 1), attributes={'images': '{"k": 1}'}
+            ),
+            PhysicalAsset(id='c', geometry=Point(2, 2), attributes={'images': 'not ['}),
+        ]
+    )
+    shp = tmp_path / 'legacy.shp'
+    sidecar = PhysicalAssetCollection._shapefile_sidecar_path(shp)
+    sidecar.write_text('{"stale": true}', encoding='utf-8')
+    col.to_shapefile(shp)
+    assert not sidecar.exists()  # a stale sidecar is removed with the export
+    with caplog.at_level(logging.WARNING):
+        back = PhysicalAssetCollection.from_shapefile(shp)
+    assert 'Failed to rehydrate an image asset' in caplog.text
+    assert back.get('a').attributes == {} and not back.get('a').image_assets
+    assert back.get('b').attributes['images'] == {'k': 1}
+    assert back.get('c').attributes['images_raw_str'] == 'not ['
+    sidecar.write_text('{broken', encoding='utf-8')
+    with caplog.at_level(logging.WARNING):
+        assert len(PhysicalAssetCollection.from_shapefile(shp)) == 3
+    assert 'Ignoring unreadable sidecar' in caplog.text

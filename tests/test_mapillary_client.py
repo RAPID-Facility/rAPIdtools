@@ -1379,3 +1379,58 @@ def test_is_map_feature_value():
     assert not is_map_feature_value('human--person--individual')
     assert not is_map_feature_value('construction--structure--building')
     assert not is_map_feature_value('')
+
+
+def test_fetch_sequence_lines_reads_gzip_and_skips_points(client, requests_mock):
+    ms = 1_760_000_000_000
+    line = {
+        'geometry': 'LINESTRING(0 4096, 100 4000)',
+        'properties': {'creator_id': RAPID_CREATOR_ID, 'captured_at': ms},
+    }
+    point = {
+        'geometry': 'POINT(5 5)',
+        'properties': {'creator_id': RAPID_CREATOR_ID, 'captured_at': ms},
+    }
+    requests_mock.get(
+        _tile_url(3, 3, 8), content=gzip.compress(_sequence_tile([line, point]))
+    )
+    data = client.fetch_sequence_lines(8, 3, 3)
+    assert data['count'] == 1 and data['lines'][0] == [0, 0, 100, 96]
+
+
+def test_detection_and_feature_parsers_skip_malformed_records(monkeypatch):
+    from rapidtools.data_sources import mapillary_client as module
+
+    decoded = {
+        'l': {
+            'extent': 4096,
+            'features': [
+                {'geometry': {'type': 'Point', 'coordinates': [1, 2]}},
+                {'geometry': {'type': 'Polygon', 'coordinates': []}},
+                {
+                    'geometry': {
+                        'type': 'MultiPolygon',
+                        'coordinates': [[[[0, 0], [4096, 0], [4096, 4096]]]],
+                    }
+                },
+            ],
+        }
+    }
+    monkeypatch.setattr(module.mapbox_vector_tile, 'decode', lambda raw: decoded)
+    rings = MapillaryClient.decode_detection_polygons(base64.b64encode(b'x').decode())
+    assert rings == [[(0.0, 1.0), (1.0, 1.0), (1.0, 0.0)]]
+    feature = {'geometry': {'type': 'Point', 'coordinates': [1.0, 2.0]}}
+    assert MapillaryClient._parse_map_feature(feature, []) is None
+
+
+def test_parse_segmentation_skips_undecodable_tiles(pano_asset, monkeypatch):
+    from rapidtools.data_sources import mapillary_client as module
+
+    pano_asset.properties['detections'] = {
+        'data': [
+            {'value': SegmentationLabels.SKY, 'geometry': _b64_polygon('POLYGON EMPTY')}
+        ]
+    }
+    monkeypatch.setattr(module.mapbox_vector_tile, 'decode', lambda raw: {})
+    mask, seg_map = MapillaryClient._parse_mapillary_segmentation(pano_asset)
+    assert not mask.any()  # the label is registered, nothing is rasterised

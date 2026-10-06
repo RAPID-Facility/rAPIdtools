@@ -458,3 +458,29 @@ def test_top_level_export():
 
 def test_prompt_rejects_loose_outlines_over_several_objects():
     assert 'takes in several objects' in ver.DEFAULT_PROMPT
+
+
+def test_empty_replies_and_empty_classifier_verdicts_leave_assets_unverified(
+    tmp_path,
+):
+    class Silent(FakeModel):
+        def run_inference(self, image_inputs, prompt, **kwargs):
+            return ModelOutput(text='')
+
+    col = _collection(tmp_path)
+    out = DetectionVerifier(Silent())(col)
+    assert all('verify_match' not in a.attributes for a in out)
+    col = _collection(tmp_path)
+    ghost = ImageAsset(
+        id='ghost', path=tmp_path / 'ghost.jpg', allow_missing_file=True, properties={}
+    )
+    col.add(_asset('v_ghost', images=[ghost]))  # never downloaded: not judged
+    seen = []
+
+    def classifier(paths, description):
+        seen.extend(paths)
+        return []
+
+    out = DetectionVerifier(classifier=classifier)(col)
+    assert all('verify_match' not in a.attributes for a in out)
+    assert ghost.path not in seen and seen
