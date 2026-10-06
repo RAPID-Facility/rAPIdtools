@@ -657,7 +657,11 @@ def test_assets_sharing_an_image_are_cropped_from_one_download(detected, tmp_pat
     collection.add(twin)
     client.session.urls.clear()
     cropper = MapillaryObjectImageExtractor(
-        tmp_path / 'crops', client=client, max_images_per_asset=2, image_size='1024'
+        tmp_path / 'crops',
+        client=client,
+        view_selection='closest',
+        max_images_per_asset=2,
+        image_size='1024',
     )
     cropper(collection)
     assert len(car.image_assets) == 2 and len(twin.image_assets) == 2

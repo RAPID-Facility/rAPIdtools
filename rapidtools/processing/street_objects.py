@@ -1870,7 +1870,8 @@ class MapillaryObjectImageExtractor:
                 for future in futures:
                     future.cancel()
                 raise
-        # Attach the crops closest view first, whatever order they finished in:
+        # Attach the crops in selection order (closest or widest view first),
+        # whatever order the downloads finished in:
         for asset in targets:
             for obs in chosen[asset.id]:
                 crop = crops.get((asset.id, obs.image_id))
