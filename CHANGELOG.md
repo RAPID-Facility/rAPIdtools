@@ -16,6 +16,10 @@ minor releases may change public APIs.
 - Issue forms for bug reports and feature requests, contact links to the
   security advisory form, docs and wiki, and a pull request template with the
   `CONTRIBUTING.md` checklist (under `.github/`).
+- A *Development and testing* page in the documentation (and the matching
+  wiki section) describing the development setup, the lint, type and test
+  gates, how the test suite is organised and how it stays offline. Test
+  coverage of the package rose from 97% to 99%.
 - **Street-level localisation rebuilt around tracking and triangulation.**
   `MapillaryFeatureExtractor` now links detections frame to frame by bearing
   (new module `rapidtools.processing.street_tracking`), triangulates each

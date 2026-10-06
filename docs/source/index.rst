@@ -128,6 +128,12 @@ is archived on Zenodo with a DOI.
 
 .. toctree::
    :hidden:
+   :caption: Development
+
+   development
+
+.. toctree::
+   :hidden:
    :caption: Reference
 
    api/index

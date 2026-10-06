@@ -65,17 +65,31 @@ The three parts, and what they expect:
 
 ### Writing tests
 
-Tests live in `tests/`, one module per component. Follow the patterns already
-there:
+Tests live in `tests/`, one module per component, plus a few cross-cutting
+modules: `test_edge_cases.py` (error branches of the street-level modules),
+`test_coverage_gaps.py` (small fallbacks of otherwise well-covered modules),
+`test_api_harmonization.py` (public names and deprecation shims) and
+`test_cancellation.py`. Put a test next to the component it exercises. Follow
+the patterns already there:
 
 - Patch the network boundary with `requests-mock` or `monkeypatch`; never call
   a real service.
 - Replace model and processor loaders with fakes, as `tests/test_models_local.py`
   does, so `transformers` never loads a checkpoint. `tests/conftest.py` already
-  stubs the Hugging Face login for every test.
+  stubs the Hugging Face token lookup and login for every test. Where a loader
+  must run end to end, inject fake `torch` and `transformers` modules into
+  `sys.modules`, as the re-identification test in `tests/test_edge_cases.py`
+  does.
 - Keep fixtures deterministic and small; build rasters and GeoJSON in
   `tmp_path` rather than committing data files.
 - Add a test for every bug fix that would have caught it.
+- Coverage sits at 99% and every run prints the uncovered lines
+  (`--cov-report=term-missing` is in the pytest options); do not let a change
+  lower the total. When a branch is hard to reach through the public API,
+  test the helper directly rather than leaving it uncovered.
+
+The documentation's *Development and testing* page describes how the suite
+stays offline in more detail.
 
 ### Documentation and changelog
 
