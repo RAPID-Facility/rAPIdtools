@@ -240,7 +240,8 @@ for how the pieces fit together. To tell us what you need, open a
 [feature request](https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=feature_request.yml),
 a [bug report](https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=bug_report.yml)
 or a [feedback or question](https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=feedback.yml)
-issue; each form asks only for what we need to act on it. Participation is governed by the
+issue; each form asks only for what we need to act on it. Without a GitHub
+account, email [uwrapid@uwrapid.org](mailto:uwrapid@uwrapid.org?subject=rAPIdtools%20feedback) instead. Participation is governed by the
 [Code of Conduct](CODE_OF_CONDUCT.md). Please report security problems
 privately as described in the [Security Policy](SECURITY.md), not in a public
 issue. Our [Accessibility Statement](ACCESSIBILITY.md) describes what we know

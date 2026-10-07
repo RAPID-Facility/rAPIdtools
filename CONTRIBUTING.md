@@ -18,7 +18,8 @@ described in our [Security Policy](SECURITY.md), not in a public issue.
   [feedback issue](https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=feedback.yml)
   for anything that is not a bug or a feature: how the package worked on your
   data, a page that was hard to follow, a question about which component to
-  use. Short notes are welcome.
+  use. Short notes are welcome. Without a GitHub account, email
+  [uwrapid@uwrapid.org](mailto:uwrapid@uwrapid.org?subject=rAPIdtools%20feedback) instead.
 - **Suggest a feature.** Open a
   [feature request](https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=feature_request.yml)
   describing the use case before writing code, so we can agree on the

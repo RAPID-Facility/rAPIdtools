@@ -3,9 +3,11 @@ Feedback and feature requests
 
 Everything about rAPIdtools, from the geometry rules of the street-level
 pipeline to the layout of the GUI, was shaped by people running it on real
-surveys and saying what did not fit. Each form below goes to the project's
-GitHub issue tracker and asks only for what is needed to act on it; a GitHub
-account is the only requirement. Short notes are as welcome as long ones.
+surveys and saying what did not fit. The first three forms below go to the
+project's GitHub issue tracker, where other users can see and add to them,
+and ask only for what is needed to act on them; they need a GitHub account.
+Without one, write to us by email instead. Short notes are as welcome as
+long ones.
 
 .. grid:: 1 2 2 2
    :gutter: 3
@@ -28,6 +30,13 @@ account is the only requirement. Short notes are as welcome as long ones.
       How the package worked on your data, a page that was hard to follow,
       a question about which component to use, or an idea that is not yet
       a proposal.
+
+   .. grid-item-card:: :fas:`envelope` Write to us by email
+      :link: mailto:uwrapid@uwrapid.org?subject=rAPIdtools%20feedback
+
+      No GitHub account needed. Send feedback, a question or a feature
+      idea to uwrapid@uwrapid.org; a maintainer will answer and, with your
+      agreement, turn it into an issue so others can follow it.
 
    .. grid-item-card:: :fas:`shield-halved` Report a security problem
       :link: https://github.com/RAPID-Facility/rAPIdtools/security/advisories/new
@@ -54,8 +63,8 @@ Other ways to reach us
   button in the header, which starts an issue about that page.
 - The `wiki <https://github.com/RAPID-Facility/rAPIdtools/wiki>`_ can be
   edited directly if you spot a mistake in it.
-- Anything that should not be public, including suspected security problems,
-  can be sent to uwrapid@uwrapid.org.
+- Email, uwrapid@uwrapid.org, also takes anything that should not be public,
+  including suspected security problems.
 
 Please do not paste API keys, Mapillary tokens or Hugging Face tokens into
 an issue; redact them before posting.
