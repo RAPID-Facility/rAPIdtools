@@ -14,8 +14,15 @@ described in our [Security Policy](SECURITY.md), not in a public issue.
   operating system and Python version, the smallest script that reproduces the
   problem, and the full error output. Never paste API keys, Mapillary tokens or
   Hugging Face tokens into an issue; redact them.
-- **Suggest a feature.** Open an issue describing the use case before writing
-  code, so we can agree on the approach. The
+- **Give feedback or ask a question.** Open a
+  [feedback issue](https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=feedback.yml)
+  for anything that is not a bug or a feature: how the package worked on your
+  data, a page that was hard to follow, a question about which component to
+  use. Short notes are welcome.
+- **Suggest a feature.** Open a
+  [feature request](https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=feature_request.yml)
+  describing the use case before writing code, so we can agree on the
+  approach. The
   [wiki](https://github.com/RAPID-Facility/rAPIdtools/wiki) and the
   [documentation](https://rapid-facility.github.io/rAPIdtools/) describe how
   the existing pieces fit together.

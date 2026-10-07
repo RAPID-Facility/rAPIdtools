@@ -16,6 +16,10 @@ minor releases may change public APIs.
 - Issue forms for bug reports and feature requests, contact links to the
   security advisory form, docs and wiki, and a pull request template with the
   `CONTRIBUTING.md` checklist (under `.github/`).
+- A *Feedback or question* issue form next to the bug report and feature
+  request forms, a *Feedback and feature requests* page in the documentation
+  with one card per form, an *Open issue* entry in the header of every docs
+  page, and feedback links in the README, `CONTRIBUTING.md` and the wiki.
 - A *Development and testing* page in the documentation (and the matching
   wiki section) describing the development setup, the lint, type and test
   gates, how the test suite is organised and how it stays offline. Test

@@ -74,6 +74,7 @@ html_theme_options = {
     'repository_branch': 'main',
     'path_to_docs': 'docs/source',
     'use_repository_button': True,
+    'use_issues_button': True,
     'use_download_button': False,
     'use_fullscreen_button': False,
     'home_page_in_toc': True,
@@ -94,6 +95,11 @@ html_theme_options = {
             'name': 'UW RAPID Facility',
             'url': 'https://www.uwrapid.org/',
             'icon': 'fa-solid fa-house-flood-water',
+        },
+        {
+            'name': 'Feedback and feature requests',
+            'url': 'https://github.com/RAPID-Facility/rAPIdtools/issues/new/choose',
+            'icon': 'fa-regular fa-comment-dots',
         },
     ],
 }

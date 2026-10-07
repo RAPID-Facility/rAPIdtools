@@ -1,0 +1,56 @@
+name: Feedback or question
+description: Tell us what works, what does not, what is unclear, or ask a question.
+title: "[Feedback]: "
+labels: ["feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Anything that is not a bug report or a feature request belongs here: how rapidtools
+        worked on your data, a step in the documentation that was hard to follow, a question
+        about which component to use, or an idea that is not yet a concrete proposal. Short
+        notes are welcome. Please do not paste API keys or access tokens.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of feedback is this?
+      options:
+        - General feedback on the package or the GUI
+        - A question about how to do something
+        - Something in the documentation or wiki is unclear or wrong
+        - An idea that is not yet a feature request
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: message
+    attributes:
+      label: Your feedback
+      description: What you were doing, what you expected, and what you found. A link to the page or the name of the class involved helps.
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Assets and collections
+        - Aerial imagery
+        - Street-level imagery
+        - Detection and regularization
+        - Vision-language models
+        - Graphical interface or shared server
+        - Documentation, examples or wiki
+        - Not sure / several
+  - type: input
+    id: context
+    attributes:
+      label: Context
+      description: Optional. rapidtools version, operating system, and the dataset or workflow this came from.
+      placeholder: "rapidtools 0.2.0, Ubuntu 24.04, Mapillary vehicle survey"
+  - type: checkboxes
+    id: follow_up
+    attributes:
+      label: Follow-up
+      options:
+        - label: I am happy to answer follow-up questions on this issue.

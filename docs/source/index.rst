@@ -70,6 +70,15 @@ What it does
    ])
    buildings = pipeline.run(buildings)
 
+Feedback and feature requests
+-----------------------------
+
+rAPIdtools is shaped by the surveys it is used on. If a workflow does not fit
+your data, a page is unclear, or a capability is missing, say so: the
+:doc:`feedback page <feedback>` has one form each for feature requests, bug
+reports and general feedback, and every page of this site has an *Open issue*
+entry under the repository button in its header.
+
 Citing rAPIdtools
 -----------------
 
@@ -131,6 +140,7 @@ is archived on Zenodo with a DOI.
    :caption: Development
 
    development
+   feedback
 
 .. toctree::
    :hidden:
