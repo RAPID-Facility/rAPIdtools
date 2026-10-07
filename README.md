@@ -236,17 +236,38 @@ local = QwenVisionAssetAnalyzer(prompt='Rate the fire damage 0-5.', model_id='Qw
 Bug reports, documentation fixes and code are welcome; see
 [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and the checks a
 pull request must pass, and the [wiki](https://github.com/RAPID-Facility/rAPIdtools/wiki)
-for how the pieces fit together. To tell us what you need, open a
-[feature request](https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=feature_request.yml),
-a [bug report](https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=bug_report.yml)
-or a [feedback or question](https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=feedback.yml)
-issue; each form asks only for what we need to act on it. Without a GitHub
-account, email [uwrapid@uwrapid.org](mailto:uwrapid@uwrapid.org?subject=rAPIdtools%20feedback) instead. Participation is governed by the
-[Code of Conduct](CODE_OF_CONDUCT.md). Please report security problems
-privately as described in the [Security Policy](SECURITY.md), not in a public
-issue. Our [Accessibility Statement](ACCESSIBILITY.md) describes what we know
-about using the package, documentation and GUI with assistive technology and
-how to report barriers.
+for how the pieces fit together. Participation is governed by the
+[Code of Conduct](CODE_OF_CONDUCT.md). Our
+[Accessibility Statement](ACCESSIBILITY.md) describes what we know about
+using the package, documentation and GUI with assistive technology and how
+to report barriers.
+
+### Feedback without a GitHub account
+
+Email is all you need: [uwrapid@uwrapid.org](mailto:uwrapid@uwrapid.org?subject=rAPIdtools%20feedback).
+Send feedback, a question, a bug or a feature idea; say what you were doing,
+what you expected and what happened, with the rapidtools version and your
+operating system when it is a bug. A maintainer will answer and, with your
+agreement, turn the message into a GitHub issue so others can follow it.
+Leave API keys and access tokens out of the message.
+
+### Feedback with a GitHub account
+
+The three forms below open an issue on this repository, where other users
+can see it, add to it and follow the fix; each asks only for what we need to
+act on it. **They need a GitHub account**: clicking a link asks you to sign
+in first, and GitHub offers to create a free account on that page. If you
+would rather not, use the email route above.
+
+| I want to... | Open |
+|---|---|
+| Ask for a capability that is missing | [Feature request](https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=feature_request.yml) |
+| Report something that fails or gives a wrong result | [Bug report](https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=bug_report.yml) |
+| Ask a question, or say what worked and what did not | [Feedback or question](https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=feedback.yml) |
+
+Please report security problems privately as described in the
+[Security Policy](SECURITY.md), not in a public issue: through a GitHub
+security advisory, or by email with "security" in the subject.
 
 ## Citing rAPIdtools
 
