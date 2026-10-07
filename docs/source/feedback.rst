@@ -3,13 +3,38 @@ Feedback and feature requests
 
 Everything about rAPIdtools, from the geometry rules of the street-level
 pipeline to the layout of the GUI, was shaped by people running it on real
-surveys and saying what did not fit. The first three forms below go to the
-project's GitHub issue tracker, where other users can see and add to them,
-and ask only for what is needed to act on them; they need a GitHub account.
-Without one, write to us by email instead. Short notes are as welcome as
-long ones.
+surveys and saying what did not fit. Short notes are as welcome as long
+ones. There are two ways to reach us, depending on whether you use GitHub.
 
-.. grid:: 1 2 2 2
+Without a GitHub account
+------------------------
+
+Email is all you need. Use this route if you do not have a GitHub account or
+would rather not open an issue yourself.
+
+.. grid:: 1 1 1 1
+   :gutter: 3
+
+   .. grid-item-card:: :fas:`envelope` Write to us by email
+      :link: mailto:uwrapid@uwrapid.org?subject=rAPIdtools%20feedback
+
+      Send feedback, a question, a bug or a feature idea to
+      uwrapid@uwrapid.org. Say what you were doing, what you expected and
+      what happened; a screenshot or the name of the page or class helps. A
+      maintainer will answer and, with your agreement, turn the message into
+      a GitHub issue so others can follow it. Please leave API keys and
+      access tokens out of the message.
+
+With a GitHub account
+---------------------
+
+The three forms below open an issue on the project's GitHub page, where
+other users can see it, add to it and follow the fix. Each form asks only
+for what is needed to act on it. **They need a GitHub account**: clicking a
+card asks you to sign in first, and GitHub offers to create a free account
+on that page. If you would rather not, use the email route above.
+
+.. grid:: 1 3 3 3
    :gutter: 3
 
    .. grid-item-card:: :fas:`lightbulb` Request a feature
@@ -31,25 +56,20 @@ long ones.
       a question about which component to use, or an idea that is not yet
       a proposal.
 
-   .. grid-item-card:: :fas:`envelope` Write to us by email
-      :link: mailto:uwrapid@uwrapid.org?subject=rAPIdtools%20feedback
+Security problems
+-----------------
 
-      No GitHub account needed. Send feedback, a question or a feature
-      idea to uwrapid@uwrapid.org; a maintainer will answer and, with your
-      agreement, turn it into an issue so others can follow it.
-
-   .. grid-item-card:: :fas:`shield-halved` Report a security problem
-      :link: https://github.com/RAPID-Facility/rAPIdtools/security/advisories/new
-
-      Private by design. Vulnerabilities go through GitHub Security
-      Advisories, never a public issue; see the repository's
-      ``SECURITY.md``.
+Suspected vulnerabilities are handled privately, never in a public issue.
+With a GitHub account, open a `security advisory
+<https://github.com/RAPID-Facility/rAPIdtools/security/advisories/new>`_;
+without one, email uwrapid@uwrapid.org with "security" in the subject. The
+repository's ``SECURITY.md`` describes the process.
 
 What happens next
 -----------------
 
-A maintainer reads every issue. Feature requests are discussed on the issue
-before any code is written, so the use case and the approach are agreed on
+A maintainer reads every email and every issue. Feature requests are
+discussed before any code is written, so the use case and the approach are agreed on
 first; if you would like to implement it yourself, the form has a box to say
 so and ``CONTRIBUTING.md`` explains how a change gets in. Bugs confirmed on
 real data are fixed with a test that would have caught them. Feedback on the
@@ -59,12 +79,12 @@ site is regenerated from ``main`` on every push.
 Other ways to reach us
 ----------------------
 
+Both of these also need a GitHub account:
+
 - Every page of this site has an *Open issue* entry under the repository
   button in the header, which starts an issue about that page.
 - The `wiki <https://github.com/RAPID-Facility/rAPIdtools/wiki>`_ can be
   edited directly if you spot a mistake in it.
-- Email, uwrapid@uwrapid.org, also takes anything that should not be public,
-  including suspected security problems.
 
 Please do not paste API keys, Mapillary tokens or Hugging Face tokens into
-an issue; redact them before posting.
+an email or an issue; redact them before sending.
