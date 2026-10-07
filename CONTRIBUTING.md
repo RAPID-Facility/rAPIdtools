@@ -9,24 +9,46 @@ described in our [Security Policy](SECURITY.md), not in a public issue.
 
 ## Ways to contribute
 
-- **Report a bug.** Open an issue with the rapidtools version
-  (`python -c "import rapidtools; print(rapidtools.__version__)"`), your
-  operating system and Python version, the smallest script that reproduces the
-  problem, and the full error output. Never paste API keys, Mapillary tokens or
-  Hugging Face tokens into an issue; redact them.
-- **Give feedback or ask a question.** Open a
-  [feedback issue](https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=feedback.yml)
-  for anything that is not a bug or a feature: how the package worked on your
-  data, a page that was hard to follow, a question about which component to
-  use. Short notes are welcome. Without a GitHub account, email
-  [uwrapid@uwrapid.org](mailto:uwrapid@uwrapid.org?subject=rAPIdtools%20feedback) instead.
-- **Suggest a feature.** Open a
-  [feature request](https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=feature_request.yml)
-  describing the use case before writing code, so we can agree on the
-  approach. The
-  [wiki](https://github.com/RAPID-Facility/rAPIdtools/wiki) and the
-  [documentation](https://rapid-facility.github.io/rAPIdtools/) describe how
-  the existing pieces fit together.
+Not every contribution is code. Feedback, questions, bug reports and feature
+ideas all help, and there are two ways to send them depending on whether you
+use GitHub. Documentation fixes and code go through pull requests, described
+further down.
+
+### Feedback without a GitHub account
+
+Email is all you need: [uwrapid@uwrapid.org](mailto:uwrapid@uwrapid.org?subject=rAPIdtools%20feedback).
+Send feedback, a question, a bug or a feature idea; say what you were doing,
+what you expected and what happened. For a bug, include the rapidtools
+version (`python -c "import rapidtools; print(rapidtools.__version__)"`),
+your operating system and Python version, the smallest script that
+reproduces the problem and the full error output. A maintainer will answer
+and, with your agreement, turn the message into a GitHub issue so others can
+follow it. Never include API keys, Mapillary tokens or Hugging Face tokens;
+redact them.
+
+### Feedback with a GitHub account
+
+The three forms below open an issue on the repository, where other users can
+see it, add to it and follow the fix; each asks only for what we need to act
+on it. **They need a GitHub account**: clicking a link asks you to sign in
+first, and GitHub offers to create a free account on that page. If you would
+rather not, use the email route above.
+
+| I want to... | Open |
+|---|---|
+| Report something that fails or gives a wrong result | [Bug report](https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=bug_report.yml) |
+| Ask for a capability that is missing | [Feature request](https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=feature_request.yml) |
+| Ask a question, or say what worked and what did not | [Feedback or question](https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=feedback.yml) |
+
+A feature request should describe the use case before the solution, so we
+can agree on the approach before any code is written; the
+[wiki](https://github.com/RAPID-Facility/rAPIdtools/wiki) and the
+[documentation](https://rapid-facility.github.io/rAPIdtools/) describe how
+the existing pieces fit together. The same redaction rule applies: never
+paste API keys or tokens into an issue.
+
+### Documentation and code
+
 - **Improve the documentation.** Docstrings, the Sphinx pages under
   `docs/source/`, the examples under `examples/` and the wiki can all be
   edited; small fixes do not need an issue first.
