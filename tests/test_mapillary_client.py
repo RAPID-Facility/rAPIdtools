@@ -1058,11 +1058,7 @@ def test_fetch_images_in_bbox_split_quadrants_cover_parent(client, requests_mock
         requests_mock.get(
             _tile_url(x, y, z),
             content=_image_tile(
-                [
-                    _point_feature(
-                        px, py, id=x * 100000 + y, creator_id=RAPID_CREATOR_ID
-                    )
-                ]
+                [_point_feature(px, py, id=x * 100000 + y, creator_id=RAPID_CREATOR_ID)]
             ),
         )
 

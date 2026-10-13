@@ -1629,7 +1629,7 @@ class PhysicalAssetCollection:
 
         # Open the shapefile reader:
         with shapefile.Reader(file_path) as sf:
-            field_names = [field[0] for field in sf.fields[1:]]
+            field_names: list[str] = [str(field[0]) for field in sf.fields[1:]]
 
             for record_index, shape_rec in enumerate(sf.shapeRecords()):
                 if shape_rec.shape.shapeType == 0:
@@ -1643,7 +1643,7 @@ class PhysicalAssetCollection:
                 # as ``id`` and renames a user attribute called ``id`` to
                 # ``id1``, so applying the renames first would collapse both
                 # onto one key and let the attribute overwrite the ID.
-                assigned_id = None
+                assigned_id = ''
                 for id_key in ['id', 'ID']:
                     if id_key in raw_record:
                         val = raw_record.pop(id_key)
