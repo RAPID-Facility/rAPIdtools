@@ -238,8 +238,20 @@ def view_angles(
     else:
         f = focal_norm if focal_norm else 0.85
         cx = sum(xs) / len(xs)
-        rel_bearing = math.degrees(math.atan((cx - 0.5) / f))
-        elevation = -math.degrees(math.atan((y_bottom - 0.5) / aspect / f))
+        # OpenSfM convention: image coordinates are normalised by the larger
+        # image side, which is also what the focal length is relative to.
+        if aspect >= 1.0:
+            x_n = cx - 0.5
+            y_n = (y_bottom - 0.5) / aspect
+        else:
+            x_n = (cx - 0.5) * aspect
+            y_n = y_bottom - 0.5
+        # The contact point lies on the ray (x_n, y_n, f): its bearing is the
+        # azimuth of that ray and its depression is measured against the full
+        # horizontal component, not just the focal length (an off-axis pixel
+        # at the same row is less steep than one in the centre column).
+        rel_bearing = math.degrees(math.atan2(x_n, f))
+        elevation = -math.degrees(math.atan2(y_n, math.hypot(f, x_n)))
     return (compass_angle + rel_bearing) % 360.0, elevation
 
 

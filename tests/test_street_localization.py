@@ -431,3 +431,40 @@ def test_polygon_angular_size_pano_and_seam():
     )
     width, _ = polygon_angular_size(obs)
     assert width == pytest.approx(26.57, abs=0.1)
+
+
+def test_view_angles_perspective_matches_lens_model_off_axis():
+    """The level-camera fallback agrees with the full lens model off-centre."""
+    from rapidtools.processing.street_localization import observation_angles
+
+    base = {
+        'label': 'car',
+        'camera_lon': -117.4,
+        'camera_lat': 47.7,
+        'compass_angle': 0.0,
+        'is_pano': False,
+    }
+    params = {'camera_type': 'perspective', 'camera_parameters': [0.85, 0, 0]}
+    level = [math.pi / 2, 0.0, 0.0]
+    for width, height in ((3000, 4000), (4000, 3000)):
+        poly = _box(0.9, 0.7)
+        fallback = Observation(
+            image_id='f',
+            polygon=poly,
+            image_width=width,
+            image_height=height,
+            extra=dict(params),
+            **base,
+        )
+        posed = Observation(
+            image_id='p',
+            polygon=poly,
+            image_width=width,
+            image_height=height,
+            extra={**params, 'computed_rotation': level},
+            **base,
+        )
+        fb = observation_angles(fallback)
+        lens = observation_angles(posed)
+        assert fb[0] == pytest.approx(lens[0], abs=1e-6), (width, height)
+        assert fb[1] == pytest.approx(lens[1], abs=1e-6), (width, height)
