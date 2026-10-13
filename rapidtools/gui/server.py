@@ -819,6 +819,29 @@ class Api:
             )
         return resolved
 
+    def _is_servable(self, path: Path) -> bool:
+        """
+        Return whether a file referenced by a loaded asset may be served.
+
+        Asset collections are user data: a GeoJSON can carry ``image_assets``
+        pointing anywhere on disk, so on a shared server (``data_root`` set)
+        only files under ``data_root`` or the current output directory (where
+        the workflow writes its own crops) are served back.
+
+        Args:
+            path (Path): Path stored on the ``ImageAsset``.
+
+        Returns:
+            bool: ``True`` when the file may be read through the API.
+        """
+        if self.data_root is None:
+            return True
+        resolved = path.resolve()
+        for root in (self.data_root, self.state.output_dir):
+            if resolved == root or root in resolved.parents:
+                return True
+        return False
+
     # ----------------------------------------------------------- imagery
     def load_local_raster(self, body: dict[str, Any]) -> dict[str, Any]:
         """
@@ -2291,7 +2314,7 @@ class Api:
                 {
                     'id': image.id,
                     'name': path.name,
-                    'exists': path.is_file(),
+                    'exists': self._is_servable(path) and path.is_file(),
                     'url': f'/api/asset_image?asset={asset.id}&image={image.id}',
                     'properties': {
                         str(k): _json_primitive(v)
@@ -2326,6 +2349,11 @@ class Api:
         for image in asset.image_assets:
             if image.id == image_id:
                 path = Path(image.path)
+                if not self._is_servable(path):
+                    raise ApiError(
+                        f'Access is limited to {self.data_root}.',
+                        HTTPStatus.FORBIDDEN,
+                    )
                 if not path.is_file():
                     raise ApiError('Image file is missing.', HTTPStatus.NOT_FOUND)
                 return path

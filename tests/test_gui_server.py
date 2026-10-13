@@ -2057,3 +2057,32 @@ def test_route_database_refuses_to_cache_when_tiles_fail(gui, monkeypatch, tmp_p
     assert (tmp_path / 'cache' / 'survey_overview_z6_1.json').exists()
     # A rebuild request is accepted after a failure:
     client.json('POST', '/api/street/routes/rebuild', {})
+
+
+def test_asset_images_outside_data_root_are_not_served(shared_gui, tmp_path):
+    """image_assets paths inside a loaded GeoJSON cannot escape data_root."""
+    client, srv, root = shared_gui
+    client.headers['Cookie'] = 'rapidtools_token=s3cret'
+    outside = tmp_path / 'secret.jpg'
+    outside.write_bytes(b'TOP SECRET')
+    crop_dir = srv.state.output_dir
+    crop_dir.mkdir(parents=True, exist_ok=True)
+    crop = crop_dir / 'crop.jpg'
+    crop.write_bytes(b'crop bytes')
+
+    asset = PhysicalAsset(id='a1', geometry=box(0, 0, 1, 1))
+    asset.add_image_assets(
+        ImageAsset(id='evil', path=outside, allow_missing_file=True),
+        ImageAsset(id='crop', path=crop, allow_missing_file=True),
+    )
+    geojson = root / 'assets.geojson'
+    PhysicalAssetCollection([asset]).to_geojson(geojson)
+    client.json('POST', '/api/assets/load', {'path': str(geojson)})
+
+    details = client.json('GET', '/api/asset?id=a1')
+    by_id = {img['id']: img for img in details['images']}
+    assert by_id['evil']['exists'] is False
+    assert by_id['crop']['exists'] is True
+    client.json('GET', '/api/asset_image?asset=a1&image=evil', expect=403)
+    status, _, raw = client.request('GET', '/api/asset_image?asset=a1&image=crop')
+    assert status == 200 and raw == b'crop bytes'
