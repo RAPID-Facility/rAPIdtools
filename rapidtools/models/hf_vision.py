@@ -303,10 +303,12 @@ class HFVisionInference(BaseLocalInferenceModel):
         try:
             from huggingface_hub import list_models
 
+            # ``sort='downloads'`` already returns the most downloaded models
+            # first; the ``direction`` argument no longer exists in
+            # huggingface_hub 1.x.
             found = list_models(
                 pipeline_tag='image-text-to-text',
                 sort='downloads',
-                direction=-1,
                 limit=limit,
             )
             ids = [m.id for m in found if getattr(m, 'id', None)]
