@@ -2878,6 +2878,19 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
         self._send_bytes(path.read_bytes(), content_type, extra_headers=headers)
 
 
+def _not_propagated_rapidtools_record(record: logging.LogRecord) -> bool:
+    """
+    Filter for the root-logger copy of the GUI log handler.
+
+    Package records are already captured by the handler on the ``rapidtools``
+    logger; when that logger propagates to the root logger they would arrive
+    a second time here, so they are dropped.
+    """
+    if record.name == 'rapidtools' or record.name.startswith('rapidtools.'):
+        return not logging.getLogger('rapidtools').propagate
+    return True
+
+
 class GuiServer(ThreadingHTTPServer):
     """
     ``ThreadingHTTPServer`` that carries the shared application state.
@@ -2936,16 +2949,29 @@ class GuiServer(ThreadingHTTPServer):
         state.token_required = self.token is not None
         self.verbose = verbose
         self._log_handler: CallbackLogHandler | None = None
+        self._root_log_handler: CallbackLogHandler | None = None
         super().__init__(address, GuiRequestHandler)
         state.public_url = self.share_urls()[-1] if self.token else self.url
+        # The log pane listens on the ``rapidtools`` logger directly, because
+        # ``configure_logging()`` (called by ``rapidtools-gui``) stops that
+        # logger from propagating to the root logger; a second handler on the
+        # root logger picks up third-party records. When the package logger
+        # does propagate, the root handler skips its records so nothing is
+        # shown twice.
         self._log_handler = CallbackLogHandler(state.log.add_line)
-        logging.getLogger().addHandler(self._log_handler)
+        logging.getLogger('rapidtools').addHandler(self._log_handler)
+        self._root_log_handler = CallbackLogHandler(state.log.add_line)
+        self._root_log_handler.addFilter(_not_propagated_rapidtools_record)
+        logging.getLogger().addHandler(self._root_log_handler)
 
     def server_close(self) -> None:
-        """Detach the GUI log handler and release the listening socket."""
+        """Detach the GUI log handlers and release the listening socket."""
         if self._log_handler is not None:
-            logging.getLogger().removeHandler(self._log_handler)
+            logging.getLogger('rapidtools').removeHandler(self._log_handler)
             self._log_handler = None
+        if self._root_log_handler is not None:
+            logging.getLogger().removeHandler(self._root_log_handler)
+            self._root_log_handler = None
         super().server_close()
 
     def _host_port(self) -> tuple[str, int]:

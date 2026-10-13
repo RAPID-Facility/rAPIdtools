@@ -2086,3 +2086,34 @@ def test_asset_images_outside_data_root_are_not_served(shared_gui, tmp_path):
     client.json('GET', '/api/asset_image?asset=a1&image=evil', expect=403)
     status, _, raw = client.request('GET', '/api/asset_image?asset=a1&image=crop')
     assert status == 200 and raw == b'crop bytes'
+
+
+def test_log_pane_receives_rapidtools_records_once(tmp_path, monkeypatch):
+    """Package log records reach the GUI log exactly once, with or without
+    configure_logging() (which stops the rapidtools logger propagating)."""
+    import io
+
+    from rapidtools.config import configure_logging
+
+    monkeypatch.setattr(server_module, 'AssetAnalysisWorkflow', FakeWorkflow)
+    srv = server_module.create_server(port=0, output_dir=tmp_path / 'out')
+    try:
+        logging.getLogger('rapidtools.gui.workflow').warning('pane-check-one')
+        logging.getLogger('thirdparty').warning('pane-check-two')
+        texts = [e['text'] for e in srv.state.log.since(0)]
+        assert sum('pane-check-one' in t for t in texts) == 1
+        assert sum('pane-check-two' in t for t in texts) == 1
+    finally:
+        srv.server_close()
+
+    configure_logging(stream=io.StringIO())
+    assert logging.getLogger('rapidtools').propagate is False
+    srv = server_module.create_server(port=0, output_dir=tmp_path / 'out2')
+    try:
+        logging.getLogger('rapidtools.gui.workflow').info('pane-check-three')
+        logging.getLogger('thirdparty').warning('pane-check-four')
+        texts = [e['text'] for e in srv.state.log.since(0)]
+        assert sum('pane-check-three' in t for t in texts) == 1
+        assert sum('pane-check-four' in t for t in texts) == 1
+    finally:
+        srv.server_close()
