@@ -253,6 +253,22 @@ class BaseAPIInferenceModel(BaseInferenceModel):
         self.max_workers = max_workers
         self.timeout = timeout
         self.session = api_session(self.max_retries)
+        # Image URLs are fetched with a separate, credential-free session so
+        # the provider's API key (stored in ``self.session.headers``) never
+        # reaches a third-party image host.
+        self._image_session: requests.Session | None = None
+
+    @property
+    def image_session(self) -> requests.Session:
+        """
+        Session used to download ``http(s)://`` image inputs.
+
+        It carries no provider credentials: the API key lives only in
+        :attr:`session`, which talks exclusively to the provider endpoint.
+        """
+        if self._image_session is None:
+            self._image_session = get_configured_session(retries=self.max_retries)
+        return self._image_session
 
     @classmethod
     @abstractmethod
@@ -299,6 +315,26 @@ class BaseAPIInferenceModel(BaseInferenceModel):
         guess, _ = mimetypes.guess_type(image_path)
         return guess or 'image/jpeg'
 
+    def _media_type_from_response(self, content_type: str | None, url: str) -> str:
+        """
+        Derive a provider-safe image media type from a ``Content-Type`` header.
+
+        Providers reject parameters (``image/jpeg; charset=utf-8``) and
+        non-image types such as the ``binary/octet-stream`` that object stores
+        serve by default, so only a bare ``image/*`` value is trusted; anything
+        else falls back to the URL's extension.
+
+        Example:
+            >>> model._media_type_from_response('image/png; charset=utf-8', 'x')
+            'image/png'
+            >>> model._media_type_from_response('binary/octet-stream', 'a.jpg')
+            'image/jpeg'
+        """
+        base = (content_type or '').split(';', 1)[0].strip().lower()
+        if base.startswith('image/'):
+            return base
+        return self._get_mime_type(Path(url.split('?', 1)[0]))
+
     def _fetch_and_encode_image(self, image_input: str | Path) -> dict[str, str] | None:
         """
         Load an image from disk or a URL and Base64-encode it.
@@ -327,11 +363,11 @@ class BaseAPIInferenceModel(BaseInferenceModel):
         try:
             if input_str.startswith(('http://', 'https://')):
                 logger.info(f'Downloading image from URL: {input_str}')
-                resp = self.session.get(input_str, timeout=REQUESTS_TIMEOUT_VAL)
+                resp = self.image_session.get(input_str, timeout=REQUESTS_TIMEOUT_VAL)
                 resp.raise_for_status()
                 image_bytes = resp.content
-                mime_type = resp.headers.get('Content-Type') or self._get_mime_type(
-                    Path(input_str)
+                mime_type = self._media_type_from_response(
+                    resp.headers.get('Content-Type'), input_str
                 )
             else:
                 path_obj = Path(image_input)

@@ -215,6 +215,50 @@ def test_base_api_model_mime_and_encoding(image, requests_mock):
     assert model._fetch_and_encode_image(image.parent / 'missing.png') is None
 
 
+@pytest.mark.parametrize(
+    ('factory', 'header'),
+    [
+        (lambda: ClaudeInference(api_key='sk-ant-SECRET'), 'x-api-key'),
+        (lambda: OpenAIInference(api_key='sk-openai-SECRET'), 'Authorization'),
+        (lambda: GeminiInference(api_key='AIza-SECRET'), 'x-goog-api-key'),
+    ],
+)
+def test_image_urls_are_fetched_without_provider_credentials(
+    factory, header, image, requests_mock
+):
+    """The provider API key must never be sent to a third-party image host."""
+    model = factory()
+    assert header in model.session.headers
+    requests_mock.get(
+        'https://cdn.example.org/tile.jpg',
+        content=image.read_bytes(),
+        headers={'Content-Type': 'image/jpeg'},
+    )
+    encoded = model._fetch_and_encode_image('https://cdn.example.org/tile.jpg')
+    assert encoded['mime_type'] == 'image/jpeg'
+    sent = requests_mock.request_history[-1].headers
+    assert header not in sent
+    assert 'SECRET' not in ' '.join(sent.values())
+
+
+def test_remote_image_media_type_is_normalised(image, requests_mock):
+    """Parameters are stripped and non-image types fall back to the extension."""
+    model = OpenAIInference(api_key='sk-test')
+    cases = {
+        'https://cdn.example.org/a.jpg': ('image/jpeg; charset=utf-8', 'image/jpeg'),
+        'https://cdn.example.org/b.png': ('binary/octet-stream', 'image/png'),
+        'https://cdn.example.org/c.png?sig=1': (
+            'application/octet-stream',
+            'image/png',
+        ),
+        'https://cdn.example.org/d.webp': (None, 'image/webp'),
+    }
+    for url, (content_type, expected) in cases.items():
+        headers = {'Content-Type': content_type} if content_type else {}
+        requests_mock.get(url, content=image.read_bytes(), headers=headers)
+        assert model._fetch_and_encode_image(url)['mime_type'] == expected
+
+
 # ==========================================
 # 2. OpenAI-compatible wrappers
 # ==========================================
