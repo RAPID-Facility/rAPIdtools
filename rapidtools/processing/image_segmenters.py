@@ -314,10 +314,27 @@ class SAM3ImageSegmenter:
                         else [result.bounding_boxes]
                     )
 
+                # The model returns exactly one entry per input image (``None``
+                # for images it could not load); anything else would silently
+                # shift masks onto the wrong images, so treat it as a failure.
+                if len(masks_list) != len(batch) or len(boxes_list) != len(batch):
+                    logger.error(
+                        f'SAM 3 returned {len(masks_list)} mask and '
+                        f'{len(boxes_list)} box entries for a batch of '
+                        f'{len(batch)} images; skipping the batch.'
+                    )
+                    failed_count += len(batch)
+                    continue
+
                 # Map the results back to the original assets and images:
                 for (asset, img), masks, boxes in zip(
-                    batch, masks_list, boxes_list, strict=False
+                    batch, masks_list, boxes_list, strict=True
                 ):
+                    if masks is None:
+                        logger.warning(f'SAM 3 could not process image {img.id}.')
+                        failed_count += 1
+                        continue
+
                     asset.attributes.setdefault('sam3_masks', {})
                     asset.attributes.setdefault('sam3_bounding_boxes', {})
 

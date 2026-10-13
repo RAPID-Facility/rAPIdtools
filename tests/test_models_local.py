@@ -684,7 +684,7 @@ def test_sam3_run_inference(fake_sam, image, tmp_path):
     )
     assert out.text is None
     assert len(out.masks) == 2 and out.masks[0].shape == (2, 8, 8)
-    assert out.bounding_boxes == [[[0, 0, 4, 4], [4, 4, 8, 8]]]
+    assert out.bounding_boxes == [[[0, 0, 4, 4], [4, 4, 8, 8]], None]
     assert out.raw_response['status'] == 'success'
     assert out.raw_response['scores'] == [[pytest.approx(0.9), pytest.approx(0.8)]] * 2
     proc = FakeSamProcessor.created[-1]
@@ -771,3 +771,18 @@ def test_sam3_deprecated_sampling_arguments_and_config(fake_sam, image):
         image, 'x', threshold=0.9, config=SegmentationConfig(threshold=0.2)
     )
     assert proc.calls[-1][1] == 0.9  # explicit keyword wins
+
+
+def test_sam3_keeps_placeholders_for_unreadable_images(fake_sam, image, tmp_path):
+    """Per-image outputs stay aligned with the inputs when one image fails."""
+    corrupt = tmp_path / 'corrupt.jpg'
+    corrupt.write_bytes(b'not an image')
+    sam = SAM3Inference()
+    out = sam.run_inference([corrupt, image], 'building')
+    assert len(out.masks) == 2 and out.masks[0] is None
+    assert out.masks[1].shape == (2, 8, 8)
+    assert out.bounding_boxes == [None, [[0, 0, 4, 4], [4, 4, 8, 8]]]
+    assert out.raw_response['scores'][0] is None
+    assert out.raw_response['failed_indices'] == [0]
+    # Only the readable image reached the processor:
+    assert FakeSamProcessor.created[-1].calls[0] == ('process', 1, ['building'])

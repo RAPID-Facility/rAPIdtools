@@ -364,3 +364,41 @@ def test_call_cancelled_between_batches(fake_sam, collection):
     with pytest.raises(OperationCancelled):
         seg(collection)
     assert len(fake_sam['instance'].calls) == 1
+
+
+def test_call_skips_placeholder_results_without_shifting(fake_sam, collection):
+    """A None mask entry marks that image failed; the others keep their masks."""
+    seg = SAM3ImageSegmenter(prompt='building', batch_size=10)
+    inst = fake_sam['instance']
+    real_run = inst.run_inference
+
+    def with_first_failed(image_inputs, *args, **kwargs):
+        out = real_run(image_inputs, *args, **kwargs)
+        out.masks[0] = None
+        out.bounding_boxes[0] = None
+        return out
+
+    inst.run_inference = with_first_failed
+    seg(collection)
+    a1 = collection['a1']
+    assert set(a1.attributes['sam3_masks']) == {'a1_street'}
+    assert set(collection['a2'].attributes['sam3_masks']) == {'a2_aerial'}
+
+
+def test_call_rejects_misaligned_results(fake_sam, collection, caplog):
+    """A result list shorter than the batch is a failure, not a shifted match."""
+    seg = SAM3ImageSegmenter(prompt='building', batch_size=10)
+    inst = fake_sam['instance']
+    real_run = inst.run_inference
+
+    def drop_first(image_inputs, *args, **kwargs):
+        out = real_run(image_inputs, *args, **kwargs)
+        out.masks = out.masks[1:]
+        out.bounding_boxes = out.bounding_boxes[1:]
+        return out
+
+    inst.run_inference = drop_first
+    with caplog.at_level(logging.ERROR):
+        seg(collection)
+    assert 'skipping the batch' in caplog.text
+    assert 'sam3_masks' not in collection['a1'].attributes

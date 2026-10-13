@@ -195,8 +195,12 @@ class SAM3Inference(BaseLocalInferenceModel):
         Returns:
             ModelOutput | None: ``masks`` holds one ``(n, H, W)`` array per
             image, ``bounding_boxes`` one ``[[x0, y0, x1, y1], ...]`` list per
-            image, and ``raw_response['scores']`` the confidences. ``None`` when
-            no image loads or inference fails.
+            image, and ``raw_response['scores']`` the confidences. All three
+            lists have exactly one entry per input image, in input order; an
+            image that could not be loaded (or a result without boxes/scores)
+            is represented by ``None``, and ``raw_response['failed_indices']``
+            lists the positions that failed. ``None`` when no image loads or
+            inference fails.
 
         Example:
             >>> from rapidtools.models import SAM3Inference
@@ -219,15 +223,28 @@ class SAM3Inference(BaseLocalInferenceModel):
             else list(image_inputs)
         )
 
+        # Images that fail to load keep a ``None`` placeholder in every
+        # per-image output list so callers can zip the results back onto
+        # their inputs by position.
         loaded_images = []
-        for img_input in image_list:
+        loaded_indices: list[int] = []
+        failed_indices: list[int] = []
+        for index, img_input in enumerate(image_list):
             pil_img = self._load_image_as_pil(img_input)
             if pil_img:
                 loaded_images.append(pil_img)
+                loaded_indices.append(index)
+            else:
+                failed_indices.append(index)
 
         if not loaded_images:
             logger.error(f'{log_ctx} No valid images could be loaded.')
             return None
+        if failed_indices:
+            logger.warning(
+                f'{log_ctx} {len(failed_indices)} of {len(image_list)} images '
+                'could not be loaded; their results are None.'
+            )
 
         try:
             processor_args: dict[str, Any] = {
@@ -258,15 +275,16 @@ class SAM3Inference(BaseLocalInferenceModel):
                 target_sizes=inputs['original_sizes'].tolist(),
             )
 
-            extracted_masks = []
-            extracted_boxes = []
-            extracted_scores = []
-            for res in results:
-                extracted_masks.append(res['masks'].cpu().numpy())
+            n_inputs = len(image_list)
+            extracted_masks: list = [None] * n_inputs
+            extracted_boxes: list = [None] * n_inputs
+            extracted_scores: list = [None] * n_inputs
+            for index, res in zip(loaded_indices, results, strict=True):
+                extracted_masks[index] = res['masks'].cpu().numpy()
                 if 'boxes' in res:
-                    extracted_boxes.append(res['boxes'].cpu().numpy().tolist())
+                    extracted_boxes[index] = res['boxes'].cpu().numpy().tolist()
                 if 'scores' in res:
-                    extracted_scores.append(res['scores'].cpu().numpy().tolist())
+                    extracted_scores[index] = res['scores'].cpu().numpy().tolist()
 
             return ModelOutput(
                 text=None,  # SAM outputs segments, not conversational text
@@ -276,6 +294,7 @@ class SAM3Inference(BaseLocalInferenceModel):
                     'status': 'success',
                     'device': str(self.model.device),
                     'scores': extracted_scores,
+                    'failed_indices': failed_indices,
                 },
             )
         except torch.OutOfMemoryError:
