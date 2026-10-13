@@ -913,3 +913,50 @@ def test_read_patch_and_footprint_coverage_helpers(tmp_path):
             np.empty((3, 0, 0), dtype='uint8'), box(0, 0, 1, 1), Window(0, 0, 0, 0), src
         )
         assert empty == 0.0
+
+
+def test_global_stats_ignore_nan_nodata_and_patches_stay_bright(tmp_path):
+    """Float rasters with NaN nodata get finite stats and non-black patches."""
+    data = np.linspace(0.1, 0.9, 3 * 32 * 32, dtype=np.float32).reshape(3, 32, 32)
+    data[:, :, :8] = np.nan
+    transform = from_origin(-118.2, 34.1, 1e-4, 1e-4)
+    path = _write_raster(
+        tmp_path / 'nan.tif', data, CRS.from_epsg(4326), transform, nodata=np.nan
+    )
+    with OrthomosaicReader(path) as reader:
+        assert math.isfinite(reader.global_min) and math.isfinite(reader.global_max)
+        assert 0.1 <= reader.global_min < reader.global_max <= 0.9
+        min_lon, min_lat, max_lon, max_lat = reader.dataset_extent
+        # A patch straddling the NaN strip on the left:
+        lon = min_lon + 0.25 * (max_lon - min_lon)
+        lat = (min_lat + max_lat) / 2.0
+        ring = _square_ring(lon, lat, 4e-4)
+        result = reader.get_image_patch(ring, max_missing_data_ratio=0.9)
+        assert result is not None
+        arr = np.asarray(result[0])
+        assert arr.max() > 100  # valid pixels are not crushed to black
+        assert arr.min() == 0  # NaN pixels map to the darkest value
+
+
+def test_global_stats_use_rgb_bands_only(tmp_path):
+    """An alpha band must not stretch 16-bit RGB orthomosaics to black."""
+    rng = np.random.default_rng(3)
+    rgb = rng.integers(500, 4000, (3, 32, 32), dtype=np.uint16)
+    alpha = np.full((1, 32, 32), 65535, dtype=np.uint16)
+    data = np.concatenate([rgb, alpha])
+    transform = from_origin(-118.2, 34.1, 1e-4, 1e-4)
+    path = _write_raster(tmp_path / 'rgba16.tif', data, CRS.from_epsg(4326), transform)
+    with OrthomosaicReader(path) as reader:
+        assert reader.global_max <= 4000
+        lon, lat = _center_lonlat(reader)
+        result = reader.get_image_patch([(lon, lat)], buffer=4e-4)
+        assert result is not None
+        assert np.asarray(result[0]).mean() > 60
+
+
+def test_get_image_patch_zero_missing_ratio_accepts_complete_patch(geo_tif):
+    """max_missing_data_ratio=0.0 keeps patches that have no missing pixels."""
+    with OrthomosaicReader(geo_tif) as reader:
+        lon, lat = _center_lonlat(reader)
+        ring = _square_ring(lon, lat, 2e-4)
+        assert reader.get_image_patch(ring, max_missing_data_ratio=0.0) is not None

@@ -308,18 +308,22 @@ class OrthomosaicReader:
                 min(target_size, self._dataset.width),
             )
 
-        # Read the overview or downsampled thumbnail:
-        thumbnail = self._dataset.read(out_shape=out_shape)
+        # Read the overview or downsampled thumbnail. Only the bands that end
+        # up in the RGB patches take part in the statistics: an alpha or
+        # near-infrared band (65535 everywhere for 16-bit RGBA) would
+        # otherwise dominate the percentiles and leave every patch dark.
+        thumbnail = self._dataset.read(out_shape=out_shape)[:3]
 
-        # Use the dataset's nodata value:
-        nodata_val = self._dataset.nodata
-
-        if nodata_val is not None:
-            # Filter out true nodata pixels:
-            valid_data = thumbnail[thumbnail != nodata_val]
-        else:
-            # Fallback if the raster lacks explicit nodata metadata:
-            valid_data = thumbnail[thumbnail != 0]
+        # Validity comes from the dataset mask, which honours nodata values
+        # (including NaN, which never compares equal to itself), alpha bands
+        # and internal masks alike:
+        valid_mask = (
+            self._dataset.read_masks(1, out_shape=out_shape[1:]) > 0
+            if self._dataset.nodata is not None or self._dataset.count > 3
+            else np.any(thumbnail != 0, axis=0)
+        )
+        valid_data = thumbnail[:, valid_mask]
+        valid_data = valid_data[np.isfinite(valid_data)]
 
         # Calculate robust global min/max using the 1st and 99th percentiles:
         if valid_data.size > 0:
@@ -429,7 +433,7 @@ class OrthomosaicReader:
             max_missing_data_ratio:
                 The maximum acceptable fraction (0.0 to 1.0) of missing pixels
                 in the crop, judged from the dataset mask (nodata value, alpha
-                band or internal mask). If reached, extraction is aborted.
+                band or internal mask). If exceeded, extraction is aborted.
             buffer:
                 The padding applied around the geometry. Can be a percentage
                 (e.g., '20%'), an absolute CRS distance (e.g., 50.0), or a
@@ -572,7 +576,7 @@ class OrthomosaicReader:
             )
             if coverage < min_footprint_coverage:
                 return None
-        elif (1.0 - float(valid_mask.mean())) >= max_missing_data_ratio:
+        elif (1.0 - float(valid_mask.mean())) > max_missing_data_ratio:
             return None
 
         # Standardize the array to an 8-bit RGB image suitable for PIL and AI
@@ -1231,6 +1235,13 @@ class OrthomosaicReader:
 
         # If the image is already 8-bit, skip scaling, otherwise, normalize:
         if image_array.dtype != np.uint8:
+            # NaN nodata (common in float rasters) would poison every
+            # comparison below and come out as arbitrary values after the
+            # uint8 cast; map it to the darkest valid value instead:
+            if not np.all(np.isfinite(img)):
+                floor = global_min if global_min is not None else 0.0
+                img = np.nan_to_num(img, nan=floor, posinf=floor, neginf=floor)
+
             # --- Radiometric Scaling Hierarchy ---
 
             # Condition 1: Scale the patch relative to the entire map's
