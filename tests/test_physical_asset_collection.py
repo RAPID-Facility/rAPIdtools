@@ -1117,3 +1117,28 @@ def test_shapefile_legacy_image_columns_and_sidecars(tmp_path, caplog):
     with caplog.at_level(logging.WARNING):
         assert len(PhysicalAssetCollection.from_shapefile(shp)) == 3
     assert 'Ignoring unreadable sidecar' in caplog.text
+
+
+def test_shapefile_roundtrip_keeps_asset_id_with_id_attribute(tmp_path):
+    """An attribute named 'id' must not replace the asset's own ID on read-back."""
+    col = PhysicalAssetCollection(
+        [PhysicalAsset(id='bldg_1', geometry=Point(0, 0), attributes={'id': 42})]
+    )
+    shp_path = tmp_path / 'ids.shp'
+    col.to_shapefile(shp_path)
+    imported = PhysicalAssetCollection.from_shapefile(shp_path)
+    assert len(imported) == 1 and 'bldg_1' in imported
+    assert imported['bldg_1'].attributes['id'] == 42
+
+
+def test_shapefile_roundtrip_keeps_invalid_geometry(tmp_path, caplog):
+    """Invalid (bow-tie) geometry survives the round trip like it does in GeoJSON."""
+    bowtie = Polygon([(0, 0), (1, 1), (1, 0), (0, 1), (0, 0)])
+    col = PhysicalAssetCollection([PhysicalAsset(id='bt', geometry=bowtie)])
+    shp_path = tmp_path / 'bowtie.shp'
+    col.to_shapefile(shp_path)
+    with caplog.at_level(logging.WARNING):
+        imported = PhysicalAssetCollection.from_shapefile(shp_path)
+    assert len(imported) == 1 and 'bt' in imported
+    assert not imported['bt'].geometry.is_valid
+    assert 'Skipping asset' not in caplog.text
