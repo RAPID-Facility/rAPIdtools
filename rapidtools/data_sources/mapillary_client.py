@@ -1140,9 +1140,27 @@ class MapillaryClient:
                         f'Critical error in tile thread {tile}: {self._redact(e)}'
                     )
 
+        # A zoom-14 tile is roughly 2.4 km across, far larger than a typical
+        # search box, so keep only the images whose position falls inside the
+        # requested bbox (this also avoids per-image Graph API calls for the
+        # rest of the tile):
+        min_lon, min_lat, max_lon, max_lat = bbox.bounds
+        tile_count = len(final_collection)
+        final_collection = ImageCollection(
+            [
+                img
+                for img in final_collection
+                if self._inside_bbox(img, min_lon, min_lat, max_lon, max_lat)
+            ]
+        )
+
         # Exit early if no images are returned:
         unique_count = len(final_collection)
-        logger.info(f'Scan complete. Found {unique_count} unique images.')
+        logger.info(
+            f'Scan complete. Found {unique_count} unique images inside the '
+            f'bounding box ({tile_count - unique_count} more in the covering '
+            'tiles were discarded).'
+        )
 
         if unique_count == 0:
             return final_collection
@@ -1172,6 +1190,22 @@ class MapillaryClient:
             )
 
         return final_collection
+
+    @staticmethod
+    def _inside_bbox(
+        image: ImageAsset,
+        min_lon: float,
+        min_lat: float,
+        max_lon: float,
+        max_lat: float,
+    ) -> bool:
+        """Return whether a tile-derived image lies inside the given bounds."""
+        props = image.properties or {}
+        lon = props.get('longitude')
+        lat = props.get('latitude')
+        if lon is None or lat is None:
+            return False
+        return min_lon <= float(lon) <= max_lon and min_lat <= float(lat) <= max_lat
 
     def _download_image(self, url: str, destination: Path) -> bool:
         """

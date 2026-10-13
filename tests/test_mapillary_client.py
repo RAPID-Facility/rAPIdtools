@@ -102,6 +102,26 @@ def _tile_url(x: int, y: int, z: int) -> str:
     return TILE_URL_TEMPLATE.format(z=z, x=x, y=y, token=TOKEN)
 
 
+def _mvt_point_at(lon: float, lat: float, tile, extent: int = 4096):
+    """Local MVT (y-up) coordinates of a WGS84 position inside ``tile``."""
+    x, y, z = tile
+    fx, fy = TileUtils.latlon_to_tile(lat, lon, z)
+    px = int((fx - x) * extent)
+    py_down = int((fy - y) * extent)
+    return px, extent - py_down
+
+
+def _inside_point(bbox, tile, extent: int = 4096):
+    """Local MVT coordinates of a point inside both ``bbox`` and ``tile``."""
+    x, y, z = tile
+    lon0, lat_top = TileUtils.mvt_to_wgs84(0, 0, x, y, z, extent=extent)
+    lon1, lat_bot = TileUtils.mvt_to_wgs84(extent, extent, x, y, z, extent=extent)
+    min_lon, min_lat, max_lon, max_lat = bbox.bounds
+    lon = (max(lon0, min_lon) + min(lon1, max_lon)) / 2.0
+    lat = (max(lat_bot, min_lat) + min(lat_top, max_lat)) / 2.0
+    return _mvt_point_at(lon, lat, tile, extent)
+
+
 def _json_response(payload: dict, status_code: int = 200) -> dict:
     """Build a requests_mock response dict carrying a JSON content type."""
     return {
@@ -921,10 +941,11 @@ def test_fetch_images_in_bbox_tile_metadata_only(client, requests_mock):
     assert len(tiles) == 2
 
     for i, (x, y, z) in enumerate(tiles):
+        px, py = _inside_point(bbox, (x, y, z))
         tile = _image_tile(
             [
                 _point_feature(
-                    500, 500, id=100 + i, creator_id=RAPID_CREATOR_ID, is_pano=True
+                    px, py, id=100 + i, creator_id=RAPID_CREATOR_ID, is_pano=True
                 )
             ]
         )
@@ -941,9 +962,12 @@ def test_fetch_images_in_bbox_enriches_with_metadata(client, requests_mock):
     bbox = BoundingBox(-118.15, 34.18, -118.14, 34.19)
     tiles = TileUtils.bbox_to_mapbox_tiles(bbox, zoom=14)
     x, y, z = tiles[0]
+    px, py = _inside_point(bbox, (x, y, z))
     requests_mock.get(
         _tile_url(x, y, z),
-        content=_image_tile([_point_feature(5, 5, id=7, creator_id=RAPID_CREATOR_ID)]),
+        content=_image_tile(
+            [_point_feature(px, py, id=7, creator_id=RAPID_CREATOR_ID)]
+        ),
     )
     for tx, ty, tz in tiles[1:]:
         requests_mock.get(_tile_url(tx, ty, tz), content=_image_tile([]))
@@ -958,6 +982,38 @@ def test_fetch_images_in_bbox_enriches_with_metadata(client, requests_mock):
     assert asset.properties['compass_angle'] == 91.5
     assert 'latitude' in asset.properties
     assert asset.path.exists()
+
+
+def test_fetch_images_in_bbox_drops_images_outside_bbox(client, requests_mock):
+    """Images elsewhere in the covering tiles are discarded before any Graph call."""
+    bbox = BoundingBox(-118.15, 34.18, -118.14, 34.19)
+    tiles = TileUtils.bbox_to_mapbox_tiles(bbox, zoom=14)
+    x, y, z = tiles[0]
+    inside = _inside_point(bbox, (x, y, z))
+    # A point in the same tile but 1/10 of a degree south of the box:
+    outside = _mvt_point_at(-118.145, 34.185 - 0.1, (x, y, z))
+    # The tile's own corner, which is outside the small box too:
+    corner = (5, 5)
+    requests_mock.get(
+        _tile_url(x, y, z),
+        content=_image_tile(
+            [
+                _point_feature(*inside, id=1, creator_id=RAPID_CREATOR_ID),
+                _point_feature(*outside, id=2, creator_id=RAPID_CREATOR_ID),
+                _point_feature(*corner, id=3, creator_id=RAPID_CREATOR_ID),
+            ]
+        ),
+    )
+    for tx, ty, tz in tiles[1:]:
+        requests_mock.get(_tile_url(tx, ty, tz), content=_image_tile([]))
+    _register_metadata(requests_mock, '1', compass_angle=10.0)
+
+    result = client.fetch_images_in_bbox(bbox, fields=['compass_angle'])
+    assert result.get_ids() == ['1']
+    graph_calls = [
+        r for r in requests_mock.request_history if 'tiles.mapillary.com' not in r.url
+    ]
+    assert len(graph_calls) == 1 and '1' in graph_calls[0].url
 
 
 def test_fetch_images_in_bbox_no_images_returns_early(client, requests_mock):
@@ -995,12 +1051,18 @@ def test_fetch_images_in_bbox_split_quadrants_cover_parent(client, requests_mock
         quadrant_tiles.update(TileUtils.bbox_to_mapbox_tiles(quad, zoom=14))
     assert quadrant_tiles == parent_tiles
 
-    # Every tile returns one RAPID image whose ID encodes its tile:
+    # Every tile returns one RAPID image (inside the box) whose ID encodes
+    # its tile:
     for x, y, z in parent_tiles:
+        px, py = _inside_point(bbox, (x, y, z))
         requests_mock.get(
             _tile_url(x, y, z),
             content=_image_tile(
-                [_point_feature(1, 1, id=x * 100000 + y, creator_id=RAPID_CREATOR_ID)]
+                [
+                    _point_feature(
+                        px, py, id=x * 100000 + y, creator_id=RAPID_CREATOR_ID
+                    )
+                ]
             ),
         )
 
