@@ -30,7 +30,11 @@ RUN mkdir -p /data /output /cache/rapidtools /cache/huggingface
 ENV HOME=/cache
 VOLUME ["/data", "/output", "/cache"]
 EXPOSE 8765
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s CMD curl -fsS http://127.0.0.1:8765/ >/dev/null || exit 1
+# The probe presents the token (the app answers 401 without it) and marks
+# itself so it does not count as user activity for idle-shutdown.sh.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s CMD \
+    curl -fsS -H "X-Rapidtools-Token: ${RAPIDTOOLS_GUI_TOKEN:-}" -H "X-Rapidtools-Probe: 1" \
+        http://127.0.0.1:8765/api/state >/dev/null || exit 1
 
 # The token, SMTP settings and public URL come from the environment (see .env.example).
 CMD ["rapidtools-gui", "--host", "0.0.0.0", "--port", "8765", "--no-browser", "--data-root", "/data", "--output-dir", "/output"]

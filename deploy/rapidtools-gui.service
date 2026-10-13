@@ -1,0 +1,23 @@
+# systemd unit for a rapidtools GUI server installed without Docker.
+#   sudo cp deploy/rapidtools-gui.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now rapidtools-gui
+# Adjust User, the conda path in ExecStart and the three folders. The token and
+# SMTP settings are read from /etc/rapidtools/gui.env (same names as .env.example).
+[Unit]
+Description=rapidtools GUI server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=rapidtools
+EnvironmentFile=/etc/rapidtools/gui.env
+Environment=RAPIDTOOLS_GUI_NO_BROWSER=1
+ExecStart=/home/rapidtools/miniconda3/envs/rapidtools/bin/rapidtools-gui \
+    --host 127.0.0.1 --port 8765 --no-browser \
+    --data-root /srv/rapidtools/data --output-dir /srv/rapidtools/output \
+    --public-url https://gui.example.edu/
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

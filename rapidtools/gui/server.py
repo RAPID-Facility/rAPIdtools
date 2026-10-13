@@ -437,6 +437,9 @@ class AppState:
         self.notify: dict[str, str] = {'target': '', 'kind': ''}
         self.notify_last: dict[str, Any] = {'seq': 0, 'ok': None, 'message': ''}
         self.public_url = ''
+        # When a browser (not a monitoring probe) last used the API; the
+        # idle-shutdown script reads ``idle_s`` from /api/state.
+        self.last_activity = time.time()
         # Satellite tiles served to the map, most recent last.
         self.tile_cache: OrderedDict[tuple[str, int, int, int], bytes] = OrderedDict()
         self.tile_lock = threading.Lock()
@@ -742,6 +745,7 @@ class AppState:
                     'last': dict(self.notify_last),
                 },
                 'busy': self.busy(),
+                'idle_s': round(time.time() - self.last_activity, 1),
                 'status': self.status,
                 'results': list(self.results),
                 'log_seq': self.log.seq,
@@ -813,26 +817,30 @@ class Api:
         if self.data_root is None:
             return path
         resolved = path.resolve()
-        if resolved != self.data_root and self.data_root not in resolved.parents:
+        if not self._is_servable(resolved):
             raise ApiError(
-                f'Access is limited to {self.data_root}.', HTTPStatus.FORBIDDEN
+                f'Access is limited to {self.data_root} and {self.state.output_dir}.',
+                HTTPStatus.FORBIDDEN,
             )
         return resolved
 
     def _is_servable(self, path: Path) -> bool:
         """
-        Return whether a file referenced by a loaded asset may be served.
+        Return whether a path may be read or written through the API.
 
-        Asset collections are user data: a GeoJSON can carry ``image_assets``
-        pointing anywhere on disk, so on a shared server (``data_root`` set)
-        only files under ``data_root`` or the current output directory (where
-        the workflow writes its own crops) are served back.
+        On a shared server (``data_root`` set) only paths under ``data_root``
+        or under the current output directory are allowed. The output
+        directory counts because the workflow writes its results, crops and
+        basemaps there, and users must be able to browse them, reload a
+        previous result and point the output directory back at it; in the
+        container it is a separate mount (``/output``) from the data root
+        (``/data``).
 
         Args:
-            path (Path): Path stored on the ``ImageAsset``.
+            path (Path): A user-supplied path or one stored on an asset.
 
         Returns:
-            bool: ``True`` when the file may be read through the API.
+            bool: ``True`` when the path may be used.
         """
         if self.data_root is None:
             return True
@@ -2571,6 +2579,18 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
             return False
         return secrets.compare_digest(presented, token)
 
+    def _note_activity(self) -> None:
+        """
+        Record that someone is using the app.
+
+        Health checks and the idle-shutdown script send the
+        ``X-Rapidtools-Probe`` header so their own polling does not count as
+        activity.
+        """
+        if self.headers.get('X-Rapidtools-Probe'):
+            return
+        self.server.state.last_activity = time.time()
+
     def _token_cookie(self) -> str:
         """Return the ``Set-Cookie`` value that remembers the access token."""
         return (
@@ -2616,6 +2636,7 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
                     self._send_login_page()
                     return
                 raise ApiError('Sign in required.', HTTPStatus.UNAUTHORIZED)
+            self._note_activity()
             if path in ('/', '/index.html'):
                 self._send_file(STATIC_DIR / 'index.html')
             elif path.startswith('/static/'):
@@ -2785,6 +2806,7 @@ class GuiRequestHandler(BaseHTTPRequestHandler):
                 return
             if not self._authorized():
                 raise ApiError('Sign in required.', HTTPStatus.UNAUTHORIZED)
+            self._note_activity()
             handler = routes.get(path)
             if handler is None:
                 raise ApiError('Not found', HTTPStatus.NOT_FOUND)

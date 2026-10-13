@@ -2117,3 +2117,44 @@ def test_log_pane_receives_rapidtools_records_once(tmp_path, monkeypatch):
         assert sum('pane-check-four' in t for t in texts) == 1
     finally:
         srv.server_close()
+
+
+def test_output_dir_outside_data_root_stays_usable(shared_gui, tmp_path):
+    """Results written outside data_root (the container's /output) can be
+    browsed, reloaded and chosen again as the output directory."""
+    client, srv, root = shared_gui
+    client.headers['Cookie'] = 'rapidtools_token=s3cret'
+    # The fixture keeps the output dir under the root; move it elsewhere, as
+    # the Docker image does (/data vs /output):
+    elsewhere = tmp_path / 'output'
+    elsewhere.mkdir()
+    srv.state.output_dir = elsewhere
+    result = elsewhere / 'assets_inferred.geojson'
+    _asset_collection_covering_pixel(2, 2).to_geojson(result)
+
+    listing = client.json('GET', f'/api/fs?kind=dir&path={elsewhere}')
+    assert listing['path'] == str(elsewhere)
+    client.json('POST', '/api/output_dir', {'path': str(elsewhere)})
+    assert client.json('POST', '/api/assets/load', {'path': str(result)})['ok']
+    # Anything outside both roots is still refused:
+    client.json('POST', '/api/output_dir', {'path': str(tmp_path)}, expect=403)
+    client.json('GET', f'/api/textfile?path={tmp_path / "x.txt"}', expect=403)
+
+
+def test_idle_seconds_ignore_probes(shared_gui):
+    """Health checks and the idle script mark themselves and do not reset idle_s."""
+    client, srv, _root = shared_gui
+    headers = {'X-Rapidtools-Token': 's3cret'}
+    probe = {**headers, 'X-Rapidtools-Probe': '1'}
+    srv.state.last_activity -= 100
+    state = client.json('GET', '/api/state', headers=probe)
+    assert state['idle_s'] >= 100
+    state = client.json('GET', '/api/state', headers=probe)
+    assert state['idle_s'] >= 100  # the probe itself did not count
+    client.json('GET', '/api/state', headers=headers)  # a browser poll
+    state = client.json('GET', '/api/state', headers=probe)
+    assert state['idle_s'] < 5
+    # An unauthorised request never counts either:
+    srv.state.last_activity -= 100
+    client.json('GET', '/api/state', expect=401)
+    assert client.json('GET', '/api/state', headers=probe)['idle_s'] >= 100
