@@ -1264,3 +1264,26 @@ def test_aerial_extractor_min_footprint_coverage(tmp_path, caplog):
         AerialImageryExtractor(
             raster, save_directory=tmp_path, min_footprint_coverage=1.5
         )
+
+
+def test_aerial_overlapping_rasters_keep_file_and_metadata_consistent(tmp_path):
+    """When two rasters cover one asset, the saved crop and its georef agree."""
+    coarse = _write_raster(tmp_path / 'a_coarse.tif', 'EPSG:4326', RASTER_BOUNDS, 64)
+    fine = _write_raster(tmp_path / 'b_fine.tif', 'EPSG:4326', RASTER_BOUNDS, 256)
+
+    def crop_size(raster_paths, out):
+        col = PhysicalAssetCollection([PhysicalAsset(id='x', geometry=_square(CX, CY))])
+        AerialImageryExtractor(raster_paths, out)(col)
+        [img] = list(col['x'].image_assets)
+        with Image.open(img.path) as im:
+            return im.size, img.properties
+
+    coarse_size, _ = crop_size([coarse], tmp_path / 'o1')
+    fine_size, _ = crop_size([fine], tmp_path / 'o2')
+    assert coarse_size != fine_size
+
+    both_size, props = crop_size([str(coarse), str(fine)], tmp_path / 'o3')
+    expected = {'a_coarse.tif': coarse_size, 'b_fine.tif': fine_size}
+    assert both_size == expected[props['source_raster']]
+    # Sorted paths make the winner deterministic: the last raster wins.
+    assert props['source_raster'] == 'b_fine.tif'

@@ -351,8 +351,9 @@ class AerialImageryExtractor:
                 # The input is a direct path to a single file:
                 paths.append(p)
 
-        # Cast to a set to efficiently remove any accidental duplicates:
-        return list(set(paths))
+        # De-duplicate and sort so that, when several rasters cover one asset,
+        # the raster that wins is the same on every run:
+        return sorted(set(paths))
 
     # ------------------------------------------------------------ outlines
     # Thin wrappers around :mod:`rapidtools.processing.outlines`, kept so the
@@ -605,7 +606,11 @@ class AerialImageryExtractor:
                             },
                         )
 
-                        asset.add_image_assets(img_asset)
+                        # Without keep_multiple_copies a later raster that
+                        # covers the same asset has just overwritten the file
+                        # on disk, so the ImageAsset (georeferencing, source
+                        # raster) must be replaced too or the two disagree:
+                        asset.image_assets.add(img_asset, overwrite=True)
                         total_extracted_count += 1
 
                     if skipped_no_imagery:
