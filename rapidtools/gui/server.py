@@ -1589,7 +1589,9 @@ class Api:
         Returns:
             dict[str, Any]: ``status`` (``'building'`` or ``'ready'``),
                 ``done`` and ``total`` tile counts, ``zoom`` and, when ready,
-                ``lines`` as flat ``[lon, lat, lon, lat, ...]`` lists.
+                ``lines`` as flat ``[lon, lat, lon, lat, ...]`` lists. An
+                index older than a week is served at once with
+                ``stale=True`` while a fresh one is built underneath.
         """
         rapid_only = str(query.get('rapid_only', '1')).lower() not in ('0', 'false', '')
         state = self.state
@@ -1628,15 +1630,24 @@ class Api:
         cache = (
             state.cache_dir / f'survey_overview_z{OVERVIEW_ZOOM}_{int(rapid_only)}.json'
         )
+        stale_lines: list[list[float]] | None = None
         try:
-            if (
-                cache.is_file()
-                and time.time() - cache.stat().st_mtime < OVERVIEW_MAX_AGE_S
-            ):
+            if cache.is_file():
+                age_s = time.time() - cache.stat().st_mtime
                 lines = json.loads(cache.read_text(encoding='utf-8'))
                 with state.lock:
                     entry.update(status='ready', lines=lines, done=1, total=1)
-                return
+                if age_s < OVERVIEW_MAX_AGE_S:
+                    return
+                # Older than a week: the map gets the old index straight away
+                # and the fresh one replaces it when the rebuild finishes.
+                stale_lines = lines
+                with state.lock:
+                    entry['stale'] = True
+                logger.info(
+                    f'Survey overview cache is {int(age_s // 86400)} days old; '
+                    'refreshing it in the background.'
+                )
         except (OSError, ValueError) as exc:
             logger.debug(f'Survey overview cache unreadable: {exc}')
         try:
@@ -1683,11 +1694,15 @@ class Api:
             except OSError as exc:
                 logger.debug(f'Could not cache the survey overview: {exc}')
             with state.lock:
-                entry.update(status='ready', lines=fetched_lines)
+                entry.update(status='ready', lines=fetched_lines, stale=False)
         except Exception as exc:  # noqa: BLE001 - reported through the state
             logger.warning(f'Survey overview failed: {exc}')
             with state.lock:
-                entry.update(status='error', error=str(exc))
+                if stale_lines is not None:
+                    # Keep serving the old index rather than nothing.
+                    entry.update(error=str(exc))
+                else:
+                    entry.update(status='error', error=str(exc))
 
     def street_routes(self, query: dict[str, Any]) -> dict[str, Any]:
         """

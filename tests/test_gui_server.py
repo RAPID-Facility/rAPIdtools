@@ -1748,6 +1748,51 @@ def test_street_sequences_endpoint_caches_per_filter(gui, monkeypatch):
     assert status == 404
 
 
+def test_street_overview_serves_old_cache_while_refreshing(gui, monkeypatch, tmp_path):
+    """A week-old index is returned at once and replaced once the rebuild ends."""
+    import os
+    import threading
+
+    client, srv = gui
+    srv.state.cache_dir = tmp_path / 'cache'
+    cache = srv.state.cache_dir / 'survey_overview_z6_1.json'
+    cache.parent.mkdir()
+    cache.write_text(json.dumps([[-100.0, 40.0, -99.0, 41.0]]))
+    old = time.time() - server_module.OVERVIEW_MAX_AGE_S - 3600
+    os.utime(cache, (old, old))
+    release = threading.Event()
+
+    class FakeMapillary:
+        def __init__(self, token, save_dir=None):
+            pass
+
+        def fetch_sequence_lines(self, z, x, y, **kwargs):
+            release.wait(5)
+            return {'extent': 4096, 'lines': [[0, 0, 4096, 4096]], 'count': 1}
+
+    monkeypatch.setattr('rapidtools.data_sources.MapillaryClient', FakeMapillary)
+    monkeypatch.setattr(
+        server_module.Api, '_download_text', lambda self, dataset: 'RAPID-TOKEN'
+    )
+    monkeypatch.setattr(server_module, '_overview_tiles', lambda: [(11, 23, 6)])
+    deadline = time.time() + 5
+    data = client.json('GET', '/api/street/overview')
+    while data['status'] != 'ready' and time.time() < deadline:
+        time.sleep(0.05)
+        data = client.json('GET', '/api/street/overview')
+    # The old index is served while the tile is still being fetched:
+    assert data['status'] == 'ready' and data.get('stale') is True
+    assert data['lines'] == [[-100.0, 40.0, -99.0, 41.0]]
+    release.set()
+    deadline = time.time() + 5
+    while data.get('stale') and time.time() < deadline:
+        time.sleep(0.05)
+        data = client.json('GET', '/api/street/overview')
+    assert data['status'] == 'ready' and data.get('stale') is False
+    assert len(data['lines']) == 1 and data['lines'] != [[-100.0, 40.0, -99.0, 41.0]]
+    assert time.time() - cache.stat().st_mtime < 60
+
+
 def test_street_overview_builds_in_background_and_caches(gui, monkeypatch, tmp_path):
     client, srv = gui
     srv.state.cache_dir = tmp_path / 'cache'

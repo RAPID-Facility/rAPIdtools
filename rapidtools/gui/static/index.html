@@ -2053,10 +2053,13 @@ Justification: [2-3 sentences citing visual evidence]`;
       M.overviewTimer = null;
       try {
         const d = await api(`/api/street/overview?rapid_only=${M.rapidOnly ? 1 : 0}`);
-        if (d.lines) { d.uv = d.lines.map(l => { const out = new Float64Array(l.length); for (let i = 0; i < l.length; i += 2) { out[i] = lonToX(l[i], 0); out[i + 1] = latToY(l[i + 1], 0); } return out; }); d.bb = d.uv.map(flatBBox); }
-        M.overview = d; M.seqGen++; scheduleMap();
+        M.overview = d;
+        if (d.lines) {
+          d.uv = d.lines.map(l => { const out = new Float64Array(l.length); for (let i = 0; i < l.length; i += 2) { out[i] = lonToX(l[i], 0); out[i + 1] = latToY(l[i + 1], 0); } return out; }); d.bb = d.uv.map(flatBBox);
+          M.seqGen++; scheduleMap();   // only a new index is worth redrawing the layer for
+        } else if (!(M.rapidOnly && M.db)) $('map-cov-info').textContent = `indexing survey coverage… ${d.done}/${d.total || '?'} tiles`;
         if (d.status === 'building') requestOverview();
-      } catch (e) { M.overview = { status: 'error', error: e.message }; scheduleMap(); }
+      } catch (e) { M.overview = { status: 'error', error: e.message }; $('map-cov-info').textContent = 'coverage index failed: ' + e.message; }
     }, M.overview ? 2500 : 0);
   }
   function flatBBox(l) { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (let i = 0; i < l.length; i += 2) { if (l[i] < x0) x0 = l[i]; if (l[i] > x1) x1 = l[i]; if (l[i + 1] < y0) y0 = l[i + 1]; if (l[i + 1] > y1) y1 = l[i + 1]; } return [x0, y0, x1, y1]; }
@@ -2086,26 +2089,48 @@ Justification: [2-3 sentences citing visual evidence]`;
     else el.innerHTML = `route database failed: ${esc(st.error || '')} <a href="#" id="map-db-rebuild">retry</a>`;
     const link = $('map-db-rebuild'); if (link) link.addEventListener('click', async (e) => { e.preventDefault(); try { await api('/api/street/routes/rebuild', {}); M.db = null; M.dbStatus = null; requestRoutes(); toast('Rebuilding the route database from Mapillary…'); } catch (err) { toast(err.message, 'error'); } });
   }
+  // Country-scale glow: routes are hairlines below zoom 6, so each survey site
+  // gets a soft dot. One dot per occupied 4-px screen cell (brighter where
+  // several routes share a cell) costs a few milliseconds; one blended dot per
+  // route cost over a second of raster time per redraw with 30k routes.
+  function glowDots(ctx, visible, s, W, H, heat) {
+    const r = M.z < 4 ? 9 : 12, cell = 4, pad = 4, cols = Math.ceil(W / cell) + 2 * pad;
+    const counts = new Map();
+    for (const l of visible) {
+      const px = (l[0] * s - M.cx) * MTILE + W / 2, py = (l[1] * s - M.cy) * MTILE + H / 2;
+      if (px < -r || py < -r || px > W + r || py > H + r) continue;
+      const k = (Math.floor(py / cell) + pad) * cols + Math.floor(px / cell) + pad;
+      counts.set(k, (counts.get(k) || 0) + 1);
+    }
+    const base = heat ? 0.12 : 0.10;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = heat ? 'rgb(255,140,0)' : 'rgb(0,229,255)';
+    for (const [k, n] of counts) {
+      const px = ((k % cols) - pad + 0.5) * cell, py = (Math.floor(k / cols) - pad + 0.5) * cell;
+      ctx.globalAlpha = Math.min(0.6, base * n);
+      ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
   function drawRoutesDB(ctx, W, H, heat, passes) {
     const db = M.db, s = Math.pow(2, M.z);
     const u0 = (M.cx - W / 2 / MTILE - 1) / s, u1 = (M.cx + W / 2 / MTILE + 1) / s, v0 = (M.cy - H / 2 / MTILE - 1) / s, v1 = (M.cy + H / 2 / MTILE + 1) / s;
     const start = $('street-start').value, end = $('street-end').value;
-    const visible = [];
+    const visible = [], lines = [];
+    // Below zoom 6 a survey route spans well under a pixel: it shows as a glow
+    // dot, and only routes long enough to read as a line are stroked.
+    const minU = M.z < 6 ? 1.5 / (s * MTILE) : 0;
     for (let n = 0; n < db.uv.length; n++) {
       const b = db.bb[n]; if (b[2] < u0 || b[0] > u1 || b[3] < v0 || b[1] > v1) continue;
       const d = db.dates[n]; if ((start || end) && !d) continue; if (start && d < start) continue; if (end && d > end) continue;
       visible.push(db.uv[n]);
+      if (b[2] - b[0] >= minU || b[3] - b[1] >= minU) lines.push(db.uv[n]);
     }
-    if (M.z < 6) {
-      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = heat ? 'rgba(255,140,0,.12)' : 'rgba(0,229,255,.10)';
-      const r = M.z < 4 ? 9 : 12;
-      for (const l of visible) { const px = (l[0] * s - M.cx) * MTILE + W / 2, py = (l[1] * s - M.cy) * MTILE + H / 2; ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill(); }
-      ctx.restore();
-    }
+    if (M.z < 6) glowDots(ctx, visible, s, W, H, heat);
     // Vertices sit about a metre apart; skip the ones that fall on the same pixel.
     const step = 2 * Math.max(1, Math.floor(Math.pow(2, 13 - M.z)));
-    for (let pass = 0; pass < passes; pass++) { strokeStyle(ctx, heat, pass); ctx.beginPath();
-      for (const l of visible) {
+    // The wide heat-map glow pass is what the dots already show at country scale.
+    for (let pass = M.z < 6 ? passes - 1 : 0; pass < passes; pass++) { strokeStyle(ctx, heat, pass); ctx.beginPath();
+      for (const l of lines) {
         const last = l.length - 2;
         for (let i = 0; i <= last; i += step) { const px = (l[i] * s - M.cx) * MTILE + W / 2, py = (l[i + 1] * s - M.cy) * MTILE + H / 2; if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); }
         if (step > 2) ctx.lineTo((l[last] * s - M.cx) * MTILE + W / 2, (l[last + 1] * s - M.cy) * MTILE + H / 2);
@@ -2131,21 +2156,27 @@ Justification: [2-3 sentences citing visual evidence]`;
       return;
     }
     if (Ls < 6) {
-      const ov = M.overview; if (!ov || ov.status === 'building') requestOverview();
+      const ov = M.overview;
+      // RAPID-only views draw from the route database, so the country-wide
+      // index is only fetched when that database is unavailable.
+      const needOverview = !M.rapidOnly || (M.dbStatus && M.dbStatus.status === 'error');
+      if (needOverview && (!ov || ov.status === 'building')) requestOverview();
       if (ov && ov.status === 'ready') {
         const s = Math.pow(2, M.z);
         // Routes are hairlines at country scale: glow each survey site first so
         // it can be spotted, then draw the routes on top.
-        ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = heat ? 'rgba(255,140,0,.12)' : 'rgba(0,229,255,.10)';
-        const r = M.z < 4 ? 9 : 12;
         // View in unit coordinates, padded by a tile, for culling:
         const u0 = (M.cx - W / 2 / MTILE - 1) / s, u1 = (M.cx + W / 2 / MTILE + 1) / s, v0 = (M.cy - H / 2 / MTILE - 1) / s, v1 = (M.cy + H / 2 / MTILE + 1) / s;
-        const visible = []; for (let n = 0; n < ov.uv.length; n++) { const b = ov.bb[n]; if (b[2] < u0 || b[0] > u1 || b[3] < v0 || b[1] > v1) continue; visible.push(ov.uv[n]); }
-        for (const l of visible) { const px = (l[0] * s - M.cx) * MTILE + W / 2, py = (l[1] * s - M.cy) * MTILE + H / 2; ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill(); }
-        ctx.restore();
+        const visible = [], lines = [], minU = 1.5 / (s * MTILE);
+        for (let n = 0; n < ov.uv.length; n++) {
+          const b = ov.bb[n]; if (b[2] < u0 || b[0] > u1 || b[3] < v0 || b[1] > v1) continue;
+          visible.push(ov.uv[n]);
+          if (b[2] - b[0] >= minU || b[3] - b[1] >= minU) lines.push(ov.uv[n]);   // the rest are sub-pixel: dots only
+        }
+        glowDots(ctx, visible, s, W, H, heat);
         const step = M.z < 4.5 ? 4 : 2;  // routes are hairlines here: fewer vertices look identical
-        for (let pass = 0; pass < passes; pass++) { strokeStyle(ctx, heat, pass); ctx.beginPath();
-          for (const l of visible) { for (let i = 0; i < l.length; i += step) { const px = (l[i] * s - M.cx) * MTILE + W / 2, py = (l[i + 1] * s - M.cy) * MTILE + H / 2; if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); } }
+        for (let pass = passes - 1; pass < passes; pass++) { strokeStyle(ctx, heat, pass); ctx.beginPath();
+          for (const l of lines) { for (let i = 0; i < l.length; i += step) { const px = (l[i] * s - M.cx) * MTILE + W / 2, py = (l[i + 1] * s - M.cy) * MTILE + H / 2; if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); } }
           ctx.stroke(); }
         info = `${ov.lines.length.toLocaleString()} survey routes (country-wide index)`;
       } else if (ov && ov.status === 'building') info = `indexing survey coverage… ${ov.done}/${ov.total || '?'} tiles`;
