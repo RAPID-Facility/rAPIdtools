@@ -287,7 +287,11 @@ def decode_depth_map(depth_map_b64: str) -> np.ndarray:
     with np.errstate(divide='ignore', invalid='ignore'):
         depth = np.abs(dists / dot)
     depth = np.where(valid, depth, np.inf)
-    return depth.astype(np.float32)
+    # The ray for grid column ``x`` is built from the mirrored column
+    # ``width - x`` (Google stores the grid right-to-left), so the result is
+    # flipped back to match the panorama image, column 0 on the left, as the
+    # reference decoders (GSVPanoDepth.js, streetlevel) do.
+    return depth[:, ::-1].astype(np.float32)
 
 
 class GoogleStreetViewClient:

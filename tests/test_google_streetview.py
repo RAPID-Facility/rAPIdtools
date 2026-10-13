@@ -369,3 +369,10 @@ def test_crop_wraps_around_the_seam():
     # Requesting more than the full width returns a copy of the panorama:
     assert client._crop_columns(image, -10, 400).size == image.size
     assert client._crop_columns(image, 350, 370).size == (20, 180)
+
+
+def test_decode_depth_map_is_oriented_like_the_panorama():
+    """Grid column x maps to image column x (not its mirror)."""
+    depth = decode_depth_map(_depth_string(indices=[1, 1, 0, 0, 1, 1, 1, 1]))
+    # The reference decoders (GSVPanoDepth.js) write column x to w - x - 1:
+    assert np.isfinite(depth[0]).tolist() == [False, False, True, True]
