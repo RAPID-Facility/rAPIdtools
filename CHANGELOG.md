@@ -12,146 +12,87 @@ minor releases may change public APIs.
 ### Added
 
 - **Street-level object discovery.** `MapillaryFeatureExtractor` (a `DETECT`
-  step) finds objects of the requested classes along a Mapillary survey from
-  Mapillary's own segmentation detections, read as metadata with no image
-  downloads. Plain-English class names (`'vehicles'`, `'utility poles'`,
-  `'buildings'`) are translated to Mapillary labels, classes outside the
-  vocabulary can be detected with SAM 3 on thumbnails, and static point
-  classes such as hydrants, poles and traffic signs come from Mapillary's
-  pre-triangulated map features (`detection_source`). Detections of the
-  survey vehicle itself are removed, and every object keeps its sightings as
-  `Observation` records.
-- **Localisation by occupancy fusion.** All frames of a survey day vote on a
-  ground grid (free up to an object, occupied behind its ground contact), and
-  an object is a blob of cells most frames call occupied. An object seen from
-  several streets lands on the same cells, a moving vehicle never collects
-  agreeing votes, and the same code places a hydrant and a bus. Objects carry
-  `length_m`, `width_m` and `footprint_area_m2`. This is the default
-  (`localization_method='auto'`); track-and-triangulate (`'tracks'`), ray
-  voting (`'voting'`) and radius clustering (`'cluster'`) are one keyword
-  away. Street-level geometry uses the full camera pose (rotation, camera
-  type and lens parameters) for spherical, perspective and fisheye cameras.
-- **Building footprints from a street survey.** For `'buildings'` the
-  extractor labels the survey's own structure-from-motion point cloud with
-  the detection outlines and returns one polygon per structure, with
-  `frontage_m`, `depth_m`, `height_m` and `facade_bearing`. Where the survey
-  did not see the rear, it is closed at `assumed_depth_m` and `depth_source`
-  reads `'assumed'`. On a 1 km neighbourhood of Spokane: 336 structures
-  against 346 OpenStreetMap footprints near the route, 78 % of them
-  overlapped, median intersection over union 0.38, about one house in six
-  reported in two pieces. `geometry='auto' | 'footprint' | 'point'` chooses
-  the output.
-- `MapillaryObjectImageExtractor` (an `EXTRACT_IMAGERY` step) crops the
-  widest or closest views of each discovered object (`view_selection`), with
-  the same `outline_*` options as the aerial extractor.
-- **Screening detections with a model.** A new `VERIFY` pipeline stage runs
-  between cropping and analysis. `DetectionVerifier` shows each object's
-  crops to any `rapidtools.models.load()` model and drops what is not what it
-  claims to be; `DuplicateResolver` merges pairs of nearby objects a model is
-  sure are one; and `MapillaryFeatureExtractor(reid=True)` merges look-alike
-  objects from repeated passes by appearance embedding
-  (`rapidtools.processing.reid`, CLIP or DINOv2).
-- **Inference from perspective drone photos.** `DroneImageExtractor` picks,
-  for every asset, the few photos that together show the most of its walls
-  and roof (`DroneViewSelector`), crops and marks them, and attaches the
-  crops so `AssetAnalyzer` works unchanged. Assets gain
-  `drone_view_coverage` and `drone_unseen_sides`; `coverage_gaps()` returns
-  the walls no photo shows with a suggested camera position for the next
-  flight. `read_drone_images()` and `DroneCamera` read camera poses from EXIF
-  and DJI XMP metadata or a sidecar CSV/GeoJSON. On a simulated 452-photo
-  flight over 179 Altadena buildings, four selected photos show 0.87 of a
-  building's surface against 0.65 for the four nearest photos.
-- **A JSON job interface** (`rapidtools.jobs`). Work is described in a job
-  file: an ordered list of steps (`imagery.basemap`, `data.download`,
-  `detect.aerial`, `detect.street`, `analyze.vlm`, `prompt.assist`), each
-  with its inputs and options. `rapidtools-job run job.json` (or
-  `rapidtools.jobs.run_job`) validates every step before the first one runs
-  and keeps a result file up to date that can be polled. Steps can read what
-  earlier steps wrote, and API keys stay out of the file as `{"$secret":
-  name}` or `{"$env": VAR}` references. JSON Schemas (`rapidtools-job
-  schema`) and the step reference in the documentation are generated from
-  the same step declarations.
-- **A shorter way to say the common things.** `rt.AssetAnalyzer('gemini',
-  prompt=...)` builds the model from a provider name; `rt.load`,
-  `rt.GenerationConfig`, `rt.ModelOutput`, `rt.list_providers`, `rt.catalog`,
-  `rt.ImageCollection`, `rt.PipelineStep` and `rt.list_datasets` are
-  importable from the top level; `Pipeline.run()` needs no argument when the
-  pipeline starts with a detection step; and a `cancel_event` given to the
-  pipeline is shared with every step that has none of its own.
-- Mapillary tokens resolve like API keys: every Mapillary component accepts
-  the token, the path of a file holding it, or nothing, in which case
-  `MAPILLARY_ACCESS_TOKEN` (or `MAPILLARY_TOKEN`) is read.
+  step) finds objects such as `'vehicles'`, `'utility poles'` or
+  `'buildings'` along a Mapillary survey from Mapillary's own detections,
+  with no image downloads. Static classes such as hydrants and traffic signs
+  come from Mapillary's map features, and classes outside its vocabulary can
+  be detected with SAM 3. Objects are placed by occupancy fusion, where all
+  frames of a survey day vote on a ground grid, so moving vehicles drop out
+  and an object seen from several streets is reported once. The earlier
+  track-and-triangulate method is one keyword away (`localization_method`).
+- **Building footprints from a street survey.** `'buildings'` come back as
+  polygons outlined from the survey's structure-from-motion point cloud, with
+  `frontage_m`, `depth_m` and `height_m`. On a 1 km neighbourhood of Spokane,
+  78 % of the 346 OpenStreetMap footprints near the route were found, with a
+  median intersection over union of 0.38.
+- **Screening detections with a model.** `MapillaryObjectImageExtractor`
+  crops each discovered object, and a new `VERIFY` pipeline stage sits
+  between cropping and analysis: `DetectionVerifier` drops false detections,
+  `DuplicateResolver` merges objects a model is sure are one, and
+  `MapillaryFeatureExtractor(reid=True)` merges repeated passes by
+  appearance.
+- **Inference from drone photos.** `DroneImageExtractor` picks, for every
+  asset, the few perspective photos that together show the most of its walls
+  and roof, and attaches the crops so `AssetAnalyzer` works unchanged.
+  `coverage_gaps()` returns the walls no photo shows, and camera poses are
+  read from EXIF and DJI metadata or a sidecar file (`read_drone_images()`).
+  On a simulated flight over 179 Altadena buildings, four selected photos
+  show 0.87 of a building's surface against 0.65 for the four nearest.
+- **A JSON job interface** (`rapidtools.jobs`). A job file lists ordered
+  steps (basemap download, aerial or street detection, model analysis, ...)
+  with their inputs and options. `rapidtools-job run job.json` validates
+  every step before the first one runs and keeps a result file up to date.
+  API keys stay out of the file as `{"$secret": name}` or `{"$env": VAR}`
+  references, and JSON Schemas are published with the documentation.
+- **Shorter spellings.** `rt.AssetAnalyzer('gemini', prompt=...)` builds the
+  model from a provider name, `rt.load`, `rt.GenerationConfig` and the other
+  everyday names import from the top level, and `Pipeline.run()` needs no
+  argument when the pipeline starts with a detection step.
+- Mapillary tokens resolve like API keys: pass the token, the path of a file
+  holding it, or nothing to read `MAPILLARY_ACCESS_TOKEN`.
 - `PhysicalAssetCollection.filter(predicate)`,
   `to_geojson(include_images=False)` and a one-line `repr`.
-- `MapillaryClient.fetch_detections()`, `fetch_map_features()`,
-  `fetch_sequence_lines()`, `decode_detection_polygons()` and
-  `get_image_url()`.
-- Errors that say what to do: `load()` names the arguments a wrapper takes
-  when given one it does not, misspelt extractor options suggest the closest
-  match, `Pipeline` names the step that returned something other than a
-  collection, and an empty Mapillary search says what was searched.
-- **GUI: the map comes first.** The interface opens on a satellite map with
-  RAPID's street-level survey routes drawn on top and an address search.
-  Drawing an area downloads Bing or Google imagery for it or goes straight to
-  street discovery, so no aerial image is needed. Detection can run on a
-  Google basemap and keep every instance separate, and inference can use
-  aerial crops, Google Street View, Mapillary panoramas or Mapillary object
-  crops, with temperature, output length and JSON mode exposed.
-- **GUI: prompt builder and assistant.** A *Build a prompt* dialog assembles
-  a prompt from a task, output fields, per-class indicators, steps and edge
-  cases, and can ask any model backend to draft, refine or review it
-  (`rapidtools.gui.prompt_builder`).
-- **GUI: notifications for long runs** by email, webhook (Slack, Teams) or
-  browser alert when the running job ends (`rapidtools.gui.notify`, the
-  `--smtp-*` and `--public-url` options of `rapidtools-gui`).
+- Error messages name the arguments a wrapper accepts, the closest match to
+  a misspelt option, or the pipeline step at fault.
+- **GUI rebuilt around a map.** The interface opens on a satellite map with
+  RAPID's street-level survey routes and an address search. Drawing an area
+  downloads Bing or Google imagery for it or starts street discovery
+  directly, and inference can use aerial crops, Google Street View or
+  Mapillary imagery.
+- **GUI: prompt builder and notifications.** A *Build a prompt* dialog
+  assembles a prompt from a task, output fields and per-class indicators and
+  can ask any model to draft or review it. Long runs can send an email, a
+  webhook message or a browser alert when they end.
 - **Shared-server deployment.** `deploy/` holds a Docker and Caddy setup for
-  a token-protected GUI server, with CUDA and CPU images of
-  `ghcr.io/rapid-facility/rapidtools-gui` published for every release tag
-  and a systemd unit for installs without Docker. `deploy/aws/` adds a
-  CloudFormation template for a GPU or CPU machine with HTTPS, an encrypted
-  data disk, idle shutdown and `launch.sh` / `teardown.sh` wrappers.
-- Examples: `vehicle_detection_from_street.py`,
-  `building_footprints_from_street.py`, `street_detections_map.py`,
-  `street_vehicle_condition_map.py`, `drone_flight_from_google_earth.py`,
-  `building_inference_from_drone.py` and the job files under
-  `examples/jobs/`.
-- Documentation pages for the JSON job interface, drone imagery, deployment
-  (shared server and AWS), development and testing, and feedback, plus
-  example pages for the new street-level and drone workflows.
-- `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md`, `SECURITY.md` and
-  `ACCESSIBILITY.md`; issue forms for bug reports, feature requests and
-  feedback; and a pull request template.
+  a token-protected GUI server, with CUDA and CPU images published to
+  `ghcr.io/rapid-facility/rapidtools-gui` for every release, and
+  `deploy/aws/` adds a CloudFormation template with launch and teardown
+  scripts.
+- New examples for street-level vehicles, building footprints, detection
+  maps and drone photos, job files under `examples/jobs/`, and documentation
+  pages for the job interface, drone imagery, deployment, development and
+  feedback.
+- `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md`, `SECURITY.md`,
+  `ACCESSIBILITY.md`, issue forms and a pull request template.
 
 ### Changed
 
-- **The GUI hands every run to the package as a job file.** Downloads,
-  detection, street discovery, inference and prompt-assistant requests are
-  written to `<output folder>/jobs/` and executed through `rapidtools.jobs`,
-  so any run can be repeated unchanged from a terminal. Keys typed into the
-  page are not in those files. An inference started on its own now reads its
-  assets from the GeoJSON the previous run wrote instead of from memory.
-- `import rapidtools` takes about half a second, and using `Pipeline`, an
-  extractor or a regularizer no longer loads PyTorch and Transformers.
+- **The GUI hands every run to the package as a job file** under
+  `<output folder>/jobs/`, so any run can be repeated from a terminal. Keys
+  typed into the page are not in those files.
+- `import rapidtools` takes about half a second, and `Pipeline`, the
+  extractors and the regularizers no longer load PyTorch and Transformers.
 - The deprecated `*AssetAnalyzer` classes are no longer listed in
-  `rapidtools.__all__` or `dir(rapidtools)`; they still import and warn.
-- `get_configured_session()` takes `allowed_methods` and `status_forcelist`,
-  and its default no longer retries POST. API clients retry POST only on 429,
-  503 and 529.
-- `ModelOutput` gained `error`, `retryable`, `failed` and
-  `ModelOutput.failure()`. Provider rejections come back as a failed output;
-  transient failures are still a plain `None` from `run_inference`.
-- `to_shapefile` writes images and the original names of truncated columns
-  to a `<name>.rapidtools.json` sidecar, which `from_shapefile` reads back.
-  `from_shapefile` keeps assets with invalid geometry and skips only empty
-  ones, naming each record it skips.
-- `DetectionSettings` has a `basemap` field (`'bing'`, `'google'` or
-  `'recon'`), kept in sync with `detect_in_recon_imagery`.
-- `filter_by_attribute` logs one line for all the assets that lack the
-  attribute instead of a warning per asset.
-- `numpy` and `scipy` are declared dependencies (both were already required
-  transitively).
-- CI runs `ruff check`, `ruff format --check` and `mypy`; the package
-  type-checks clean.
+  `rapidtools.__all__`; they still import and warn.
+- Hosted-model requests are retried only on 429, 503 and 529
+  (`get_configured_session()` no longer retries POST by default), and
+  provider rejections come back as a failed `ModelOutput` with `error` and
+  `retryable`.
+- `to_shapefile` writes images and full column names to a
+  `<name>.rapidtools.json` sidecar that `from_shapefile` reads back, and
+  `from_shapefile` keeps assets with invalid geometry.
+- `numpy` and `scipy` are declared dependencies.
+- CI runs `ruff` and `mypy`; the package type-checks clean.
 
 ### Removed
 
@@ -160,59 +101,37 @@ minor releases may change public APIs.
 
 ### Fixed
 
-- Image assets attached to a `PhysicalAsset` survive GeoJSON and shapefile
-  round trips (`ImageAsset.to_dict()` / `from_dict()`); loading a saved
+- Image assets survive GeoJSON and shapefile round trips; loading a saved
   collection used to drop every image.
-- SAM 3 masks from `SAM3OrthoFeatureExtractor` and `BuildingRegularizer` are
-  vectorized in the raster's own pixel grid and reprojected to WGS84.
-  Polygons on projected or rotated orthomosaics were stretched and skewed: on
-  a 20° rotated UTM test raster the old polygons reached 0.56 IoU against
-  ground truth, the new ones 1.00.
-- Provider POSTs are no longer re-sent automatically after 500/502/504, which
-  could double-bill a request the provider had already processed. Refusals,
-  safety blocks and 4xx responses no longer pause every worker for the
-  rate-limit cooldown or get re-sent in the retry passes.
-- One image SAM 3 could not load no longer shifts every later mask in the
-  batch onto the wrong image.
-- With several rasters covering one asset, the crop on disk and its recorded
-  georeferencing now come from the same raster, and the winning raster is the
-  same on every run.
-- 16-bit RGBA orthomosaics no longer come out nearly black, float rasters
-  with NaN nodata get valid contrast statistics, and `get_image_patch` no
-  longer rejects every patch when the allowed missing-data ratio is 0.
-- Decoded Street View depth maps are no longer mirrored relative to the
-  panorama.
+- SAM 3 polygons are no longer stretched or skewed on projected or rotated
+  orthomosaics (0.56 to 1.00 IoU on a 20° rotated test raster).
+- Provider requests are no longer re-sent after 500/502/504, which could
+  double-bill, and refusals no longer pause every worker.
+- One image SAM 3 could not load no longer shifts every later mask onto the
+  wrong image.
+- Crops of an asset covered by several rasters keep the georeferencing of
+  the raster they came from.
+- 16-bit RGBA orthomosaics no longer come out nearly black, and float
+  rasters with NaN nodata get valid contrast.
+- Street View depth maps are no longer mirrored relative to the panorama.
 - `MapillaryClient.fetch_images_in_bbox()` returns only the images inside
-  the box instead of everything in the 2.4 km tiles that cover it.
-- A `computed_compass_angle` present with a null value falls back to
-  `compass_angle` instead of discarding the frame.
-- An asset attribute called `id` no longer replaces the asset ID when a
-  shapefile is read back.
-- Web Mercator pixel and tile indices are clamped at longitude 180 and the
-  Mercator latitude limit instead of landing one past the grid.
-- `ImageAsset.load_mask(custom_path=...)` reads the requested file instead of
-  returning the mask cached for the default path.
-- Image inputs given as URLs are sent to hosted models with a valid image
-  media type when the host reports `binary/octet-stream` or adds a charset.
-- `search_hub_models` works with `huggingface_hub` 1.x.
-- GUI: progress and warnings from the package appear in the log pane when
-  the server is started with `rapidtools-gui`.
+  the box.
+- Smaller fixes: asset IDs on shapefile read-back, Web Mercator indices at
+  the grid edge, `load_mask(custom_path=...)`, a null
+  `computed_compass_angle`, image media types for URL inputs,
+  `search_hub_models` with `huggingface_hub` 1.x, and package log records in
+  the GUI log pane.
 
 ### Security
 
 - Hosted model wrappers no longer send the provider's API key to the host of
-  an image given as a URL; images are fetched with a separate session that
-  carries no credentials.
-- The GUI server refuses to serve asset images from outside its data root
-  and output folder. A crafted GeoJSON loaded on a shared server could
-  previously read any file on disk.
-- The Mapillary access token no longer appears in logged tile and Graph API
-  error messages.
-- The two asset-analysis notebooks under `examples/` no longer contain a
-  hard-coded Gemini API key (the key has been revoked); they read
-  `GOOGLE_API_KEY` from the environment.
-- `ImageAsset.save_interactive_html` escapes labels in the generated markup
-  and JavaScript.
+  an image given as a URL.
+- The GUI server refuses to serve files from outside its data root and
+  output folder; a crafted GeoJSON could previously read any file on disk.
+- The Mapillary token no longer appears in logged error messages.
+- A hard-coded Gemini API key was removed from the two example notebooks
+  (the key has been revoked).
+- `ImageAsset.save_interactive_html` escapes labels.
 
 ## [0.2.0] - 2026-09-28
 
