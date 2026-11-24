@@ -63,6 +63,7 @@ import json
 import os
 import re
 import secrets as _secrets
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -94,6 +95,8 @@ _JOB_KEYS = (
 )
 _STEP_KEYS = ('id', 'type', 'inputs', 'params', 'metadata')
 _SECRET_REF = ('$secret', '$env')
+# How often an atomic write tries to move its file into place (see below).
+_REPLACE_ATTEMPTS = 6
 
 
 class JobError(ValueError):
@@ -162,7 +165,8 @@ def write_json_atomic(path: str | Path, document: Any, private: bool = False) ->
         path (str | Path): Destination; parent folders are created.
         document (Any): A JSON-serialisable value.
         private (bool): Create the file readable by its owner only (``0600``).
-            Used for secrets files. Defaults to ``False``.
+            Used for secrets files. Defaults to ``False``. Windows has no
+            such mode bits; callers keep private files in a private folder.
 
     Returns:
         Path: ``path``.
@@ -176,7 +180,17 @@ def write_json_atomic(path: str | Path, document: Any, private: bool = False) ->
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as handle:
             handle.write(text)
-        os.replace(tmp, path)
+        for attempt in range(_REPLACE_ATTEMPTS):
+            try:
+                os.replace(tmp, path)
+                break
+            except PermissionError:
+                # Windows refuses to replace a file that another process (a
+                # client polling the result, a virus scanner) has open at
+                # this instant. Give it a moment instead of failing the job.
+                if attempt == _REPLACE_ATTEMPTS - 1:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
     finally:
         if tmp.exists():
             tmp.unlink()

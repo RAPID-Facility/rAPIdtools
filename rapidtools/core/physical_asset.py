@@ -951,7 +951,7 @@ class PhysicalAsset:
             {'type': 'Feature', 'id': 'pole_99', 'geometry':
             {'type': 'Point', 'coordinates': (10.0, 20.0)},
             'properties': {'material': 'wood', 'image_assets':
-            [{'id': 'img1', 'path': '/home/bacetiner/p1.jpg',
+            [{'id': 'img1', 'path': '/home/user/p1.jpg',
             'properties': {}, 'semantic_map': None, 'instance_map': None,
             'allow_missing_file': True}]}}
         """

@@ -4,6 +4,7 @@ import dataclasses
 import json
 import os
 import stat
+import sys
 import threading
 from pathlib import Path
 
@@ -182,7 +183,8 @@ def test_job_round_trip_and_paths(tmp_path):
     # Relative paths are taken from the folder of the job file:
     assert loaded.base_dir == path.parent
     assert loaded.output_path == path.parent / 'out'
-    assert loaded.resolve_path('/abs/x.tif') == Path('/abs/x.tif')
+    absolute = tmp_path / 'elsewhere' / 'x.tif'  # absolute on every platform
+    assert loaded.resolve_path(str(absolute)) == absolute
     assert loaded.resolve_path('~/x.tif') == Path.home() / 'x.tif'
     assert jobs.load_job(loaded) is loaded
     assert jobs.load_job(document).steps[0].id == 'detect'
@@ -277,7 +279,8 @@ def test_read_json_errors_and_atomic_write(tmp_path):
 
     target = write_json_atomic(tmp_path / 'deep' / 'a.json', {'a': 1}, private=True)
     assert json.loads(target.read_text()) == {'a': 1}
-    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+    if os.name == 'posix':  # Windows has no owner-only mode bits
+        assert stat.S_IMODE(target.stat().st_mode) == 0o600
     assert [p.name for p in target.parent.iterdir()] == ['a.json']  # no temp left
     # A value JSON cannot hold leaves neither the target nor a temp file:
     with pytest.raises(TypeError):
@@ -956,6 +959,10 @@ def test_cli_run_exit_codes(tmp_path, monkeypatch, capsys):
     assert cli.main(['run', str(tmp_path / 'missing.json')]) == cli.EXIT_INVALID
 
 
+@pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='os.kill(SIGTERM) terminates a Windows process instead of signalling it',
+)
 def test_cli_cancels_on_signal(tmp_path, monkeypatch, capsys):
     import signal
 
@@ -975,7 +982,11 @@ def test_cli_cancels_on_signal(tmp_path, monkeypatch, capsys):
     assert 'Cancelling' in capsys.readouterr().err
     assert json.loads(job.result_path.read_text())['status'] == 'cancelled'
 
-    # Off the main thread no handler can be installed; the job still runs.
+
+def test_cli_runs_off_the_main_thread(tmp_path, monkeypatch):
+    """No signal handler can be installed there; the job still runs."""
+    monkeypatch.setattr('rapidtools.config.configure_logging', lambda level: None)
+    job = _job(tmp_path, [DETECT])
     codes = []
     monkeypatch.setattr(workflow_module, 'AssetAnalysisWorkflow', FakeWorkflow)
     thread = threading.Thread(
@@ -1005,3 +1016,31 @@ def test_small_corners(tmp_path, monkeypatch):
     with pytest.raises(OSError, match='read-only'):
         write_json_atomic(tmp_path / 'x.json', {'a': 1})
     assert list(tmp_path.iterdir()) == []
+
+
+def test_atomic_write_waits_for_a_file_that_is_briefly_locked(tmp_path, monkeypatch):
+    """Windows refuses to replace a file another process has open."""
+    real_replace, attempts = os.replace, []
+
+    def locked_twice(src, dst):
+        attempts.append(dst)
+        if len(attempts) < 3:
+            raise PermissionError('[WinError 5] Access is denied')
+        real_replace(src, dst)
+
+    monkeypatch.setattr(os, 'replace', locked_twice)
+    monkeypatch.setattr('rapidtools.jobs.schema.time.sleep', lambda seconds: None)
+    target = write_json_atomic(tmp_path / 'r.json', {'status': 'running'})
+    assert len(attempts) == 3 and json.loads(target.read_text()) == {
+        'status': 'running'
+    }
+
+    def always_locked(src, dst):
+        raise PermissionError('[WinError 5] Access is denied')
+
+    monkeypatch.setattr(os, 'replace', always_locked)
+    with pytest.raises(PermissionError):
+        write_json_atomic(tmp_path / 'r.json', {'status': 'done'})
+    # The previous version is intact and no temporary file is left:
+    assert json.loads(target.read_text()) == {'status': 'running'}
+    assert [p.name for p in tmp_path.iterdir()] == ['r.json']
