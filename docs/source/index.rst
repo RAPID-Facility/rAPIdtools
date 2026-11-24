@@ -95,7 +95,7 @@ is archived on Zenodo with a DOI.
      author  = {Cetiner, Barbaros and {NSF NHERI RAPID Facility}},
      title   = {rAPIdtools: AI inference and localization for post-disaster geospatial datasets},
      year    = {2026},
-     version = {0.2.0},
+     version = {0.2.1},
      url     = {https://github.com/RAPID-Facility/rAPIdtools}
    }
 
@@ -113,6 +113,7 @@ is archived on Zenodo with a DOI.
 
    user_guide/aerial_imagery
    user_guide/street_level_imagery
+   user_guide/drone_imagery
    user_guide/vision_language_models
    user_guide/feature_detection
    user_guide/cancellation_and_logging
@@ -124,6 +125,8 @@ is archived on Zenodo with a DOI.
    examples/eaton_fire_aerial
    examples/street_level_recovery
    examples/vehicle_detection_from_street
+   examples/building_footprints_from_street
+   examples/building_inference_from_drone
    examples/building_footprints_from_bing
    examples/road_centerlines
    examples/single_image_inference
@@ -133,7 +136,9 @@ is archived on Zenodo with a DOI.
    :caption: Graphical Interface
 
    gui
+   json_interface
    deployment
+   deployment_aws
 
 .. toctree::
    :hidden:

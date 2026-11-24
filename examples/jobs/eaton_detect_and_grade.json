@@ -1,0 +1,44 @@
+{
+  "schema": "rapidtools.job",
+  "schema_version": "1.0",
+  "id": "eaton-detect-and-grade",
+  "name": "Eaton fire: detect buildings and grade damage",
+  "created_by": {"client": "hand-written example"},
+  "output_dir": "output/eaton",
+  "steps": [
+    {
+      "id": "sample",
+      "type": "data.download",
+      "params": {"dataset": "eaton_patch1"}
+    },
+    {
+      "id": "detect",
+      "type": "detect.aerial",
+      "inputs": {"raster": {"step": "sample", "output": "file"}},
+      "params": {
+        "assets": ["building"],
+        "asset_size_m": 50,
+        "basemap": "bing",
+        "threshold": 0.5,
+        "regularize": true
+      }
+    },
+    {
+      "id": "grade",
+      "type": "analyze.vlm",
+      "inputs": {
+        "raster": {"step": "sample", "output": "file"},
+        "assets": {"step": "detect", "output": "assets"}
+      },
+      "params": {
+        "prompt": "The building of interest is outlined in red. Answer in two lines.\nDamage: [none, minor, major, destroyed]\nJustification: [one sentence]",
+        "backend": "gemini",
+        "api_key": {"$env": "GEMINI_API_KEY"},
+        "imagery": "aerial",
+        "max_workers": 5,
+        "temperature": 0.2
+      }
+    }
+  ],
+  "metadata": {"event": "Eaton fire, January 2025", "requested_by": "RAPID Facility"}
+}

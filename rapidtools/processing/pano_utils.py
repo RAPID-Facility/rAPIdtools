@@ -71,9 +71,7 @@ Example:
 import logging
 import math
 
-import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.lines import Line2D
 from PIL import Image
 from PIL.ImageChops import offset
 from scipy.spatial import cKDTree
@@ -967,6 +965,8 @@ def _plot_candidates(
         ...     np.array([]), np.array([]),
         ... )  # doctest: +SKIP
     """
+    import matplotlib.pyplot as plt
+
     fig, ax = plt.subplots(figsize=(10, 10))
 
     # Plot the building footprint (blue):
@@ -1110,6 +1110,9 @@ def _plot_dynamic_results(
         ...     10.0, [0.0, 90.0], best_points={'major_pos': (20.0, 0.0)},
         ... )  # doctest: +SKIP
     """
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+
     fig, ax = plt.subplots(figsize=(12, 12))
 
     # 1. Plot neighbors (the occluders):

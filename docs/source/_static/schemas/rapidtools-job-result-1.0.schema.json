@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rapidtools:schema:job_result:1.0",
+  "title": "rapidtools job result file",
+  "description": "Status and outputs of a job. Rewritten atomically while the job runs, so it can be polled.",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "job_id",
+    "status",
+    "message",
+    "started_at",
+    "updated_at",
+    "steps"
+  ],
+  "properties": {
+    "schema": {
+      "const": "rapidtools.job_result"
+    },
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+$"
+    },
+    "job_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    },
+    "job_name": {
+      "type": "string"
+    },
+    "job_file": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "enum": [
+        "running",
+        "done",
+        "error",
+        "cancelled"
+      ]
+    },
+    "message": {
+      "type": "string",
+      "description": "Latest progress line, or the final outcome."
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "updated_at": {
+      "type": "string"
+    },
+    "finished_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "duration_s": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "rapidtools_version": {
+      "type": "string"
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "status",
+          "outputs",
+          "files",
+          "summary"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "type": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "running",
+              "done",
+              "error",
+              "cancelled",
+              "skipped"
+            ]
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "duration_s": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "outputs": {
+            "type": "object",
+            "description": "Declared outputs that were written, by name.",
+            "additionalProperties": {
+              "type": "object",
+              "required": [
+                "path",
+                "kind"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Absolute path."
+                },
+                "kind": {
+                  "enum": [
+                    "raster",
+                    "geojson",
+                    "file"
+                  ]
+                }
+              }
+            }
+          },
+          "files": {
+            "type": "array",
+            "description": "Other files the step wrote.",
+            "items": {
+              "type": "object",
+              "required": [
+                "label",
+                "path",
+                "kind"
+              ],
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": [
+                    "raster",
+                    "geojson",
+                    "file"
+                  ]
+                }
+              }
+            }
+          },
+          "summary": {
+            "type": "object",
+            "description": "Small facts about the run, e.g. asset counts."
+          },
+          "data": {
+            "description": "A JSON result that is not a file."
+          },
+          "error": {
+            "type": "object",
+            "required": [
+              "type",
+              "message"
+            ],
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

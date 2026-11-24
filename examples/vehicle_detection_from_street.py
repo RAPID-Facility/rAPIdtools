@@ -8,10 +8,11 @@ imagery of Spokane, Washington:
 1. Download the Mapillary access token used by the rapidtools examples.
 2. Discover vehicles in every RAPID panorama of the area from Mapillary's own
    segmentation detections (metadata only, no images downloaded). Each
-   sighting becomes a ray from the camera's full pose; sightings are tracked
-   from frame to frame, each track is triangulated, moving vehicles and the
-   survey vehicle itself are dropped, and repeated views of a parked vehicle
-   merge into one asset.
+   outline is read as a range scan from the camera's full pose and all
+   frames of a survey day vote on a ground grid (occupancy fusion): a parked
+   vehicle is where the frames agree the ground is occupied, however many
+   streets it was seen from, while moving vehicles and the survey vehicle
+   itself never collect agreeing votes.
 3. Crop the two closest views of each vehicle, with the detection's rotated
    bounding box drawn as a thin red line, so a vision-language model can
    judge its condition. Optionally confirm with a model of your choice that
@@ -44,8 +45,8 @@ from rapidtools.models import GenerationConfig, load
 # about 1 km across. Expect roughly 20 minutes end to end and 1.5 GB of RAM:
 # a few minutes to read the detections, then about ten to download the two
 # thousand images the vehicle crops are cut from. Around 1,300 vehicles
-# (timed with the earlier radius clustering; tracking adds seconds).
-REGION = rt.BoundingBox(min_x=-117.495, min_y=47.708, max_x=-117.482, max_y=47.717)
+# (timed with the earlier radius clustering; fusion adds about a minute).
+REGION = rt.BoundingBox(min_x=-117.72, min_y=47.47, max_x=-117.02, max_y=47.90)
 # The whole survey is the box below: 116,000 frames after thinning, which
 # takes about 75 minutes just to read the detections (one Graph API request
 # per frame). Use it once the neighbourhood run looks right.
@@ -68,7 +69,7 @@ GEOJSON_PATH = OUTPUT_DIR / 'spokane_vehicles.geojson'
 # locally, or load('claude', api_key=...) for another provider.
 VERIFY_DETECTIONS = True  # runs only if a Google API key is found
 VERIFY_MODEL = ('gemini', 'gemini-3.5-flash-lite')  # cheap and quick for yes/no
-CLASSIFY_CONDITION = True  # Step 4 runs only if a Google API key is found
+CLASSIFY_CONDITION = False  # Step 4 runs only if a Google API key is found
 CONDITION_PROMPT = (
     'This crop from a post-disaster street-view panorama shows a vehicle '
     'marked with corner brackets. Return JSON with two keys: "condition", '
@@ -96,18 +97,13 @@ detector = rt.MapillaryFeatureExtractor(
     frame_spacing_m=3.0,  # one frame every 3 m is plenty for triangulation
     min_observations=3,  # a vehicle must appear in at least three frames
     save_directory=OUTPUT_DIR / 'detections',
-    # The geometry needs no tuning: each sighting becomes a ray from the
-    # camera pose Mapillary computed, sightings are tracked and triangulated,
-    # and moving vehicles are dropped. The only physical constant involved,
-    # the camera height above the road, defaults to the RAPID rig (2.4 m)
-    # and only shapes the single-view range prior; pass camera_height_m for
-    # a different vehicle.
-    # Where vehicles line up along the line of sight (a driveway seen end-on)
-    # the tracker can slide from one to the next, and a detector can cut one
-    # car in two past a pole. The second object that leaves is folded into
-    # the vehicle its sightings show. On by default; shown here because the
-    # Spokane driveways are exactly that case.
-    merge_pieces_of_neighbours=True,
+    # The geometry needs no tuning: every outline is a range scan from the
+    # camera pose Mapillary computed, and the frames of a survey day are
+    # fused on a ground grid (localization_method='auto', the default; pass
+    # 'tracks' for the earlier frame-to-frame tracker). The only physical
+    # constant involved is the camera height above the road, which turns the
+    # lower edge of an outline into a range; it defaults to the RAPID rig
+    # (2.4 m), so pass camera_height_m for a different vehicle.
     # The survey drove some streets twice, so look-alike vehicles seen on
     # separate passes are merged by appearance: the CLIP ViT-B/16 image tower
     # embeds one 2048-pixel crop per compared vehicle. Vehicles never seen up
@@ -149,7 +145,11 @@ if VERIFY_DETECTIONS and api_key:
             load(provider, api_key=api_key, model_id=model_id),
             max_images_per_asset=2,  # the two widest crops
             min_confidence=0.5,
-            min_visible_fraction=0.5,  # heavily hidden objects are discarded
+            # Objects the model says are mostly hidden are discarded. A car
+            # in a garage shows only its nose and is reported as about 40 %
+            # visible, so the cut sits below that; a car behind a hedge with
+            # a quarter showing still goes.
+            min_visible_fraction=0.3,
             max_workers=4,
         )
     )

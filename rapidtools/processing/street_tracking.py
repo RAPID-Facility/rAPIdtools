@@ -1165,12 +1165,14 @@ def merge_pieces(
       uncertainty under ``solid_sigma_m``) so that its own position is
       trustworthy, it lies within ``solid_distance_m`` of ``A``.
 
-    A ``B`` never seen within ``judge_range_m`` has no dependable position
-    of its own whatever its parallax: ground-contact ranges read from far
-    away are off by a third, so its triangulation lands metres along the
-    line of sight from the vehicle. Its closest sightings, wherever they
-    are, define it: the ray test above runs over them rather than the whole
-    track, whose far slivers may point anywhere. When their ground points
+    A ``B`` never seen within ``judge_range_m`` that is not solid has no
+    dependable position of its own: ground-contact ranges read from far
+    away are off by a third, so a low-parallax triangulation lands metres
+    along the line of sight from the vehicle. (A solid ``B`` is judged by
+    the close rules above whatever its range: a car in a deep driveway is
+    placed by its parallax, not its ranges.) Its closest sightings, wherever
+    they are, define it: the ray test above runs over them rather than the
+    whole track, whose far slivers may point anywhere. When their ground points
     do not land on ``A`` but their ranges fit the ``range_ratio_bounds``
     band, ``B`` still joins if its triangulation lies within
     ``far_fraction`` of its nearest range (at least ``far_distance_m``) of
@@ -1238,18 +1240,22 @@ def merge_pieces(
         )
         judged = [o for o in ranged if float(o.range_m or 0.0) <= judge_range_m]
         judged = judged[:closest_k]
-        # One sighting just inside judge_range_m is no basis for the strict
-        # close rules: a track with fewer than two is judged as far-only.
-        far_only = len(judged) < 2
-        if far_only:
-            judged = ranged[:closest_k]
-        if not judged:
-            continue
         b_solid = (
             est.localization == 'triangulated'
             and est.parallax_deg >= solid_parallax_deg
             and est.sigma_m <= solid_sigma_m
         )
+        # One sighting just inside judge_range_m is no basis for the strict
+        # close rules: a track with fewer than two is judged as far-only,
+        # unless its own triangulation is solid. Wide parallax from 20 m or
+        # 30 m places a car in a deep driveway as surely as a close pass
+        # does, and the loose far-only tolerances (made for a car seen only
+        # down the road) are wider than the gap to the car parked beside it.
+        far_only = len(judged) < 2 and not b_solid
+        if len(judged) < 2:
+            judged = ranged[:closest_k]
+        if not judged:
+            continue
         b_size = est.size_m
         gx, gy = int(math.floor(est.x / cell)), int(math.floor(est.y / cell))
         target = None
@@ -2049,6 +2055,7 @@ def discover_objects(
     max_single_view_range_m: float = 30.0,
     frames: Sequence[CameraFrame] | None = None,
     witness_radius_m: float = 12.0,
+    path_gap_m: float = 15.0,
 ) -> tuple[list[ObjectEstimate], dict[str, int], Unproject]:
     """
     Turn the sightings of one class into object estimates.
@@ -2120,6 +2127,13 @@ def discover_objects(
         min_path_distance_m: Objects closer than this to the line the camera
             drove are discarded: the survey vehicle passed through that spot,
             so whatever was seen there was moving (or is the vehicle itself).
+            The line is drawn through every frame of the survey (``frames``,
+            or the sightings' cameras otherwise) and broken wherever two
+            consecutive frames are more than ``path_gap_m`` apart, so a hole
+            in a sequence is not bridged by a chord across a corner lot (see
+            :func:`camera_paths`).
+        path_gap_m: Largest step between consecutive frames the driven line
+            is drawn across; ``0`` joins everything.
         min_object_width_m: Objects narrower than this at their estimated
             distance are fragments or false detections.
         object_height_m: Typical height of the class, for the
@@ -2279,7 +2293,7 @@ def discover_objects(
             kept.append(est)
         merged = kept
     if min_path_distance_m > 0:
-        paths = camera_paths(usable, project)
+        paths = camera_paths(usable, project, frames=frames, max_gap_m=path_gap_m)
         kept = []
         for est in merged:
             if distance_to_paths(est.x, est.y, paths) < min_path_distance_m:
@@ -2336,18 +2350,60 @@ def discover_objects(
 
 
 def camera_paths(
-    observations: Sequence[Observation], project: Project
+    observations: Sequence[Observation],
+    project: Project,
+    frames: Sequence[CameraFrame] | None = None,
+    max_gap_m: float = 15.0,
 ) -> list[list[tuple[float, float]]]:
-    """Camera positions per sequence in capture order, in local metres."""
+    """
+    The lines the cameras drove, per sequence, in local metres.
+
+    Consecutive frames of a sequence are joined only while they lie within
+    ``max_gap_m`` of each other. A sequence with a hole (the survey paused,
+    or Mapillary holds no frames for a stretch) is split there rather than
+    bridged by a straight chord: a chord across a corner cuts through the
+    corner lot, and whatever stands there would be taken for something the
+    survey vehicle drove through. Every frame of the survey counts when
+    ``frames`` is given, including those with no sighting of the class, so a
+    quiet stretch of road does not look like a hole.
+
+    Args:
+        observations: Sightings whose cameras mark the path.
+        project: Local metre projection.
+        frames: Every frame of the survey, when known.
+        max_gap_m: Farthest apart two consecutive frames may be and still be
+            joined; ``0`` joins everything.
+
+    Returns:
+        list[list[tuple[float, float]]]: Polylines of camera positions.
+
+    Example:
+        >>> from rapidtools.processing.street_localization import local_projection
+        >>> project, _ = local_projection(-117.4, 47.7)
+        >>> paths = camera_paths(sightings, project, frames)  # doctest: +SKIP
+    """
     seen: dict[str, dict[str, tuple[str, tuple[float, float]]]] = defaultdict(dict)
     for o in observations:
         seen[o.sequence_id or '__none__'].setdefault(
             o.image_id, (o.captured_at or '', project(o.camera_lon, o.camera_lat))
         )
+    for frame in frames or ():
+        seen[frame.sequence_id or '__none__'].setdefault(
+            frame.image_id, (frame.captured_at or '', project(frame.lon, frame.lat))
+        )
     paths = []
-    for frames in seen.values():
-        ordered = sorted(frames.items(), key=lambda kv: (kv[1][0], kv[0]))
-        paths.append([xy for _, (_, xy) in ordered])
+    for members in seen.values():
+        ordered = [
+            xy
+            for _, (_, xy) in sorted(members.items(), key=lambda kv: (kv[1][0], kv[0]))
+        ]
+        path = [ordered[0]]
+        for (ax, ay), (bx, by) in zip(ordered, ordered[1:], strict=False):
+            if max_gap_m > 0 and math.hypot(bx - ax, by - ay) > max_gap_m:
+                paths.append(path)
+                path = []
+            path.append((bx, by))
+        paths.append(path)
     return paths
 
 

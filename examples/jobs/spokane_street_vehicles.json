@@ -1,0 +1,36 @@
+{
+  "schema": "rapidtools.job",
+  "schema_version": "1.0",
+  "id": "spokane-street-vehicles",
+  "name": "Spokane: vehicles along a street survey",
+  "output_dir": "output/spokane",
+  "steps": [
+    {
+      "id": "discover",
+      "type": "detect.street",
+      "inputs": {"region": {"bbox": [-117.489, 47.711, -117.487, 47.7125]}},
+      "params": {
+        "classes": ["vehicles"],
+        "access_token": {"$secret": "mapillary_token"},
+        "frame_spacing_m": 3,
+        "min_observations": 2
+      }
+    },
+    {
+      "id": "condition",
+      "type": "analyze.vlm",
+      "inputs": {"assets": {"step": "discover", "output": "assets"}},
+      "params": {
+        "prompt": "Condition: [intact, damaged, debris]\nJustification: [one sentence]",
+        "backend": "gemma4",
+        "model_id": "google/gemma-4-E2B-it",
+        "batch_size": 2,
+        "imagery": "mapillary_objects",
+        "mapillary_token": {"$secret": "mapillary_token"},
+        "mapillary_max_images": 2,
+        "outline_shape": "corners",
+        "outline_color": "#00ffff"
+      }
+    }
+  ]
+}

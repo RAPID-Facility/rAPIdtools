@@ -64,7 +64,9 @@ from rapidtools.processing.street_tracking import (
     CameraFrame,
     ObjectEstimate,
     attach_approach_sightings,
+    camera_paths,
     discover_objects,
+    distance_to_paths,
     merge_by_rays,
     merge_estimates,
     merge_pieces,
@@ -1443,3 +1445,66 @@ def test_discover_objects_abeam_window_places_a_passed_car_and_attaches_the_appr
     assert len(_match([(20.0, 5.0)], with_window, unp, 1.5)[0]) == 1
     without, counts, _ = discover_objects(obs, camera_height_m=CAM_H, max_range_m=35.0)
     assert len(without) == 1 and counts['approach'] == 0
+
+
+def test_camera_paths_breaks_at_a_hole_in_the_sequence():
+
+    project, unproject = local_projection(LON0, LAT0)
+    # Frames every 3 m along y = 0, then a 60 m hole, then frames along x = 0
+    # heading north: the chord across the hole would pass the corner lot.
+    xs = [float(x) for x in range(0, 31, 3)]
+    ys = [float(y) for y in range(90, 121, 3)]
+    frames = []
+    for i, x in enumerate(xs):
+        lon, lat = unproject(x, 0.0)
+        frames.append(
+            CameraFrame(
+                f'a{i:02d}', lon, lat, 90.0, True, f'2025-08-20T10:00:{i:02d}', 's1'
+            )
+        )
+    for i, y in enumerate(ys):
+        lon, lat = unproject(0.0, y)
+        frames.append(
+            CameraFrame(
+                f'b{i:02d}', lon, lat, 0.0, True, f'2025-08-20T10:01:{i:02d}', 's1'
+            )
+        )
+    # Sightings from the first two frames (same ids, same cameras):
+    sightings = _sightings_of((10.0, 6.0), [0.0, 3.0], project, unproject, prefix='a')
+    split = camera_paths(sightings, project, frames)
+    assert len(split) == 2 and [len(p) for p in split] == [len(xs), len(ys)]
+    bridged = camera_paths(sightings, project, frames, max_gap_m=0.0)
+    assert len(bridged) == 1
+    # A car on the corner lot is beside the chord but far from any frame:
+    assert distance_to_paths(12.5, 54.0, bridged) < 1.5
+    assert distance_to_paths(12.5, 54.0, split) > 30.0
+    # Without the frames the sightings' cameras alone mark the line:
+    alone = camera_paths(sightings, project)
+    assert len(alone) == 1 and len(alone[0]) == 2
+
+
+def test_merge_pieces_keeps_a_solid_car_beside_one_in_a_deep_driveway():
+    project, unproject = local_projection(LON0, LAT0)
+    # Two cars side by side 21 m from the road, both tracked over a wide
+    # sweep: neither was ever seen within the 20 m judge range, but their
+    # parallax places each of them firmly. Spokane driveways look like this.
+    frames = [float(x) for x in range(-14, 36, 2)]
+    red = (10.0, 21.0)
+    white = (13.1, 21.0)
+    a = _estimate(red, _sightings_of(red, frames, project, unproject), 0.17, 85)
+    b = _estimate(
+        white,
+        _sightings_of(white, frames[4:-4], project, unproject, prefix='w'),
+        0.22,
+        61,
+    )
+    assert len(merge_pieces([a, b], project)) == 2
+    # A low-parallax track beside it is still judged far-only and folds in
+    # when its sightings show the red car:
+    piece = _estimate(
+        (11.0, 23.0),
+        _sightings_of(red, frames[-8:], project, unproject, range_bias=0.8, prefix='p'),
+        0.6,
+        20,
+    )
+    assert len(merge_pieces([a, piece], project)) == 1

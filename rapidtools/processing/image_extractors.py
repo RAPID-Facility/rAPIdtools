@@ -105,6 +105,7 @@ from rapidtools.data_sources.google_aerial_image_extractor import (
     GOOGLE_TILE_URL,
 )
 from rapidtools.data_sources.google_streetview import haversine_m
+from rapidtools.data_sources.mapillary_client import resolve_mapillary_token
 from rapidtools.data_sources.tile_imagery_base import MAX_MERCATOR_LAT
 
 from . import outlines
@@ -653,8 +654,9 @@ class MapillaryImageExtractor:
     bandwidth.
 
     Args:
-        access_token (str):
-            Mapillary API Access Token.
+        access_token (str | Path | None):
+            Mapillary API token, the path of a file holding it, or ``None`` to
+            read the ``MAPILLARY_ACCESS_TOKEN`` environment variable.
         save_directory (str | Path):
             The directory where the final cropped JPEG images will be saved.
         start_date (str, optional):
@@ -737,7 +739,7 @@ class MapillaryImageExtractor:
 
     def __init__(
         self,
-        access_token: str | None = None,
+        access_token: str | Path | None = None,
         save_directory: str | Path = 'streetview',
         start_date: str = '',
         end_date: str = '',
@@ -757,8 +759,9 @@ class MapillaryImageExtractor:
         Initialize the Mapillary image extractor.
 
         Args:
-            access_token (str):
-                Mapillary API Access Token.
+            access_token (str | Path | None):
+                Mapillary API token, the path of a file holding it, or ``None`` to
+                read the ``MAPILLARY_ACCESS_TOKEN`` environment variable.
             save_directory (str | Path):
                 The directory where the final cropped JPEG images will be saved.
             start_date (str, optional):
@@ -794,10 +797,7 @@ class MapillaryImageExtractor:
         """
         if api_key is not None:
             access_token = api_key
-        if not access_token:
-            raise ValueError(
-                'A Mapillary access token (access_token or api_key) is required.'
-            )
+        access_token = resolve_mapillary_token(access_token)
         self.save_directory = Path(save_directory).resolve()
         self.start_date = start_date
         self.end_date = end_date

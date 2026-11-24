@@ -74,6 +74,7 @@ import base64
 import gzip
 import json
 import logging
+import os
 import time
 from collections.abc import Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -144,6 +145,67 @@ into map features, so they cannot be requested from this endpoint.
 """
 
 MAP_FEATURE_TRAFFIC_SIGN_PREFIX = 'object--traffic-sign--'
+
+
+#: Environment variables read for a Mapillary token when none is passed.
+MAPILLARY_TOKEN_ENV = ('MAPILLARY_ACCESS_TOKEN', 'MAPILLARY_TOKEN')
+
+
+def resolve_mapillary_token(token: str | Path | None = None) -> str:
+    """
+    Resolve a Mapillary access token from an argument, a file or the environment.
+
+    Every rapidtools component that talks to Mapillary resolves its token
+    this way, so a script can pass the token itself, pass the path of a text
+    file holding it (for example the one ``download_dataset('mapillary_token')``
+    writes), or pass nothing and set ``MAPILLARY_ACCESS_TOKEN`` once.
+
+    Args:
+        token: The token, a path to a file holding it, or ``None`` to read
+            ``MAPILLARY_ACCESS_TOKEN`` (or ``MAPILLARY_TOKEN``).
+
+    Returns:
+        str: The token without surrounding whitespace or quotes.
+
+    Raises:
+        FileNotFoundError: If a :class:`pathlib.Path` is given that is not a file.
+        ValueError: If no token can be found.
+
+    Example:
+        >>> import os
+        >>> os.environ['MAPILLARY_ACCESS_TOKEN'] = ' MLY|123|abc '
+        >>> resolve_mapillary_token()
+        'MLY|123|abc'
+        >>> resolve_mapillary_token('MLY|456|def')
+        'MLY|456|def'
+    """
+    if isinstance(token, Path):
+        if not token.is_file():
+            raise FileNotFoundError(f'Mapillary token file not found at: {token}')
+        value = token.read_text(encoding='utf-8')
+    else:
+        value = (token or '').strip()
+        if not value:
+            for name in MAPILLARY_TOKEN_ENV:
+                value = os.environ.get(name, '').strip()
+                if value:
+                    break
+        elif '|' not in value:
+            try:
+                candidate = Path(value)
+                if candidate.is_file():
+                    value = candidate.read_text(encoding='utf-8')
+            except OSError:
+                pass
+    value = value.strip('\'" \n\t')
+    if not value:
+        raise ValueError(
+            'A Mapillary access token is required. Pass access_token="MLY|...", '
+            'the path of a file holding it, or set the MAPILLARY_ACCESS_TOKEN '
+            'environment variable. The token the rapidtools examples use is '
+            "available with rapidtools.download_dataset('mapillary_token')."
+        )
+    return value
 
 
 def is_map_feature_value(value: str) -> bool:
@@ -284,18 +346,21 @@ class MapillaryClient:
 
     def __init__(
         self,
-        access_token: str | None = None,
+        access_token: str | Path | None = None,
         save_dir: str | Path = 'mapillary_images',
         *,
-        api_key: str | None = None,
+        api_key: str | Path | None = None,
         save_directory: str | Path | None = None,
     ):
         """
         Initialize the client with an access token and an output directory.
 
         Args:
-            access_token (str):
-                A Mapillary API access token. Must be a non-empty string.
+            access_token (str | Path | None):
+                A Mapillary API access token, the path of a text file
+                holding one, or ``None`` to read the
+                ``MAPILLARY_ACCESS_TOKEN`` environment variable (see
+                :func:`resolve_mapillary_token`).
             save_dir (str | Path):
                 Directory where downloaded images and generated masks are
                 saved. It is created lazily on the first download. Defaults
@@ -319,9 +384,7 @@ class MapillaryClient:
             access_token = api_key
         if save_directory is not None:
             save_dir = save_directory
-        if not access_token:
-            raise ValueError('Mapillary access token is required.')
-        self.access_token = access_token
+        self.access_token = resolve_mapillary_token(access_token)
         self.save_dir = Path(save_dir)
 
         # Create a session with the Retry strategy and the default headers:

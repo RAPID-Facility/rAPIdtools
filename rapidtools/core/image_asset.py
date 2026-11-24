@@ -60,14 +60,10 @@ from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-import matplotlib.colors as mcolors
-import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import requests
 from PIL import Image as PillowImage
 from PIL import ImageOps as PillowImageOps
-from skimage import measure
 
 if TYPE_CHECKING:
     from .bounding_box import BoundingBox
@@ -1424,6 +1420,10 @@ class ImageAsset:
         cmap_name = (
             DEFAULT_SEMANTIC_CMAP if mask_type == 'semantic' else DEFAULT_INSTANCE_CMAP
         )
+        import matplotlib.colors as mcolors
+        import matplotlib.pyplot as plt
+        from skimage import measure
+
         colormap = plt.get_cmap(cmap_name)
 
         logger.info(f'Generating HTML polygons for {len(unique_ids)} {mask_type}s...')
@@ -1891,6 +1891,8 @@ class ImageAsset:
                 return None
 
             # Get colormap and put it in a look up table for efficiency:
+            import matplotlib.pyplot as plt
+
             colormap = plt.get_cmap(color_map_name)
             lut = (colormap(np.arange(256)) * 255).astype(np.uint8)
 
@@ -2607,6 +2609,8 @@ class ImageCollection:
                 **asset.properties,
             }
             data.append(row)
+
+        import pandas as pd
 
         return pd.DataFrame(data)
 

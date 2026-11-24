@@ -18,8 +18,8 @@ authors:
     affiliation: "RAPID Facility, University of Washington"
   - name: "RAPID Facility"
     website: "https://www.uwrapid.org/"
-version: 0.2.0
-date-released: 2026-09-28
+version: 0.2.1
+date-released: 2026-11-24
 license: BSD-3-Clause
 repository-code: "https://github.com/RAPID-Facility/rAPIdtools"
 url: "https://rapid-facility.github.io/rAPIdtools/"

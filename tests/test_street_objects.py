@@ -116,7 +116,9 @@ def _survey(n_frames=5, spacing_m=4.0, with_ego=True, with_car=True):
                 }
             )
         frames.append(
-            _frame(f'img{i}', camera, 90.0, detections, captured=f'2025-08-2{i}')
+            _frame(
+                f'img{i}', camera, 90.0, detections, captured=f'2025-08-20T10:00:0{i}'
+            )
         )
     return ImageCollection(frames)
 
@@ -319,8 +321,8 @@ def test_detects_and_triangulates_parked_car_and_drops_ego(region, tmp_path):
     assert asset.attributes['n_images'] == 5
     assert asset.attributes['localization'] == 'triangulated'
     assert asset.attributes['position_rms_m'] < 0.5
-    assert asset.attributes['first_seen'] == '2025-08-20'
-    assert asset.attributes['last_seen'] == '2025-08-24'
+    assert asset.attributes['first_seen'] == '2025-08-20T10:00:00'
+    assert asset.attributes['last_seen'] == '2025-08-20T10:00:04'
     error_m = haversine_m(asset.geometry.x, asset.geometry.y, *CAR_POSITION)
     assert error_m < 0.5
 
@@ -379,6 +381,7 @@ def test_extractor_hands_every_frame_to_the_witness_check(
         save_directory=tmp_path,
         witness_radius_m=9.0,
         max_single_view_range_m=25.0,
+        localization_method='tracks',
     )
     result = ext()
     assert len(result) == 1  # the car is seen from every frame, nothing contradicts it
@@ -397,6 +400,7 @@ def test_min_observations_and_frame_spacing(region, tmp_path):
         region=region,
         min_observations=3,
         save_directory=tmp_path,
+        localization_method='tracks',
     )
     assert len(ext()) == 0
     # Frames 1 m apart collapse to one with spacing 10 m: a single sighting.
@@ -408,6 +412,7 @@ def test_min_observations_and_frame_spacing(region, tmp_path):
         region=region,
         frame_spacing_m=10.0,
         save_directory=tmp_path,
+        localization_method='tracks',
     )
     result = ext()
     assert len(result) == 1
@@ -548,6 +553,7 @@ def test_sam3_source_detects_classes_without_labels(region, tmp_path):
         sam3_batch_size=2,
         save_directory=tmp_path,
         ego_filter=False,
+        localization_method='tracks',  # one fixed block per frame: single views
     )
     result = ext()
     assert [c[1] for c in sam.calls] == [
@@ -894,7 +900,7 @@ def _second_pass(dx_m, sequence='seq2', prefix='p2_'):
                 90.0,
                 detections,
                 sequence=sequence,
-                captured=f'2025-09-0{i + 1}',
+                captured=f'2025-09-01T10:00:0{i}',
             )
         )
     return frames
@@ -1042,7 +1048,7 @@ def test_region_without_images_or_poses_yields_nothing(region, tmp_path, caplog)
     )
     with caplog.at_level(logging.WARNING):
         assert len(ext()) == 0
-    assert 'No images with a camera position' in caplog.text
+    assert 'images with a camera position inside the region' in caplog.text
 
     class PoselessClient(FakeClient):
         def fetch_images_by_ids(self, image_ids, fields, **kwargs):

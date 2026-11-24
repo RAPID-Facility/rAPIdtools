@@ -47,7 +47,7 @@ body:
     attributes:
       label: Context
       description: Optional. rapidtools version, operating system, and the dataset or workflow this came from.
-      placeholder: "rapidtools 0.2.0, Ubuntu 24.04, Mapillary vehicle survey"
+      placeholder: "rapidtools 0.2.1, Ubuntu 24.04, Mapillary vehicle survey"
   - type: checkboxes
     id: follow_up
     attributes:

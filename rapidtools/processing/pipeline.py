@@ -40,23 +40,22 @@
 """
 Ordered execution engine for ``rapidtools`` processing components.
 
-The :class:`Pipeline` chains together callables that accept and return a
-:class:`~rapidtools.core.PhysicalAssetCollection` (extractors, analyzers,
-predictors, reporters, ...). Steps can be registered in any order; the
-pipeline inspects each step's class name and enforces a logical execution
-sequence (extract -> predict -> report) right before running.
+The :class:`Pipeline` chains callables that accept and return a
+:class:`~rapidtools.core.PhysicalAssetCollection`: feature extractors,
+image extractors, verifiers, analyzers and regularizers. Steps can be
+registered in any order; each declares a
+:class:`~rapidtools.processing.Stage` and the pipeline runs them in stage
+order (detect, extract imagery, regularize, segment, verify, analyze,
+export).
 
 Example:
-    >>> from rapidtools.core import PhysicalAssetCollection
-    >>> from rapidtools.processing import (
-    ...     AerialImageryExtractor, Gemma4AssetAnalyzer, Pipeline
-    ... )
-    >>> collection = PhysicalAssetCollection.from_geojson('buildings.geojson')
-    >>> pipeline = Pipeline([
-    ...     Gemma4AssetAnalyzer(prompt='Describe the roof damage.'),
-    ...     AerialImageryExtractor('ortho.tif', save_directory='crops'),
+    >>> import rapidtools as rt
+    >>> buildings = rt.PhysicalAssetCollection.from_geojson('buildings.geojson')
+    >>> pipeline = rt.Pipeline([
+    ...     rt.AssetAnalyzer('gemma4', prompt='Describe the roof damage.'),
+    ...     rt.AerialImageryExtractor('ortho.tif', save_directory='crops'),
     ... ])
-    >>> result = pipeline.run(collection)  # extractor runs first automatically
+    >>> result = pipeline.run(buildings)  # the extractor runs first
 """
 
 import logging
@@ -72,27 +71,24 @@ logger = logging.getLogger(__name__)
 
 class Pipeline:
     """
-    A smart sequence of processing steps applied to a PhysicalAssetCollection.
+    A sequence of processing steps applied to a PhysicalAssetCollection.
 
-    This Pipeline is order-agnostic during construction. It automatically
-    inspects the components you add and enforces a strict logical execution
-    sequence before running. This prevents common errors, such as attempting
-    to run AI predictions before image data has been extracted.
+    The pipeline is order-agnostic during construction. Every step declares
+    the :class:`~rapidtools.processing.Stage` it belongs to, and the steps
+    are sorted by stage right before running, so an analyzer added before
+    the extractor that feeds it still runs after it:
 
-    The enforced execution order is:
+        1. ``DETECT``: find assets (``SAM3OrthoFeatureExtractor``,
+           ``MapillaryFeatureExtractor``).
+        2. ``EXTRACT_IMAGERY``: gather images per asset
+           (``AerialImageryExtractor``, ``DroneImageExtractor``, ...).
+        3. ``REGULARIZE`` and ``SEGMENT``: clean geometries and masks.
+        4. ``VERIFY``: drop false detections and duplicates.
+        5. ``ANALYZE``: run a vision-language model (``AssetAnalyzer``).
+        6. ``EXPORT`` and anything without a stage.
 
-        1. Extractors (e.g., ``AerialImageryExtractor``) - Gathers raw data
-           and images.
-        2. Predictors / Classifiers (e.g., ``DamagePredictor``) - Analyzes
-           the gathered data.
-        3. Reporters / Exporters (e.g., ``PDFReporter``) - Summarizes and
-           exports the results.
-        4. Custom / Unknown Steps - Any unrecognized steps default to running
-           last.
-
-    Note: The pipeline fully supports standalone execution. If you only
-    provide a Predictor, it will simply run the Predictor without requiring
-    an Extractor.
+    Steps of the same stage keep the order they were added in. A pipeline
+    with a single step simply runs it.
 
     Args:
         steps (list[Callable] | None, optional):
@@ -103,33 +99,24 @@ class Pipeline:
             A cooperative cancellation flag. When set (typically from another
             thread), the pipeline raises
             :class:`~rapidtools.core.OperationCancelled` before starting the
-            next step. The same event can be shared with the individual steps
-            so that they also stop promptly. Defaults to ``None``.
+            next step. The event is also handed to every step that has a
+            ``cancel_event`` of its own left at ``None``, so the step in
+            progress stops promptly too. Defaults to ``None``.
 
     Example:
-        Build a pipeline from an extractor and an analyzer, adding the steps
-        in the "wrong" order. The pipeline reorders them before execution:
+        A detection pipeline needs no input collection, and one cancel event
+        on the pipeline covers every step:
 
         >>> import threading
-        >>> from rapidtools.core import PhysicalAssetCollection
-        >>> from rapidtools.processing import (
-        ...     AerialImageryExtractor, Gemma4AssetAnalyzer, Pipeline
-        ... )
-        >>>
+        >>> import rapidtools as rt
         >>> stop = threading.Event()
-        >>> analyzer = Gemma4AssetAnalyzer(
-        ...     prompt='Is this building damaged? Answer yes or no.',
-        ...     cancel_event=stop,
+        >>> pipeline = rt.Pipeline(cancel_event=stop)
+        >>> pipeline.add_step(rt.AssetAnalyzer('gemma4', prompt='Damaged? yes/no'))
+        >>> pipeline.add_step(
+        ...     rt.AerialImageryExtractor('data/ortho.tif', save_directory='crops')
         ... )
-        >>> extractor = AerialImageryExtractor(
-        ...     dataset='data/eaton_ortho.tif',
-        ...     save_directory='output/crops',
-        ...     cancel_event=stop,
-        ... )
-        >>> pipeline = Pipeline(cancel_event=stop)
-        >>> pipeline.add_step(analyzer).add_step(extractor)
-        >>> collection = PhysicalAssetCollection.from_geojson('bldgs.geojson')
-        >>> processed = pipeline.run(collection)
+        >>> buildings = rt.PhysicalAssetCollection.from_geojson('bldgs.geojson')
+        >>> processed = pipeline.run(buildings)
     """
 
     def __init__(
@@ -183,13 +170,17 @@ class Pipeline:
         """
         self.steps.sort(key=stage_of)
 
-    def run(self, asset_collection: PhysicalAssetCollection) -> PhysicalAssetCollection:
+    def run(
+        self, asset_collection: PhysicalAssetCollection | None = None
+    ) -> PhysicalAssetCollection:
         """
         Execute all steps in the pipeline in the correct logical sequence.
 
         Args:
-            asset_collection (PhysicalAssetCollection):
-                The collection of assets to process.
+            asset_collection (PhysicalAssetCollection | None):
+                The collection of assets to process. Leave it out for a
+                pipeline that starts with a detection step, which builds the
+                collection itself; an empty collection is used.
 
         Returns:
             PhysicalAssetCollection:
@@ -199,12 +190,17 @@ class Pipeline:
         Raises:
             OperationCancelled:
                 If ``cancel_event`` is set before any step starts.
+            TypeError:
+                If a step returns something other than a collection.
 
         Example:
             >>> from rapidtools.processing import Pipeline
             >>> pipeline = Pipeline([my_extractor, my_analyzer])
             >>> processed = pipeline.run(my_collection)
+            >>> detected = Pipeline([my_detector, my_cropper]).run()
         """
+        if asset_collection is None:
+            asset_collection = PhysicalAssetCollection()
         if not self.steps:
             logger.warning('Pipeline is empty. No steps were executed.')
             return asset_collection
@@ -222,8 +218,27 @@ class Pipeline:
             # Stop promptly if the caller asked us to cancel:
             raise_if_cancelled(self.cancel_event, f'pipeline step {step_name}')
 
+            # One event on the pipeline is enough: steps that were given none
+            # of their own share it, so the step in progress stops too.
+            if (
+                self.cancel_event is not None
+                and getattr(step, 'cancel_event', self) is None
+            ):
+                try:
+                    step.cancel_event = self.cancel_event  # type: ignore[attr-defined]
+                except AttributeError:  # pragma: no cover - read-only step
+                    pass
+
             # Pass the collection through the current step
-            asset_collection = step(asset_collection)
+            result = step(asset_collection)
+            if not isinstance(result, PhysicalAssetCollection):
+                raise TypeError(
+                    f'{step_name} returned {type(result).__name__}, not a '
+                    'PhysicalAssetCollection, so the next step has nothing to work '
+                    'on. A step with several outputs must be told which one to '
+                    "pass on (for example RoadwayRegularizer(output='polygons'))."
+                )
+            asset_collection = result
 
         logger.info('Pipeline execution successfully completed.')
         return asset_collection

@@ -307,4 +307,35 @@ def download_dataset(
             f'{len(files_to_download)} files.'
         )
 
+    missing = [
+        f.filename
+        for f in files_to_download
+        if out_dir / f.filename not in downloaded_paths
+    ]
+    if missing:
+        logger.error(
+            f'{len(missing)} of {len(files_to_download)} file(s) could not be '
+            f'downloaded ({", ".join(missing)}), so the returned list is shorter '
+            'than the request. Check the network connection and run again; files '
+            'already downloaded are kept.'
+        )
+
     return downloaded_paths
+
+
+def list_datasets() -> dict[str, list[str]]:
+    """
+    Names of the datasets in the registry and the files each one holds.
+
+    Returns:
+        dict[str, list[str]]: File names keyed by dataset name, in registry
+        order; pass a name (or several) to :func:`download_dataset`.
+
+    Example:
+        >>> from rapidtools.datasets import list_datasets
+        >>> list_datasets()['mapillary_token']
+        ['mapillary_token.txt']
+    """
+    return {
+        name: [f.filename for f in files] for name, files in DATASET_REGISTRY.items()
+    }

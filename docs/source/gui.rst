@@ -222,6 +222,26 @@ a VPN: the token protects the app, not the transport. For a server that
 colleagues reach over HTTPS, with Docker, notifications and a GPU, see
 :doc:`deployment`.
 
+Job files: what the interface hands to rAPIdtools
+-------------------------------------------------
+
+The page never calls the analysis code directly. Every run it starts (a
+basemap download, a detection, an inference, a prompt-assistant request) is
+written as a JSON *job file* under ``<output folder>/jobs`` and handed to
+:mod:`rapidtools.jobs`, which keeps a *result file* next to it up to date.
+The log pane prints the path of the job file when a run starts.
+
+That file is the complete record of the run, and it reruns without the
+interface:
+
+.. code-block:: bash
+
+   rapidtools-job run output/jobs/20261124T154952Z-74fa-detection.json
+
+API keys and tokens typed into the page are not written into job files; they
+appear there as ``{"$secret": ...}`` references. The format, every step type
+and its options are specified in :doc:`json_interface`.
+
 Scripting the same workflow
 ---------------------------
 

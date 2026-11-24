@@ -45,7 +45,9 @@ provides the core :class:`Pipeline` engine and the modular, swappable steps
 that operate on a :class:`~rapidtools.core.PhysicalAssetCollection`:
 
     - Image extractors (``AerialImageryExtractor``, ``MapillaryImageExtractor``,
-      ``BingOrthomosaicExtractor``) gather imagery for assets.
+      ``BingOrthomosaicExtractor``) gather imagery for assets;
+      ``DroneImageExtractor`` picks the drone photos that together show the
+      most of each asset.
     - Feature extractors (``SAM3OrthoFeatureExtractor``) discover new assets
       in orthomosaic rasters.
     - Segmenters (``SAM3ImageSegmenter``) and analyzers (``*AssetAnalyzer``)
@@ -69,6 +71,7 @@ Example:
 
 # Import the core pipeline engine:
 # Import feature extractors:
+from .drone_views import DroneImageExtractor, DroneViewSelector
 from .duplicates import DuplicateResolver
 from .feature_extractors import SAM3OrthoFeatureExtractor
 
@@ -123,6 +126,8 @@ __all__ = [
     'BuildingRegularizer',
     'ClaudeAssetAnalyzer',
     'DetectionVerifier',
+    'DroneImageExtractor',
+    'DroneViewSelector',
     'DuplicateResolver',
     'GeminiAssetAnalyzer',
     'Gemma4AssetAnalyzer',

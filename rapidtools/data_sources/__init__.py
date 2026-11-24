@@ -41,7 +41,8 @@ Clients and readers for fetching raw geospatial data and imagery.
 This subpackage groups the data-acquisition layer of rapidtools: clients
 for external APIs (Mapillary and Google street-level imagery, Bing and
 Google aerial tiles - the latter without API keys),
-a reader for local orthomosaic GeoTIFFs, and Web Mercator tile helpers.
+a reader for local orthomosaic GeoTIFFs, a reader for the camera poses of
+drone photographs, and Web Mercator tile helpers.
 
 Example:
     >>> from rapidtools.data_sources import OrthomosaicReader, TileUtils
@@ -53,6 +54,13 @@ Example:
 """
 
 from .bing_aerial_image_extractor import BingAerialImageExtractor
+from .drone_images import (
+    DroneCamera,
+    read_drone_image,
+    read_drone_images,
+    read_pose_table,
+    write_pose_metadata,
+)
 from .google_aerial_image_extractor import GoogleAerialImageExtractor
 from .google_streetview import GoogleStreetViewClient, StreetViewPanorama
 from .mapillary_client import MapillaryClient
@@ -63,6 +71,7 @@ from .tile_utils import TileUtils
 # Explicitly define the public API of this module.
 __all__ = [
     'BingAerialImageExtractor',
+    'DroneCamera',
     'GoogleAerialImageExtractor',
     'GoogleStreetViewClient',
     'MapillaryClient',
@@ -70,4 +79,8 @@ __all__ = [
     'OrthomosaicReader',
     'StreetViewPanorama',
     'TileUtils',
+    'read_drone_image',
+    'read_drone_images',
+    'read_pose_table',
+    'write_pose_metadata',
 ]

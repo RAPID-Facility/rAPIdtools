@@ -172,6 +172,7 @@ IMAGERY_SOURCES: dict[str, dict[str, Any]] = {
 # Plain-English classes MapillaryFeatureExtractor understands out of the box.
 STREET_CLASS_EXAMPLES = (
     'vehicles',
+    'buildings',
     'utility poles',
     'traffic signs',
     'fire hydrants',
@@ -308,9 +309,15 @@ class _OutlineKwargs(TypedDict):
 
 @dataclass
 class InferenceSettings:
-    """User-configurable options for the VLM inference stage."""
+    """
+    User-configurable options for the VLM inference stage.
 
-    raster_path: Path
+    ``raster_path`` is only needed for the ``'aerial'`` imagery source, which
+    crops it; the street-level sources fetch their own imagery, so a survey
+    over a box picked on the map can be analyzed without loading any image.
+    """
+
+    raster_path: Path | None
     output_dir: Path
     prompt: str
     backend: InferenceBackend = 'gemini'
@@ -355,7 +362,8 @@ class InferenceSettings:
                 Mapillary source has no token, or the outline options are
                 invalid.
         """
-        self.raster_path = Path(self.raster_path)
+        if self.raster_path is not None:
+            self.raster_path = Path(self.raster_path)
         self.output_dir = Path(self.output_dir)
         if not self.prompt.strip():
             raise ValueError('An inference prompt is required.')
@@ -364,6 +372,11 @@ class InferenceSettings:
             raise ValueError(
                 f'imagery must be one of {tuple(IMAGERY_SOURCES)}, '
                 f'got {self.imagery!r}.'
+            )
+        if self.imagery == 'aerial' and self.raster_path is None:
+            raise ValueError(
+                'Aerial crops need an image: load one in step 1, or choose a '
+                'street-level imagery source.'
             )
         if (
             IMAGERY_SOURCES[self.imagery]['needs_token']
@@ -545,8 +558,11 @@ class StreetDetectionSettings:
             raise ValueError(
                 'Load imagery (or give a region) to define the survey area.'
             )
-        if self.detection_source not in ('auto', 'mapillary', 'sam3'):
-            raise ValueError("detection_source must be 'auto', 'mapillary' or 'sam3'.")
+        if self.detection_source not in ('auto', 'mapillary', 'sam3', 'map_features'):
+            raise ValueError(
+                "detection_source must be 'auto', 'mapillary', 'sam3' or "
+                "'map_features'."
+            )
         if self.frame_spacing_m < 0 or self.cluster_radius_m <= 0:
             raise ValueError('Frame spacing must be >= 0 and cluster radius > 0.')
         if self.min_observations < 1:
@@ -872,8 +888,14 @@ class AssetAnalysisWorkflow:
         self._release_local_assistant()
         if len(collection) == 0:
             raise ValueError('The asset collection is empty; nothing to analyze.')
-        raster_path = settings.raster_path.expanduser().resolve()
-        if settings.imagery == 'aerial' and not raster_path.is_file():
+        raster_path = (
+            settings.raster_path.expanduser().resolve()
+            if settings.raster_path is not None
+            else None
+        )
+        if settings.imagery == 'aerial' and (
+            raster_path is None or not raster_path.is_file()
+        ):
             raise FileNotFoundError(f'Raster not found: {raster_path}')
         output_dir = settings.output_dir.expanduser().resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -938,7 +960,7 @@ class AssetAnalysisWorkflow:
         )
 
     def _build_extractor(
-        self, settings: InferenceSettings, raster_path: Path, image_dir: Path
+        self, settings: InferenceSettings, raster_path: Path | None, image_dir: Path
     ):
         """
         Instantiate the imagery extractor for ``settings.imagery``.
@@ -1172,9 +1194,11 @@ class AssetAnalysisWorkflow:
         Wraps :class:`~rapidtools.processing.MapillaryFeatureExtractor`: the
         requested classes are located in every image of the region from
         Mapillary's segmentation metadata, the survey vehicle is removed,
-        sightings are triangulated and clustered into one point asset per
-        object. No pixels are downloaded; crops are made at inference time
-        with the ``'mapillary_objects'`` imagery source.
+        and sightings are fused into one asset per object: a point for
+        vehicles and other objects, a footprint polygon for buildings (placed
+        from the survey's point cloud). No pixels are downloaded; crops are
+        made at inference time with the ``'mapillary_objects'`` imagery
+        source.
 
         Args:
             settings (StreetDetectionSettings): Classes, token, region and

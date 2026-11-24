@@ -78,6 +78,7 @@ Example:
 
 from __future__ import annotations
 
+import difflib
 import logging
 import math
 import threading
@@ -91,7 +92,7 @@ from typing import Any
 
 import numpy as np
 from PIL import Image
-from shapely.geometry import Point
+from shapely.geometry import Point, Polygon
 from tqdm import tqdm
 
 from rapidtools.config import REQUESTS_TIMEOUT_VAL
@@ -106,11 +107,15 @@ from rapidtools.core import (
     raise_if_cancelled,
 )
 from rapidtools.data_sources import MapillaryClient, MapillaryLabels
-from rapidtools.data_sources.mapillary_client import is_map_feature_value
+from rapidtools.data_sources.mapillary_client import (
+    is_map_feature_value,
+    resolve_mapillary_token,
+)
 
 from . import outlines
 from .reid import DEFAULT_MIN_WIDTH_PX, DEFAULT_REID_MODEL
 from .step import Stage
+from .street_fusion import fuse_observations, object_attributes
 from .street_localization import (
     DEFAULT_MAX_RANGE_M,
     MIN_POLYGON_AREA_FRACTION,
@@ -122,6 +127,11 @@ from .street_localization import (
     polygon_angular_size,
     simplify_polygon,
     thin_frames,
+)
+from .street_structures import (
+    discover_structures,
+    is_structure_label,
+    structure_attributes,
 )
 from .street_tracking import (
     CameraFrame,
@@ -214,6 +224,7 @@ _IMAGE_FIELDS: tuple[str, ...] = (
 _DETECTION_FIELDS: tuple[str, ...] = ('detections.value', 'detections.geometry')
 
 _PANO_TYPES = ('spherical', 'equirectangular')
+_LOCALIZATION_METHODS = ('auto', 'fusion', 'points', 'tracks', 'voting', 'cluster')
 # ``simplify_tolerance`` is capped at this share of an outline's longest side.
 _RELATIVE_TOLERANCE = 0.01
 
@@ -350,6 +361,61 @@ def _captured_at(props: dict[str, Any]) -> str | None:
     return props.get('capture_date') or (str(value) if value is not None else None)
 
 
+# Options MapillaryFeatureExtractor accepts beyond its named arguments, with
+# their defaults (documented, by group, in the class docstring).
+_OPTION_DEFAULTS: dict[str, Any] = {
+    # Occupancy fusion:
+    'fusion_range_m': 30.0,
+    'cell_m': None,
+    'occupancy_threshold': 0.6,
+    'min_range_m': 2.0,
+    'bearing_sigma_deg': 0.75,
+    # Structures from the point cloud:
+    'structure_range_m': 40.0,
+    'min_gap_m': 1.0,
+    'structure_footprint': 'rectangle',
+    'structure_views': 12,
+    'point_cloud_dir': None,
+    # Frames and detections:
+    'ego_filter': True,
+    'ego_min_recurrence': 0.5,
+    'frame_batch_size': 200,
+    'simplify_tolerance': 0.002,
+    # SAM 3 detection:
+    'sam3_model': None,
+    'sam3_model_id': 'facebook/sam3',
+    'sam3_threshold': 0.5,
+    'sam3_mask_threshold': 0.5,
+    'sam3_image_size': '1024',
+    'sam3_batch_size': 4,
+    'load_in_4bit': True,
+    'device': 'auto',
+    # Appearance re-identification:
+    'reid_model': DEFAULT_REID_MODEL,
+    'reid_min_similarity': None,
+    'reid_max_distance_m': 6.0,
+    'reid_min_width_px': DEFAULT_MIN_WIDTH_PX,
+    'reid_image_size': '2048',
+    'reid_embedder': None,
+    # Earlier methods:
+    'max_range_m': DEFAULT_MAX_RANGE_M,
+    'max_single_view_range_m': 30.0,
+    'witness_radius_m': 12.0,
+    'object_height_m': 1.5,
+    'min_area_fraction': None,
+    'cluster_radius_m': 4.0,
+    'max_merge_m': None,
+    'track_gap_frames': 2,
+    'min_path_distance_m': 1.5,
+    'object_size_m': 4.5,
+    'merge_pieces_of_neighbours': True,
+    'close_range_m': 20.0,
+    'min_sighting_deg': 6.0,
+    'report_single_views': False,
+    'abeam_window_deg': 0.0,
+}
+
+
 class MapillaryFeatureExtractor:
     """
     Discover objects along a Mapillary survey and place them on the ground.
@@ -375,8 +441,10 @@ class MapillaryFeatureExtractor:
             Objects to find, in plain English (``'cars'``, ``'utility
             poles'``) or as exact Mapillary labels
             (``'object--vehicle--truck'``).
-        access_token (str | None):
-            Mapillary API token. Not needed when ``client`` is given.
+        access_token (str | Path | None):
+            Mapillary API token, the path of a file holding it, or ``None`` to
+            read the ``MAPILLARY_ACCESS_TOKEN`` environment variable. Not
+            needed when ``client`` is given.
         region (BoundingBox | PolygonRegion | None):
             Area to survey. May instead be passed when the extractor is
             called.
@@ -394,115 +462,53 @@ class MapillaryFeatureExtractor:
             skip unresolved classes with a warning), ``'sam3'`` (SAM 3 for
             every class) or ``'map_features'`` (only Mapillary's
             pre-triangulated map features; other classes are skipped).
-        label_mapper (Any | None):
-            Optional :class:`~rapidtools.processing.MapillaryLabelMapper`
-            to translate class names the built-in aliases do not cover.
+        localization_method (str):
+            How sightings become objects. ``'auto'`` (default) uses
+            ``'points'`` for buildings and other structures and
+            ``'fusion'`` for everything else. ``'fusion'`` reads every
+            outline as a range scan and fuses all frames of a survey day in
+            a ground occupancy grid; objects are the cells most frames
+            agree are occupied, whatever their size and from however many
+            streets they were seen (see
+            :mod:`~rapidtools.processing.street_fusion`). ``'points'``
+            labels the survey's own structure-from-motion point cloud with
+            the outlines and reads structures off the labelled points as
+            footprint polygons (see
+            :mod:`~rapidtools.processing.street_structures`); it needs
+            panoramas Mapillary has reconstructed and falls back to
+            ``'fusion'`` otherwise. ``'tracks'`` is the earlier method:
+            detections linked frame to frame by bearing, triangulated and
+            merged by a set of rules tuned on vehicles (see
+            :mod:`~rapidtools.processing.street_tracking`). ``'voting'``
+            accumulates rays on a ground grid and takes the peaks, and
+            ``'cluster'`` clusters single-view positions by radius; both
+            are baselines.
+        geometry (str):
+            Geometry written to each asset. ``'auto'`` (default) gives
+            structures a footprint polygon and everything else a point;
+            ``'footprint'`` gives every object found by ``'fusion'`` or
+            ``'points'`` its footprint polygon; ``'point'`` gives every
+            object a point (a structure's is the footprint centre). The
+            footprint's size is always in the attributes.
+        min_observations (int):
+            Distinct frames an object must have been seen in; ``3`` is a
+            sound choice for a survey sampled every few metres. Defaults
+            to 1.
+        frame_spacing_m (float):
+            Keep one frame per this many metres along each sequence before
+            detecting; ``0`` keeps every frame. Defaults to 0.
         camera_height_m (float):
             Camera height above the road, used for single-view ranges.
             Defaults to 2.4 (roof-mounted rig).
-        min_range_m (float):
-            Closest plausible object. Defaults to 2.0.
-        max_range_m (float):
-            Farthest triangulated position reported, and the farthest
-            single-view range kept as a prior. Defaults to 60.0.
-        max_single_view_range_m (float):
-            A single-view object whose nearest sighting is farther than
-            this is not reported; beyond it the ground-contact range is a
-            guess and the track tends to hop between neighbouring objects.
-            ``0`` keeps them. Defaults to 30.0.
-        witness_radius_m (float):
-            Negative-evidence check: a weak object (a single view, or a
-            triangulation never seen closer than 25 m) that same-day frames
-            within this distance had in view, without any detection of the
-            class along its bearing, is dropped (at least two such frames,
-            outnumbering frames that did see it, tallied per survey day).
-            ``0`` disables the check. Defaults to 12.0.
         min_object_width_m (float):
             Objects narrower than this, judged from the outline's angular
             width at the estimated distance, are fragments or false
             detections and are dropped. Resolution-independent and tolerant
             of partial occlusion. Defaults to 1.0.
-        object_height_m (float):
-            Typical height of the class. When a track's ground-contact
-            ranges disagree with its triangulation, the track is called
-            moving only if enough of an object this tall is visible for
-            occlusion to be ruled out. Defaults to 1.5 (vehicles).
-        min_area_fraction (float | None):
-            Deprecated. Pixel-area floor below which a detection is ignored;
-            ``None`` (the default) keeps only a tiny floor for decoding
-            noise. Size is judged with ``min_object_width_m`` instead.
-        cluster_radius_m (float):
-            Sightings closer than this are the same object in the legacy
-            ``'cluster'`` method; with ``'tracks'`` it only sets the default
-            ``max_merge_m`` (1.5 times this value). Defaults to 4.0.
-        localization_method (str):
-            How sightings become objects. ``'tracks'`` (default) links
-            detections frame to frame by bearing, triangulates each track
-            robustly, drops moving vehicles and merges estimates with a
-            covariance-aware gate (see
-            :mod:`~rapidtools.processing.street_tracking`). ``'voting'``
-            accumulates rays on a ground grid and takes the peaks, a
-            baseline to compare against. ``'cluster'`` is the previous
-            behaviour: single-view positions clustered by radius.
-        bearing_sigma_deg (float):
-            One-sigma bearing error of a sighting. Defaults to 0.75.
-        max_merge_m (float | None):
-            Farthest two estimates can be and still be merged into one
-            object. ``None`` uses ``1.5 * cluster_radius_m``.
-        track_gap_frames (int):
-            Frames a track may miss before it is closed. Defaults to 2.
-        min_path_distance_m (float):
-            Objects closer than this to the line the camera drove are
-            dropped; the survey vehicle passed through that spot. Defaults
-            to 1.5.
-        object_size_m (float):
-            Object footprint used by the voting method. Defaults to 4.5.
-        merge_pieces_of_neighbours (bool):
-            After localisation, fold an object whose closest sightings show
-            a better-located neighbour into that neighbour: the second
-            track left by a split outline (a car cut in two by a pole, or
-            into a front and a rear) or by the tracker sliding between
-            vehicles lined up along the line of sight. Such pairs share
-            frames, which the position merge takes as proof of two
-            objects, so they are judged on what their sightings show (see
-            :func:`~rapidtools.processing.street_tracking.merge_pieces`).
-            Defaults to ``True``.
-        close_range_m (float):
-            Range within which an object must have been seen to be
-            reported. Ground-contact ranges read from farther away are off
-            by a third and the tracker hops between vehicles lined up down
-            the road, so an object never seen this close whose closest
-            rays point at a vehicle within 15 m already placed from the
-            close pass is a far sighting of that vehicle, and is dropped
-            unless it is well triangulated regardless (parallax of 45
-            degrees or more and uncertainty of half a metre or less). One
-            whose rays point elsewhere, a car set back in a driveway or
-            down a side street, stays. The piece merge judges sightings by
-            the same range. ``0`` keeps every object. Defaults to 20.
-        min_sighting_deg (float):
-            An object must have been seen at least once with an outline
-            this wide or tall, in degrees of the panorama (6 degrees is 34
-            pixels on a 2048-pixel thumbnail, 225 on the original). What was
-            never more than a speck cannot be identified by anyone and is
-            not reported; a drive-by survey sees anything worth counting
-            properly in some frame. ``0`` keeps every object. Defaults to 6.
-        report_single_views (bool):
-            Keep objects placed from ground-contact ranges alone, without
-            parallax (``localization='single_view'``). Their positions are
-            guesses; defaults to ``False``.
-        abeam_window_deg (float):
-            Objects are built only from the sightings made while passing
-            them, within this many degrees of abeam on either side of the
-            direction of travel. A drive-by survey passes everything worth
-            counting, and the passing frames carry the widest parallax and
-            the largest outlines; the frames looking ahead or behind down
-            the road cannot place anything and are where tracks slide
-            between vehicles that line up. Those sightings are attached
-            afterwards to the objects their rays point at, so records and
-            crops stay complete, but never create an object. Off (``0``)
-            by default: the track classification is tuned on tracks that
-            include the approach and a pass alone trips it, losing real
-            vehicles on the surveys tried. Defaults to 0.
+        assumed_depth_m (float):
+            Depth given to a structure's footprint when the survey saw
+            less of it; the ``depth_source`` attribute then reads
+            ``'assumed'``. Defaults to 10.0.
         reid (bool):
             After localisation, compare the appearance of objects from
             different sequences that lie within ``reid_max_distance_m`` and
@@ -511,42 +517,9 @@ class MapillaryFeatureExtractor:
             ``reid_model``. Appearance only ever adds merges: an object
             without a sighting at least ``reid_min_width_px`` wide is left
             as geometry placed it. Defaults to ``False``.
-        reid_model (str):
-            Hugging Face vision backbone for the embeddings. Defaults to
-            ``'openai/clip-vit-base-patch16'``; DINOv2 checkpoints work too.
-        reid_min_similarity (float | None):
-            Cosine similarity at which two crops count as the same object.
-            ``None`` (the default) takes the value recommended for
-            ``reid_model``: 0.89 for CLIP, 0.83 for DINOv2.
-        reid_max_distance_m (float):
-            Only objects this close are compared. Defaults to 6.0.
-        reid_min_width_px (float):
-            Narrowest detection whose crop is embedded, in pixels of a
-            2048-pixel-wide thumbnail (scaled to ``reid_image_size``). On
-            the Spokane survey, crops below this width scored as alike
-            whether or not they showed the same vehicle. ``0`` embeds every
-            object. Defaults to 100.
-        reid_image_size (str):
-            Thumbnail size the re-identification crops are cut from:
-            ``'2048'`` (default, the size the thresholds were tuned on) or
-            ``'1024'``.
-        reid_embedder (Any | None):
-            A ready :class:`~rapidtools.processing.reid.AppearanceEmbedder`
-            (or anything with ``embed(images)``) to use instead of loading
-            ``reid_model``.
-        min_observations (int):
-            Distinct frames an object must have been seen in; ``3`` is a
-            sound choice for a survey sampled every few metres. Defaults
-            to 1.
-        frame_spacing_m (float):
-            Keep one frame per this many metres along each sequence before
-            detecting; ``0`` keeps every frame. Defaults to 0.
-        ego_filter (bool):
-            Remove detections of the collection vehicle. Defaults to
-            ``True``.
-        ego_min_recurrence (float):
-            Fraction of a sequence's frames a box must recur in to count as
-            the collection vehicle. Defaults to 0.5.
+        label_mapper (Any | None):
+            Optional :class:`~rapidtools.processing.MapillaryLabelMapper`
+            to translate class names the built-in aliases do not cover.
         asset_type (str | None):
             ``asset_type`` attribute written to every asset. Defaults to the
             class name each object was found under.
@@ -554,45 +527,183 @@ class MapillaryFeatureExtractor:
             Prefix of the generated asset IDs. Defaults to ``'street'``.
         save_directory (str | Path):
             Where SAM 3 thumbnails are cached when that source is used.
-        sam3_model (Any | None):
-            Pre-loaded SAM 3 wrapper. Loaded on demand otherwise.
-        sam3_model_id (str):
-            Hugging Face repository of the SAM 3 weights. Defaults to
-            ``'facebook/sam3'``.
-        sam3_threshold (float):
-            SAM 3 detection confidence threshold. Defaults to 0.5.
-        sam3_mask_threshold (float):
-            SAM 3 mask binarisation threshold. Defaults to 0.5.
-        sam3_image_size (str):
-            Thumbnail size SAM 3 runs on: ``'1024'`` (default) or ``'2048'``.
-        sam3_batch_size (int):
-            Thumbnails per SAM 3 inference call. Defaults to 4.
-        load_in_4bit (bool):
-            Load SAM 3 with 4-bit quantisation. Defaults to ``True``.
-        device (str):
-            Compute device for SAM 3 (``'auto'``, ``'cuda'``, ``'cpu'``).
         max_workers (int):
             Threads for metadata and thumbnail downloads. Defaults to 10.
-        frame_batch_size (int):
-            Frames whose metadata is fetched and converted at a time. Each
-            image's detection payload (every Mapillary label, as encoded
-            geometry) is dropped as soon as the requested classes have been
-            read from it, so memory use is bounded by one batch rather than
-            by the size of the survey. Defaults to 200.
-        simplify_tolerance (float):
-            Douglas-Peucker tolerance, in normalised image units, applied to
-            every detection outline before it is stored (``0.002`` is about
-            four pixels of a 2048-wide image), capped at 1 % of the outline's
-            longest side so small, distant objects keep their detail.
-            Mapillary outlines trace every pixel step of a mask, so this cuts
-            the memory of a city-wide run several-fold without changing
-            which objects are found. ``0`` keeps the raw outlines. Defaults
-            to 0.002.
         cancel_event (threading.Event | None):
             Cooperative cancellation flag checked between images and batches.
         client (MapillaryClient | None):
             Pre-configured client; one is created from ``access_token``
             otherwise.
+
+    The arguments above cover a first run. The options below are passed as
+    keywords in the same way (``MapillaryFeatureExtractor(...,
+    occupancy_threshold=0.7)``); none of them is needed to get started, and a
+    misspelt name raises a ``TypeError`` that suggests the closest match.
+
+    **Occupancy fusion** (``'fusion'``, the default method for objects):
+
+    - ``fusion_range_m`` (*float*): Farthest range at which a frame votes in
+      ``'fusion'``. Defaults to 30.0.
+    - ``cell_m`` (*float | None*): Ground cell of the ``'fusion'`` grid.
+      ``None`` picks a quarter of ``min_object_width_m``, between 0.1 and 0.5
+      m.
+    - ``occupancy_threshold`` (*float*): Share of the range-weighted votes on a
+      ground cell that must say "occupied" in ``'fusion'``. Defaults to 0.6.
+    - ``min_range_m`` (*float*): Closest plausible object. Defaults to 2.0.
+    - ``bearing_sigma_deg`` (*float*): One-sigma bearing error of a sighting.
+      Defaults to 0.75.
+
+    **Structures from the point cloud** (``'points'``, the default for
+    buildings):
+
+    - ``structure_range_m`` (*float*): Farthest range at which a frame votes on
+      a point in ``'points'``, and from which a structure gets a sighting.
+      Defaults to 40.0.
+    - ``min_gap_m`` (*float*): Gap along the street that separates two
+      structures in ``'points'``. Defaults to 1.0.
+    - ``structure_footprint`` (*str*): ``'rectangle'`` (default) draws a
+      facade-aligned rectangle with the unseen rear filled in; ``'observed'``
+      draws only the convex outline of what was seen.
+    - ``structure_views`` (*int*): Sightings kept per structure, spread over
+      the directions it was seen from. Defaults to 12.
+    - ``point_cloud_dir`` (*str | Path | None*): Where downloaded point clouds
+      are cached. Defaults to ``<save_directory>/point_clouds``.
+
+    **Frames and detections** (every method):
+
+    - ``ego_filter`` (*bool*): Remove detections of the collection vehicle.
+      Defaults to ``True``.
+    - ``ego_min_recurrence`` (*float*): Fraction of a sequence's frames a box
+      must recur in to count as the collection vehicle. Defaults to 0.5.
+    - ``frame_batch_size`` (*int*): Frames whose metadata is fetched and
+      converted at a time. Each image's detection payload (every Mapillary
+      label, as encoded geometry) is dropped as soon as the requested classes
+      have been read from it, so memory use is bounded by one batch rather than
+      by the size of the survey. Defaults to 200.
+    - ``simplify_tolerance`` (*float*): Douglas-Peucker tolerance, in
+      normalised image units, applied to every detection outline before it is
+      stored (``0.002`` is about four pixels of a 2048-wide image), capped at 1
+      % of the outline's longest side so small, distant objects keep their
+      detail. Mapillary outlines trace every pixel step of a mask, so this cuts
+      the memory of a city-wide run several-fold without changing which objects
+      are found. ``0`` keeps the raw outlines. Defaults to 0.002.
+
+    **SAM 3 detection** (classes Mapillary does not segment, or
+    ``detection_source='sam3'``):
+
+    - ``sam3_model`` (*Any | None*): Pre-loaded SAM 3 wrapper. Loaded on demand
+      otherwise.
+    - ``sam3_model_id`` (*str*): Hugging Face repository of the SAM 3 weights.
+      Defaults to ``'facebook/sam3'``.
+    - ``sam3_threshold`` (*float*): SAM 3 detection confidence threshold.
+      Defaults to 0.5.
+    - ``sam3_mask_threshold`` (*float*): SAM 3 mask binarisation threshold.
+      Defaults to 0.5.
+    - ``sam3_image_size`` (*str*): Thumbnail size SAM 3 runs on: ``'1024'``
+      (default) or ``'2048'``.
+    - ``sam3_batch_size`` (*int*): Thumbnails per SAM 3 inference call.
+      Defaults to 4.
+    - ``load_in_4bit`` (*bool*): Load SAM 3 with 4-bit quantisation. Defaults
+      to ``True``.
+    - ``device`` (*str*): Compute device for SAM 3 (``'auto'``, ``'cuda'``,
+      ``'cpu'``).
+
+    **Appearance re-identification** (``reid=True``):
+
+    - ``reid_model`` (*str*): Hugging Face vision backbone for the embeddings.
+      Defaults to ``'openai/clip-vit-base-patch16'``; DINOv2 checkpoints work
+      too.
+    - ``reid_min_similarity`` (*float | None*): Cosine similarity at which two
+      crops count as the same object. ``None`` (the default) takes the value
+      recommended for ``reid_model``: 0.89 for CLIP, 0.83 for DINOv2.
+    - ``reid_max_distance_m`` (*float*): Only objects this close are compared.
+      Defaults to 6.0.
+    - ``reid_min_width_px`` (*float*): Narrowest detection whose crop is
+      embedded, in pixels of a 2048-pixel-wide thumbnail (scaled to
+      ``reid_image_size``). On the Spokane survey, crops below this width
+      scored as alike whether or not they showed the same vehicle. ``0`` embeds
+      every object. Defaults to 100.
+    - ``reid_image_size`` (*str*): Thumbnail size the re-identification crops
+      are cut from: ``'2048'`` (default, the size the thresholds were tuned on)
+      or ``'1024'``.
+    - ``reid_embedder`` (*Any | None*): A ready
+      :class:`~rapidtools.processing.reid.AppearanceEmbedder` (or anything with
+      ``embed(images)``) to use instead of loading ``reid_model``.
+
+    **Earlier methods** (``localization_method`` ``'tracks'``, ``'voting'`` or
+    ``'cluster'`` only):
+
+    - ``max_range_m`` (*float*): Farthest triangulated position reported, and
+      the farthest single-view range kept as a prior. Defaults to 60.0.
+    - ``max_single_view_range_m`` (*float*): A single-view object whose nearest
+      sighting is farther than this is not reported; beyond it the ground-
+      contact range is a guess and the track tends to hop between neighbouring
+      objects. ``0`` keeps them. Defaults to 30.0.
+    - ``witness_radius_m`` (*float*): Negative-evidence check: a weak object (a
+      single view, or a triangulation never seen closer than 25 m) that same-
+      day frames within this distance had in view, without any detection of the
+      class along its bearing, is dropped (at least two such frames,
+      outnumbering frames that did see it, tallied per survey day). ``0``
+      disables the check. Defaults to 12.0.
+    - ``object_height_m`` (*float*): Typical height of the class. When a
+      track's ground-contact ranges disagree with its triangulation, the track
+      is called moving only if enough of an object this tall is visible for
+      occlusion to be ruled out. Defaults to 1.5 (vehicles).
+    - ``min_area_fraction`` (*float | None*): Deprecated. Pixel-area floor
+      below which a detection is ignored; ``None`` (the default) keeps only a
+      tiny floor for decoding noise. Size is judged with ``min_object_width_m``
+      instead.
+    - ``cluster_radius_m`` (*float*): Sightings closer than this are the same
+      object in the legacy ``'cluster'`` method; with ``'tracks'`` it only sets
+      the default ``max_merge_m`` (1.5 times this value). Defaults to 4.0.
+    - ``max_merge_m`` (*float | None*): Farthest two estimates can be and still
+      be merged into one object. ``None`` uses ``1.5 * cluster_radius_m``.
+    - ``track_gap_frames`` (*int*): Frames a track may miss before it is
+      closed. Defaults to 2.
+    - ``min_path_distance_m`` (*float*): Objects closer than this to the line
+      the camera drove are dropped; the survey vehicle passed through that
+      spot. Defaults to 1.5.
+    - ``object_size_m`` (*float*): Object footprint used by the voting method.
+      Defaults to 4.5.
+    - ``merge_pieces_of_neighbours`` (*bool*): After localisation, fold an
+      object whose closest sightings show a better-located neighbour into that
+      neighbour: the second track left by a split outline (a car cut in two by
+      a pole, or into a front and a rear) or by the tracker sliding between
+      vehicles lined up along the line of sight. Such pairs share frames, which
+      the position merge takes as proof of two objects, so they are judged on
+      what their sightings show (see
+      :func:`~rapidtools.processing.street_tracking.merge_pieces`). Defaults to
+      ``True``.
+    - ``close_range_m`` (*float*): Range within which an object must have been
+      seen to be reported. Ground-contact ranges read from farther away are off
+      by a third and the tracker hops between vehicles lined up down the road,
+      so an object never seen this close whose closest rays point at a vehicle
+      within 15 m already placed from the close pass is a far sighting of that
+      vehicle, and is dropped unless it is well triangulated regardless
+      (parallax of 45 degrees or more and uncertainty of half a metre or less).
+      One whose rays point elsewhere, a car set back in a driveway or down a
+      side street, stays. The piece merge judges sightings by the same range.
+      ``0`` keeps every object. Defaults to 20.
+    - ``min_sighting_deg`` (*float*): An object must have been seen at least
+      once with an outline this wide or tall, in degrees of the panorama (6
+      degrees is 34 pixels on a 2048-pixel thumbnail, 225 on the original).
+      What was never more than a speck cannot be identified by anyone and is
+      not reported; a drive-by survey sees anything worth counting properly in
+      some frame. ``0`` keeps every object. Defaults to 6.
+    - ``report_single_views`` (*bool*): Keep objects placed from ground-contact
+      ranges alone, without parallax (``localization='single_view'``). Their
+      positions are guesses; defaults to ``False``.
+    - ``abeam_window_deg`` (*float*): Objects are built only from the sightings
+      made while passing them, within this many degrees of abeam on either side
+      of the direction of travel. A drive-by survey passes everything worth
+      counting, and the passing frames carry the widest parallax and the
+      largest outlines; the frames looking ahead or behind down the road cannot
+      place anything and are where tracks slide between vehicles that line up.
+      Those sightings are attached afterwards to the objects their rays point
+      at, so records and crops stay complete, but never create an object. Off
+      (``0``) by default: the track classification is tuned on tracks that
+      include the approach and a pass alone trips it, losing real vehicles on
+      the surveys tried. Defaults to 0.
 
     Example:
         >>> from rapidtools.core import BoundingBox
@@ -613,79 +724,69 @@ class MapillaryFeatureExtractor:
     def __init__(
         self,
         classes: Sequence[str],
-        access_token: str | None = None,
+        access_token: str | Path | None = None,
         region: BoundingBox | PolygonRegion | None = None,
         start_date: str = '',
         end_date: str = '',
         filter_rapid_only: bool = True,
         detection_source: str = 'auto',
-        label_mapper: Any = None,
-        camera_height_m: float = 2.4,
-        min_range_m: float = 2.0,
-        max_range_m: float = DEFAULT_MAX_RANGE_M,
-        max_single_view_range_m: float = 30.0,
-        witness_radius_m: float = 12.0,
-        min_object_width_m: float = 1.0,
-        object_height_m: float = 1.5,
-        min_area_fraction: float | None = None,
-        cluster_radius_m: float = 4.0,
-        localization_method: str = 'tracks',
-        bearing_sigma_deg: float = 0.75,
-        max_merge_m: float | None = None,
-        track_gap_frames: int = 2,
-        min_path_distance_m: float = 1.5,
-        object_size_m: float = 4.5,
-        merge_pieces_of_neighbours: bool = True,
-        close_range_m: float = 20.0,
-        min_sighting_deg: float = 6.0,
-        report_single_views: bool = False,
-        abeam_window_deg: float = 0.0,
-        reid: bool = False,
-        reid_model: str = DEFAULT_REID_MODEL,
-        reid_min_similarity: float | None = None,
-        reid_max_distance_m: float = 6.0,
-        reid_min_width_px: float = DEFAULT_MIN_WIDTH_PX,
-        reid_image_size: str = '2048',
-        reid_embedder: Any = None,
+        localization_method: str = 'auto',
+        geometry: str = 'auto',
         min_observations: int = 1,
         frame_spacing_m: float = 0.0,
-        ego_filter: bool = True,
-        ego_min_recurrence: float = 0.5,
+        camera_height_m: float = 2.4,
+        min_object_width_m: float = 1.0,
+        assumed_depth_m: float = 10.0,
+        reid: bool = False,
+        label_mapper: Any = None,
         asset_type: str | None = None,
         id_prefix: str = 'street',
         save_directory: str | Path = 'street_detections',
-        sam3_model: Any = None,
-        sam3_model_id: str = 'facebook/sam3',
-        sam3_threshold: float = 0.5,
-        sam3_mask_threshold: float = 0.5,
-        sam3_image_size: str = '1024',
-        sam3_batch_size: int = 4,
-        load_in_4bit: bool = True,
-        device: str = 'auto',
         max_workers: int = 10,
-        frame_batch_size: int = 200,
-        simplify_tolerance: float = 0.002,
         cancel_event: threading.Event | None = None,
         client: MapillaryClient | None = None,
+        **options: Any,
     ) -> None:
+        unknown = sorted(set(options) - set(_OPTION_DEFAULTS))
+        if unknown:
+            hints = []
+            for name in unknown:
+                close = difflib.get_close_matches(name, _OPTION_DEFAULTS, n=1)
+                hints.append(
+                    f'{name!r} (did you mean {close[0]!r}?)' if close else repr(name)
+                )
+            raise TypeError(
+                f'MapillaryFeatureExtractor got unknown option(s): {", ".join(hints)}.'
+            )
+        o = {**_OPTION_DEFAULTS, **options}
         if not classes:
             raise ValueError('At least one class is required.')
-        if frame_batch_size < 1:
+        if o['frame_batch_size'] < 1:
             raise ValueError('frame_batch_size must be at least 1.')
-        if simplify_tolerance < 0:
+        if o['simplify_tolerance'] < 0:
             raise ValueError('simplify_tolerance cannot be negative.')
         if detection_source not in ('auto', 'mapillary', 'sam3', 'map_features'):
             raise ValueError(
                 "detection_source must be 'auto', 'mapillary', 'sam3' or "
                 f"'map_features', got {detection_source!r}."
             )
-        if localization_method not in ('tracks', 'voting', 'cluster'):
+        if localization_method not in _LOCALIZATION_METHODS:
             raise ValueError(
-                "localization_method must be 'tracks', 'voting' or 'cluster', "
+                'localization_method must be one of '
+                f'{", ".join(repr(m) for m in _LOCALIZATION_METHODS)}, '
                 f'got {localization_method!r}.'
             )
-        if client is None and not access_token:
-            raise ValueError('Provide a Mapillary access_token or a client.')
+        if geometry not in ('auto', 'point', 'footprint'):
+            raise ValueError(
+                f"geometry must be 'auto', 'point' or 'footprint', got {geometry!r}."
+            )
+        if o['structure_footprint'] not in ('rectangle', 'observed'):
+            raise ValueError(
+                "structure_footprint must be 'rectangle' or 'observed', "
+                f'got {o["structure_footprint"]!r}.'
+            )
+        if client is None:
+            access_token = resolve_mapillary_token(access_token)
         if min_observations < 1:
             raise ValueError('min_observations must be at least 1.')
         self.classes = list(classes)
@@ -696,13 +797,13 @@ class MapillaryFeatureExtractor:
         self.detection_source = detection_source
         self.label_mapper = label_mapper
         self.camera_height_m = camera_height_m
-        self.min_range_m = min_range_m
-        self.max_range_m = max_range_m
-        self.max_single_view_range_m = max_single_view_range_m
-        self.witness_radius_m = witness_radius_m
+        self.min_range_m = o['min_range_m']
+        self.max_range_m = o['max_range_m']
+        self.max_single_view_range_m = o['max_single_view_range_m']
+        self.witness_radius_m = o['witness_radius_m']
         self.min_object_width_m = min_object_width_m
-        self.object_height_m = object_height_m
-        if min_area_fraction is not None:
+        self.object_height_m = o['object_height_m']
+        if o['min_area_fraction'] is not None:
             warnings.warn(
                 'min_area_fraction is deprecated: object size is now judged in '
                 'metres once the distance is known (min_object_width_m). The '
@@ -712,46 +813,62 @@ class MapillaryFeatureExtractor:
             )
         self.min_area_fraction = (
             MIN_POLYGON_AREA_FRACTION
-            if min_area_fraction is None
-            else min_area_fraction
+            if o['min_area_fraction'] is None
+            else o['min_area_fraction']
         )
-        self.cluster_radius_m = cluster_radius_m
+        self.cluster_radius_m = o['cluster_radius_m']
         self.localization_method = localization_method
-        self.bearing_sigma_deg = bearing_sigma_deg
-        self.max_merge_m = max_merge_m
-        self.track_gap_frames = track_gap_frames
-        self.min_path_distance_m = min_path_distance_m
-        self.object_size_m = object_size_m
-        self.merge_pieces_of_neighbours = merge_pieces_of_neighbours
-        self.close_range_m = float(close_range_m)
-        self.min_sighting_deg = float(min_sighting_deg)
-        self.report_single_views = report_single_views
-        self.abeam_window_deg = float(abeam_window_deg)
+        self.geometry = geometry
+        self.fusion_range_m = float(o['fusion_range_m'])
+        self.cell_m = o['cell_m']
+        self.occupancy_threshold = float(o['occupancy_threshold'])
+        self.structure_range_m = float(o['structure_range_m'])
+        self.min_gap_m = float(o['min_gap_m'])
+        self.assumed_depth_m = float(assumed_depth_m)
+        self.structure_footprint = o['structure_footprint']
+        self.structure_views = int(o['structure_views'])
+        self.point_cloud_dir = (
+            Path(o['point_cloud_dir'])
+            if o['point_cloud_dir'] is not None
+            else Path(save_directory) / 'point_clouds'
+        )
+        # image ID -> (cluster ID, url) of the frame's point cloud:
+        self._clusters: dict[str, tuple[str, str]] = {}
+        self.bearing_sigma_deg = o['bearing_sigma_deg']
+        self.max_merge_m = o['max_merge_m']
+        self.track_gap_frames = o['track_gap_frames']
+        self.min_path_distance_m = o['min_path_distance_m']
+        self.object_size_m = o['object_size_m']
+        self.merge_pieces_of_neighbours = o['merge_pieces_of_neighbours']
+        self.close_range_m = float(o['close_range_m'])
+        self.min_sighting_deg = float(o['min_sighting_deg'])
+        self.report_single_views = o['report_single_views']
+        self.abeam_window_deg = float(o['abeam_window_deg'])
         self.reid = reid
-        self.reid_model = reid_model
-        self.reid_min_similarity = reid_min_similarity
-        self.reid_max_distance_m = reid_max_distance_m
-        self.reid_min_width_px = float(reid_min_width_px)
-        self.reid_image_size = str(reid_image_size)
-        self.reid_embedder = reid_embedder
+        self.reid_model = o['reid_model']
+        self.reid_min_similarity = o['reid_min_similarity']
+        self.reid_max_distance_m = o['reid_max_distance_m']
+        self.reid_min_width_px = float(o['reid_min_width_px'])
+        self.reid_image_size = str(o['reid_image_size'])
+        self.reid_embedder = o['reid_embedder']
         self.min_observations = min_observations
         self.frame_spacing_m = frame_spacing_m
-        self.ego_filter = ego_filter
-        self.ego_min_recurrence = ego_min_recurrence
+        self.ego_filter = o['ego_filter']
+        self.ego_min_recurrence = o['ego_min_recurrence']
         self.asset_type = asset_type
         self.id_prefix = id_prefix
         self.save_directory = Path(save_directory)
-        self.sam3_model = sam3_model
-        self.sam3_model_id = sam3_model_id
-        self.sam3_threshold = sam3_threshold
-        self.sam3_mask_threshold = sam3_mask_threshold
-        self.sam3_image_size = str(sam3_image_size)
-        self.sam3_batch_size = sam3_batch_size
-        self.load_in_4bit = load_in_4bit
-        self.device = device
+        self.sam3_model = o['sam3_model']
+        self.sam3_model_id = o['sam3_model_id']
+        self.sam3_threshold = o['sam3_threshold']
+        self.sam3_mask_threshold = o['sam3_mask_threshold']
+        self.sam3_image_size = str(o['sam3_image_size'])
+        self.sam3_batch_size = o['sam3_batch_size']
+        self.load_in_4bit = o['load_in_4bit']
+        self.device = o['device']
         self.max_workers = max_workers
-        self.frame_batch_size = frame_batch_size
-        self.simplify_tolerance = simplify_tolerance
+        self.frame_batch_size = o['frame_batch_size']
+        self.simplify_tolerance = o['simplify_tolerance']
         self.cancel_event = cancel_event
         self.client = client or MapillaryClient(
             access_token, save_dir=self.save_directory / 'images'
@@ -797,6 +914,28 @@ class MapillaryFeatureExtractor:
             )
             unresolved = []
         return resolved, unresolved, map_features
+
+    def _wants_point_clouds(
+        self, mapillary_classes: dict[str, tuple[str, ...]], sam3_classes: list[str]
+    ) -> bool:
+        """Whether any requested class will be placed from the point cloud."""
+        if self.localization_method == 'points':
+            return bool(mapillary_classes or sam3_classes)
+        if self.localization_method != 'auto':
+            return False
+        return any(
+            labels and all(is_structure_label(v) for v in labels)
+            for labels in mapillary_classes.values()
+        )
+
+    def _method_for(self, obs_list: list[Observation]) -> str:
+        """The localisation method one class's sightings are placed with."""
+        if self.localization_method != 'auto':
+            return self.localization_method
+        labels = {o.label for o in obs_list}
+        if labels and all(is_structure_label(v) for v in labels):
+            return 'points'
+        return 'fusion'
 
     @staticmethod
     def _finish(
@@ -873,7 +1012,22 @@ class MapillaryFeatureExtractor:
             if pose is not None and region.contains(Point(pose[0], pose[1])):
                 inside.append((image, pose))
         if not inside:
-            logger.warning('No images with a camera position inside the region.')
+            hint = (
+                ' Only RAPID Facility uploads were searched; pass '
+                "filter_rapid_only=False to use every contributor's imagery."
+                if self.filter_rapid_only
+                else ''
+            )
+            window = (
+                f' between {self.start_date or "the start"} and '
+                f'{self.end_date or "today"}'
+                if self.start_date or self.end_date
+                else ''
+            )
+            logger.warning(
+                f'No Mapillary images with a camera position inside the region{window}.'
+                + hint
+            )
             return self._finish(existing, map_assets)
 
         # 2. Thin along each sequence before paying for per-image metadata:
@@ -902,6 +1056,9 @@ class MapillaryFeatureExtractor:
         fields = list(_IMAGE_FIELDS)
         if mapillary_classes:
             fields += list(_DETECTION_FIELDS)
+        if self._wants_point_clouds(mapillary_classes, sam3_classes):
+            fields.append('sfm_cluster')
+        self._clusters = {}
         ids = sorted(keep)
         observations: dict[str, list[Observation]] = defaultdict(list)
         sam3_frames: list[dict[str, Any]] = []
@@ -921,6 +1078,10 @@ class MapillaryFeatureExtractor:
             del rich
             n_frames += len(frames)
             camera_frames.extend(_camera_frame(frame) for frame in frames)
+            for frame in frames:
+                cluster = frame.get('sfm_cluster') or {}
+                if cluster.get('id') and cluster.get('url'):
+                    self._clusters[frame['id']] = (str(cluster['id']), cluster['url'])
             if mapillary_classes:
                 for cls, obs in self._mapillary_observations(
                     frames, mapillary_classes
@@ -981,6 +1142,7 @@ class MapillaryFeatureExtractor:
                     # Full pose (OpenSfM axis-angle, world -> camera); lets the
                     # geometry account for the camera's pitch and roll:
                     'rotation': props.get('computed_rotation'),
+                    'sfm_cluster': props.get('sfm_cluster'),
                     'detections': (props.get('detections') or {}).get('data'),
                     'thumb_url': props.get(f'thumb_{self.sam3_image_size}_url'),
                 }
@@ -1207,7 +1369,15 @@ class MapillaryFeatureExtractor:
                     f"'{cls}': {len(ego)} sightings belong to the survey vehicle."
                 )
             obs_list = [o for i, o in enumerate(obs_list) if i not in ego]
-        if self.localization_method != 'cluster':
+        method = self._method_for(obs_list)
+        if method == 'points':
+            assets, counter, done = self._assets_from_points(cls, obs_list, counter)
+            if done:
+                return assets, counter
+            method = 'fusion'
+        if method == 'fusion':
+            return self._assets_from_fusion(cls, obs_list, counter, camera_frames)
+        if method != 'cluster':
             return self._assets_from_tracks(cls, obs_list, counter, camera_frames)
         located = [
             o
@@ -1233,6 +1403,137 @@ class MapillaryFeatureExtractor:
             assets.append(self._build_asset(cls, members, counter))
         return assets, counter
 
+    def _describe(
+        self, cls: str, members: list[Observation], index: int
+    ) -> tuple[str, dict[str, Any]]:
+        """Asset ID and the attributes every localisation method writes."""
+        confidences = [o.confidence for o in members if o.confidence is not None]
+        dates = sorted(o.captured_at for o in members if o.captured_at)
+        ranges = [o.range_m for o in members if o.range_m is not None]
+        attributes: dict[str, Any] = {
+            'asset_type': self.asset_type or _slug(cls),
+            'class': cls,
+            'label': Counter(o.label for o in members).most_common(1)[0][0],
+            'source': Counter(o.source for o in members).most_common(1)[0][0],
+            'n_observations': len(members),
+            'sequence_ids': sorted({o.sequence_id for o in members if o.sequence_id}),
+            'observations': [o.to_dict() for o in members],
+        }
+        if ranges:
+            attributes['min_range_m'] = round(min(ranges), 1)
+        if confidences:
+            attributes['confidence'] = round(max(confidences), 3)
+        if dates:
+            attributes['first_seen'], attributes['last_seen'] = dates[0], dates[-1]
+        return f'{self.id_prefix}_{_slug(cls)}_{index:05d}', attributes
+
+    def _assets_from_fusion(
+        self,
+        cls: str,
+        obs_list: list[Observation],
+        counter: int,
+        camera_frames: Sequence[CameraFrame] | None = None,
+    ) -> tuple[list[PhysicalAsset], int]:
+        """Place one class by occupancy fusion (see ``street_fusion``)."""
+        labels = {o.label for o in obs_list}
+        surface = bool(labels) and all(
+            v.startswith(('construction--', 'nature--')) for v in labels
+        )
+        cell = self.cell_m or min(0.5, max(0.1, self.min_object_width_m / 4.0))
+        objects, counts, unproject = fuse_observations(
+            obs_list,
+            camera_frames,
+            camera_height_m=self.camera_height_m,
+            min_range_m=self.min_range_m,
+            max_range_m=self.fusion_range_m,
+            cell_m=cell,
+            occupancy_threshold=self.occupancy_threshold,
+            min_views=max(2, self.min_observations),
+            min_object_width_m=self.min_object_width_m,
+            split_instances=not surface,
+            bearing_sigma_deg=self.bearing_sigma_deg,
+        )
+        logger.info(
+            f"'{cls}': {counts.get('scans', 0)} sightings fused over "
+            f'{counts.get("frames", 0)} frames; {counts.get("blobs", 0)} occupied '
+            f'blobs, {counts.get("split", 0)} split where frames saw several '
+            f'outlines, {counts.get("fragment", 0)} too small dropped, '
+            f'{counts.get("few_views", 0)} seen in too few frames dropped, '
+            f'{counts.get("merged_days", 0)} joined across survey days -> '
+            f'{counts["objects"]} objects.'
+        )
+        assets = []
+        for obj in objects:
+            counter += 1
+            asset_id, attributes = self._describe(cls, obj.members, counter)
+            attributes.update(object_attributes(obj))
+            if self.geometry == 'footprint':
+                geometry: Any = Polygon([unproject(x, y) for x, y in obj.footprint])
+            else:
+                geometry = Point(*unproject(obj.x, obj.y))
+            assets.append(
+                PhysicalAsset(id=asset_id, geometry=geometry, attributes=attributes)
+            )
+        if self.reid and len(assets) > 1:
+            assets = self._merge_by_appearance(assets)
+        return assets, counter
+
+    def _assets_from_points(
+        self, cls: str, obs_list: list[Observation], counter: int
+    ) -> tuple[list[PhysicalAsset], int, bool]:
+        """
+        Place one class from the survey's point cloud (see ``street_structures``).
+
+        Returns the assets, the counter and whether the method could run;
+        ``False`` means no frame had a point cloud and the caller should
+        fall back to fusion.
+        """
+        clusters = {
+            o.image_id: self._clusters[o.image_id]
+            for o in obs_list
+            if o.image_id in self._clusters
+        }
+        if not clusters:
+            logger.warning(
+                f"'{cls}': no frame has a Mapillary point cloud (sfm_cluster); "
+                'placing it by occupancy fusion instead, without footprints '
+                'measured from 3-D points.'
+            )
+            return [], counter, False
+        structures, counts, unproject = discover_structures(
+            obs_list,
+            clusters,
+            cache_dir=self.point_cloud_dir,
+            camera_height_m=self.camera_height_m,
+            max_range_m=self.structure_range_m,
+            min_gap_m=self.min_gap_m,
+            assumed_depth_m=self.assumed_depth_m,
+            footprint=self.structure_footprint,
+            max_views=self.structure_views,
+            max_workers=self.max_workers,
+        )
+        logger.info(
+            f"'{cls}': {counts.get('clusters', 0)} point clouds, "
+            f'{counts.get("points", 0)} points on the class after voting over '
+            f'{counts.get("frames", 0)} frames, {counts.get("fragments", 0)} wall '
+            f'fragments -> {counts["structures"]} structures.'
+        )
+        assets = []
+        for structure in structures:
+            if structure.n_images < self.min_observations:
+                continue
+            counter += 1
+            asset_id, attributes = self._describe(cls, structure.members, counter)
+            attributes.update(structure_attributes(structure))
+            if self.geometry == 'point':
+                geometry: Any = Point(*unproject(structure.x, structure.y))
+            else:
+                geometry = Polygon([unproject(x, y) for x, y in structure.footprint])
+            assets.append(
+                PhysicalAsset(id=asset_id, geometry=geometry, attributes=attributes)
+            )
+        return assets, counter, True
+
     def _assets_from_tracks(
         self,
         cls: str,
@@ -1241,9 +1542,12 @@ class MapillaryFeatureExtractor:
         camera_frames: Sequence[CameraFrame] | None = None,
     ) -> tuple[list[PhysicalAsset], int]:
         """Track, triangulate, merge (and optionally re-identify) one class."""
+        method = (
+            'tracks' if self.localization_method == 'auto' else self.localization_method
+        )
         estimates, counts, unproject = discover_objects(
             obs_list,
-            method=self.localization_method,
+            method=method,
             max_single_view_range_m=self.max_single_view_range_m,
             frames=camera_frames,
             witness_radius_m=self.witness_radius_m,
@@ -1343,7 +1647,7 @@ class MapillaryFeatureExtractor:
             obs_by_key[asset.id] = obs
             candidates.append(
                 ReidCandidate.from_observations(
-                    asset.id, asset.geometry.x, asset.geometry.y, obs
+                    asset.id, asset.geometry.centroid.x, asset.geometry.centroid.y, obs
                 )
             )
         pairs = pairs_to_compare(candidates, max_distance_m=self.reid_max_distance_m)
@@ -1389,7 +1693,9 @@ class MapillaryFeatureExtractor:
                 merged.append(parts[0])
                 continue
             n_merged += len(parts) - 1
-            lon, lat = merged_position([(a.geometry.x, a.geometry.y) for a in parts])
+            lon, lat = merged_position(
+                [(a.geometry.centroid.x, a.geometry.centroid.y) for a in parts]
+            )
             records = [r for a in parts for r in a.attributes.get('observations', [])]
             attributes = dict(parts[0].attributes)
             attributes.update(
@@ -1501,8 +1807,10 @@ class MapillaryObjectImageExtractor:
     Args:
         save_directory (str | Path):
             Where the crops are written.
-        access_token (str | None):
-            Mapillary API token. Not needed when ``client`` is given.
+        access_token (str | Path | None):
+            Mapillary API token, the path of a file holding it, or ``None`` to
+            read the ``MAPILLARY_ACCESS_TOKEN`` environment variable. Not
+            needed when ``client`` is given.
         max_images_per_asset (int):
             Views to keep per object, from distinct images. Defaults to 2.
         view_selection (str):
@@ -1567,7 +1875,7 @@ class MapillaryObjectImageExtractor:
     def __init__(
         self,
         save_directory: str | Path,
-        access_token: str | None = None,
+        access_token: str | Path | None = None,
         max_images_per_asset: int = 2,
         view_selection: str = 'widest',
         image_size: str = '2048',
@@ -1583,8 +1891,8 @@ class MapillaryObjectImageExtractor:
         cancel_event: threading.Event | None = None,
         client: MapillaryClient | None = None,
     ) -> None:
-        if client is None and not access_token:
-            raise ValueError('Provide a Mapillary access_token or a client.')
+        if client is None:
+            access_token = resolve_mapillary_token(access_token)
         if max_images_per_asset < 1:
             raise ValueError('max_images_per_asset must be at least 1.')
         if outline_shape not in outlines.OUTLINE_SHAPES:

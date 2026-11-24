@@ -1,5 +1,9 @@
 # rapidtools GUI server image.
 #
+# Ready-built images are published for every release by
+# .github/workflows/container.yml as ghcr.io/rapid-facility/rapidtools-gui
+# (CUDA: <version>, latest; CPU: <version>-cpu, latest-cpu). To build locally:
+#
 # GPU (default): a PyTorch CUDA runtime base, so SAM 3 and the local models
 # (Gemma 4, Qwen, Llama) run on the card the host passes through.
 #   docker build -t rapidtools-gui -f deploy/Dockerfile .

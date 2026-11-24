@@ -50,24 +50,25 @@ One-time setup
    notifications; leave them empty otherwise. On a machine without a GPU
    uncomment the two CPU lines at the end.
 
-3. Build and start. With a GPU:
+3. Start it. With a GPU:
 
    .. code-block:: bash
 
       docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.gpu.yml \
-          --env-file deploy/.env up -d --build
+          --env-file deploy/.env up -d
 
    Without one:
 
    .. code-block:: bash
 
-      docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+      docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
 
-   The first build downloads PyTorch and the package dependencies (several
-   gigabytes for the GPU image) and takes a few minutes. ``docker compose
-   logs -f gui`` shows the server starting; the first request builds the
-   RAPID route database from Mapillary in two to three minutes, after which
-   it is cached in the ``rapidtools-cache`` volume for good.
+   This pulls the ready-built image of the latest release from the GitHub
+   Container Registry (several gigabytes for the CUDA image, a few minutes
+   on a fast connection). ``docker compose logs -f gui`` shows the server
+   starting; the first request builds the RAPID route database from
+   Mapillary in two to three minutes, after which it is cached in the
+   ``rapidtools-cache`` volume for good.
 
 4. Open ``https://<domain>/?token=<your token>`` and check that the map
    loads. That link is what you send to colleagues; the token can also be
@@ -92,11 +93,46 @@ Day to day
   setup. Browser alerts work because the site is served over HTTPS. Links
   in messages use ``RAPIDTOOLS_PUBLIC_URL``, which the compose file sets to
   the domain.
-- **Updating**: ``git pull`` then the same ``up -d --build`` command.
-  Restarting clears the loaded image and assets from memory but keeps every
-  result file.
+- **Updating**: ``docker compose ... pull`` then the same ``up -d`` command
+  (with the same ``-f`` and ``--env-file`` options). Restarting clears the
+  loaded image and assets from memory but keeps every result file.
 - **Rotating the token**: change it in ``deploy/.env`` and restart the
   ``gui`` service.
+
+The published images
+--------------------
+
+Every release tag publishes two images from ``deploy/Dockerfile`` to the
+GitHub Container Registry. The repository is public, so pulling them needs
+no account.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 55
+
+   * - Image
+     - Contents
+   * - ``ghcr.io/rapid-facility/rapidtools-gui:latest``
+     - CUDA build on the PyTorch runtime base; also tagged with the
+       version (``0.2.1``, ``0.2``)
+   * - ``ghcr.io/rapid-facility/rapidtools-gui:latest-cpu``
+     - CPU-only build (``0.2.1-cpu``, ``0.2-cpu``)
+
+``RAPIDTOOLS_IMAGE`` in ``deploy/.env`` selects the image. Pin a version
+tag there to decide yourself when the server moves to a new release, and
+switch to the ``-cpu`` tag on a machine without a GPU. The image runs on its
+own too, without Caddy, for a quick look on a workstation:
+
+.. code-block:: bash
+
+   docker run --rm --gpus all -p 8765:8765 \
+       -e RAPIDTOOLS_GUI_TOKEN=<token> \
+       -v /path/to/imagery:/data -v /path/to/results:/output \
+       ghcr.io/rapid-facility/rapidtools-gui:latest
+
+To build the image from a checkout instead, for example to try a change
+before it is released, add ``--build`` to the ``up -d`` command; the
+``BASE_IMAGE`` and ``TORCH_INDEX`` lines in ``.env`` choose the CPU build.
 
 A Windows machine in the lab
 ----------------------------
@@ -192,23 +228,12 @@ with ``Restart=always`` keeps it up across reboots.
 On a cloud machine
 ------------------
 
-Everything above applies; three things differ.
-
-- **Choose the machine for the models you will use.** An instance with one
-  24 GB card (an L4 or A10G) runs the local Gemma 4 models in 4-bit and SAM
-  3 comfortably. A 2 to 4 vCPU machine without a GPU is enough when
-  colleagues bring their own cloud model keys. Give it a static address so
-  the DNS name keeps working after a stop and start.
-- **Stop it when nobody uses it.** GPU instances bill by the hour whether
-  busy or not. A stopped instance only pays for its disk and comes back
-  with everything intact. Use the provider's instance schedule for working
-  hours, or install ``deploy/idle-shutdown.sh`` as a cron job on the host:
-  it asks the GUI whether a job is running and whether anyone has been
-  using the page, and shuts the machine down after ``IDLE_MINUTES`` (30 by
-  default) of silence. Starting it again is a click in the cloud console or
-  a scheduled start.
-- **Disk**: keep ``DATA_DIR``, ``OUTPUT_DIR`` and the Docker volumes on a
-  persistent disk that survives the instance, and snapshot it now and then.
+For AWS there is a ready-made path: :doc:`deployment_aws` launches the whole
+setup (machine, HTTPS address, access token, idle shutdown and a wake link)
+from one CloudFormation template, with step-by-step instructions. On another
+cloud, follow the steps above on a GPU instance with a static address and a
+persistent disk, and install ``deploy/idle-shutdown.sh`` as a cron job so the
+machine stops itself when nobody uses it.
 
 Security notes
 --------------

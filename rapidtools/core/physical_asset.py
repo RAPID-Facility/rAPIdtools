@@ -62,13 +62,12 @@ import math
 import operator as op
 import uuid
 from collections import Counter
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import InitVar, dataclass, field
 from itertools import islice
 from pathlib import Path
-from typing import Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
-import pandas as pd
 import shapefile
 from shapely.geometry import box, mapping, shape
 from shapely.geometry.base import BaseGeometry
@@ -76,6 +75,9 @@ from shapely.geometry.base import BaseGeometry
 from .bounding_box import BoundingBox
 from .image_asset import ImageAsset, ImageCollection
 from .polygon_region import PolygonRegion
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -1101,6 +1103,30 @@ class PhysicalAssetCollection:
         """Return the number of assets in the collection."""
         return len(self._data)
 
+    def __repr__(self) -> str:
+        """
+        A one-line summary: the number of assets and their types.
+
+        Example:
+            >>> from shapely.geometry import Point
+            >>> col = PhysicalAssetCollection([
+            ...     PhysicalAsset(id='a', geometry=Point(0, 0),
+            ...                   attributes={'asset_type': 'building'}),
+            ...     PhysicalAsset(id='b', geometry=Point(1, 1)),
+            ... ])
+            >>> col
+            <PhysicalAssetCollection: 2 assets (building: 1, untyped: 1)>
+        """
+        n = len(self._data)
+        if not n:
+            return '<PhysicalAssetCollection: empty>'
+        types = Counter(a.asset_type or 'untyped' for a in self._data.values())
+        shown = ', '.join(f'{name}: {count:,}' for name, count in types.most_common(4))
+        if len(types) > 4:
+            shown += f', ... {len(types) - 4} more types'
+        noun = 'asset' if n == 1 else 'assets'
+        return f'<PhysicalAssetCollection: {n:,} {noun} ({shown})>'
+
     def __setitem__(self, key: str, value: PhysicalAsset) -> None:
         """Set self[key] to value. The key must match value.id."""
         if not isinstance(key, str):
@@ -1951,13 +1977,11 @@ class PhysicalAssetCollection:
 
         compare_func = ops[operator]
 
+        missing: list[str] = []
         for asset in self._data.values():
             # Skip if attribute is missing completely:
             if key not in asset.attributes:
-                logger.warning(
-                    f"Missing attribute [Asset ID: '{asset.id}']: "
-                    f"Attribute '{key}' was not found. Skipping asset"
-                )
+                missing.append(str(asset.id))
                 continue
 
             attr_val = asset.attributes[key]
@@ -1978,7 +2002,46 @@ class PhysicalAssetCollection:
                 )
                 continue
 
+        if missing:
+            # One line however many assets lack the key: a collection that
+            # was only partly analysed is the normal case, not a problem.
+            preview = ', '.join(missing[:3]) + (', ...' if len(missing) > 3 else '')
+            logger.warning(
+                f'Missing attribute: {len(missing)} of {len(self._data)} assets have '
+                f"no '{key}' and were skipped ({preview})."
+            )
+
         return PhysicalAssetCollection(assets=filtered_assets)
+
+    def filter(
+        self, predicate: Callable[[PhysicalAsset], bool]
+    ) -> PhysicalAssetCollection:
+        """
+        Keep the assets for which ``predicate(asset)`` is true.
+
+        The general form of :meth:`filter_by_attribute` and
+        :meth:`filter_by_geometry`, for conditions those do not cover.
+
+        Args:
+            predicate: Called with each asset; return ``True`` to keep it.
+
+        Returns:
+            PhysicalAssetCollection: A new collection of the kept assets.
+
+        Example:
+            >>> from shapely.geometry import Point
+            >>> col = PhysicalAssetCollection([
+            ...     PhysicalAsset(id='a', geometry=Point(0, 0),
+            ...                   attributes={'stories': 2}),
+            ...     PhysicalAsset(id='b', geometry=Point(1, 1)),
+            ... ])
+            >>> tall = col.filter(lambda a: a.attributes.get('stories', 0) >= 2)
+            >>> [a.id for a in tall]
+            ['a']
+        """
+        return PhysicalAssetCollection(
+            assets=[a for a in self._data.values() if predicate(a)]
+        )
 
     def filter_by_geometry(
         self,
@@ -2623,6 +2686,8 @@ class PhysicalAssetCollection:
             # Merge row
             data.append(row)
 
+        import pandas as pd
+
         return pd.DataFrame(data)
 
     def to_geojson(
@@ -2630,6 +2695,7 @@ class PhysicalAssetCollection:
         file: str | Path | None = None,
         indent: int | None = 2,
         ignore_properties: list[str] | None = None,
+        include_images: bool = True,
     ) -> dict[str, Any]:
         """
         Serialize the collection into a GeoJSON FeatureCollection.
@@ -2654,6 +2720,11 @@ class PhysicalAssetCollection:
                 output. This is useful for removing large nested objects
                 like 'image_assets' when only metadata is needed.
                 Defaults to ``None``.
+            include_images (bool, optional):
+                Write each asset's image records (paths, properties, masks)
+                under ``image_assets``. ``False`` leaves them out, which is
+                what a results file for a GIS usually wants; shorthand for
+                ``ignore_properties=['image_assets']``. Defaults to ``True``.
 
         Returns:
             dict[str, Any]:
@@ -2680,11 +2751,13 @@ class PhysicalAssetCollection:
 
             Export only metadata by ignoring the 'image_assets' property:
 
-            >>> data = col.to_geojson(ignore_properties=['image_assets'])
+            >>> data = col.to_geojson(include_images=False)
             >>> print('image_assets' in data['features'][0]['properties'])
             False
 
         """
+        if not include_images:
+            ignore_properties = [*(ignore_properties or []), 'image_assets']
         feature_collection = {
             'type': 'FeatureCollection',
             'features': [

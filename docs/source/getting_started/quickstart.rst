@@ -2,16 +2,18 @@ Quickstart
 ==========
 
 This page grades every building in a drone orthomosaic of Altadena, CA,
-captured after the 2025 Eaton Fire, and writes the grades to GeoJSON. It runs
-fully offline with a local Gemma 4 model, and needs a GPU with a few
-gigabytes of memory.
+captured after the 2025 Eaton Fire, and writes the grades to GeoJSON.
+
+**What you need:** either a CUDA GPU with a few gigabytes of memory (the
+example runs a local Gemma 4 model, fully offline after the first download),
+or an API key for a hosted model (see *Using a hosted model instead* below).
+Nothing else: the sample data comes from the rapidtools registry.
 
 The whole workflow
 ------------------
 
 .. code-block:: python
 
-   from pathlib import Path
    import rapidtools as rt
 
    rt.configure_logging()
@@ -24,25 +26,18 @@ The whole workflow
    # 2. Load the footprints into a collection of assets.
    buildings = rt.PhysicalAssetCollection.from_geojson(footprints)
 
-   # 3. Choose a model. Swap 'gemma4' for 'gemini', 'claude', 'openai', ...
-   model = rt.models.load('gemma4', model_id='google/gemma-4-E2B-it')
-
-   # 4. Build the pipeline: crop each footprint, then ask the model about it.
+   # 3. Build the pipeline: crop each footprint, then ask a model about it.
+   #    Swap 'gemma4' for 'gemini', 'claude', 'openai', ...
    pipeline = rt.Pipeline([
        rt.AerialImageryExtractor(
-           raster,
-           save_directory=Path('output/crops'),
-           buffer_m=5,
-           overlay_asset_outline=True,
+           raster, save_directory='output/crops', buffer_m=5, overlay_asset_outline=True
        ),
-       rt.AssetAnalyzer(model, prompt=prompt, batch_size=8),
+       rt.AssetAnalyzer('gemma4', prompt=prompt, batch_size=8),
    ])
    buildings = pipeline.run(buildings)
 
-   # 5. Export. Model answers are attributes prefixed with the provider name.
-   buildings.filter_empty().to_geojson(
-       'output/buildings_graded.geojson', ignore_properties=['image_assets']
-   )
+   # 4. Export. Model answers are attributes prefixed with the provider name.
+   buildings.to_geojson('output/buildings_graded.geojson', include_images=False)
 
 What happened
 -------------
@@ -57,18 +52,23 @@ What happened
    the asset. The prompt file asks for a JSON object, so each key becomes an
    attribute such as ``gemma4_chs_level``.
 3. :meth:`~rapidtools.core.PhysicalAssetCollection.to_geojson` wrote the
-   footprints with their new attributes; ``ignore_properties`` keeps the
-   image paths out of the file.
+   footprints with their new attributes; ``include_images=False`` keeps the
+   image records out of the file.
 
 Using a hosted model instead
 ----------------------------
 
-Only step 3 changes. Hosted models run several requests in parallel and back
-off automatically when the provider rate-limits them:
+Only the analyzer changes. Hosted models run several requests in parallel and
+back off automatically when the provider rate-limits them. The key is read
+from the provider's environment variable (``GOOGLE_API_KEY`` here) unless you
+pass ``api_key=``, as text or as the path of a file holding it:
 
 .. code-block:: python
 
-   model = rt.models.load('gemini', api_key='AIza...', model_id='gemini-3.8-flash')
+   analyzer = rt.AssetAnalyzer('gemini', prompt=prompt, max_workers=4)
+
+   # or build the model yourself, for example to reuse it across steps
+   model = rt.load('gemini', model_id='gemini-3.8-flash')
    analyzer = rt.AssetAnalyzer(model, prompt=prompt, max_workers=4)
 
 Reading the results

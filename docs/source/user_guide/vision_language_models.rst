@@ -122,8 +122,10 @@ Local model options
 -------------------
 
 Local wrappers accept ``device`` (``'auto'``, ``'cuda'``, ``'cpu'``),
-``temperature`` and ``max_tokens``; the Hugging Face and Qwen wrappers also
-accept ``load_in_4bit`` to fit larger checkpoints into memory. Gated weights
+``temperature`` and ``max_tokens``; the Hugging Face, Qwen, Llama and Muse
+Glimmer wrappers also accept ``load_in_4bit`` (off by default) to fit larger
+checkpoints into memory. :func:`~rapidtools.models.load` names the arguments
+a wrapper takes when it is given one it does not. Gated weights
 download automatically once you are logged in to the Hugging Face Hub (see
 :doc:`../getting_started/installation`).
 

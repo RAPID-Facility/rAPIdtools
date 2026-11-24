@@ -27,7 +27,6 @@ Source: ``examples/vehicle_detection_from_street.py``.
            filter_rapid_only=True,
            frame_spacing_m=3.0,
            min_observations=3,
-           merge_pieces_of_neighbours=True,   # the default, named for the driveways
            reid=True,                         # repeated passes merged by appearance
        ),
        # 2. The two closest views of each vehicle, with its outline drawn.
@@ -60,27 +59,27 @@ Source: ``examples/vehicle_detection_from_street.py``.
 What to look at in the output
 -----------------------------
 
-- ``localization`` is ``'triangulated'`` for vehicles whose track was
-  intersected from two or more camera positions and ``'single_view'`` for
-  vehicles seen without parallax. Triangulated positions are typically
-  within a metre; single-view ones depend on the camera height and a flat
-  road, so treat them as approximate.
+- ``localization`` is ``'triangulated'`` for vehicles placed by
+  intersecting the bearings of their sightings, typically within half a
+  metre, and ``'fused'`` for the few placed at the centre of their occupied
+  ground cells.
 - ``position_sigma_m``, ``parallax_deg``, ``n_images`` and
-  ``position_rms_m`` tell you how well constrained each position is; filter
-  on ``position_sigma_m`` for a map you can trust.
-- Vehicles that were driving, anything on the line the camera itself
-  drove, single views whose nearest sighting is beyond 30 m, and objects
-  that nearby same-day frames should have seen but did not, are dropped
-  before the collection is built; the log reports how many of each.
-- One vehicle, one object. A car cut in two by a pole, or a track that slid
-  onto the car behind it where a driveway is seen end-on, used to leave a
-  second object a few metres from the real one. Such pieces are folded into
-  the vehicle their sightings show (``merge_pieces_of_neighbours``), and an
-  object never seen within 20 m is not trusted on its own: it joins the
-  close pass it points at. With ``reid=True``, vehicles seen on separate
-  passes that geometry could not join are compared by appearance (CLIP on a
-  2048-pixel crop each) and merged when they match; only objects seen at
-  least 100 pixels wide take part.
+  ``position_rms_m`` tell you how well constrained each position is, and
+  ``length_m``, ``width_m`` and ``footprint_area_m2`` describe the ground
+  the vehicle occupies (generous in depth: one pass cannot see how deep a
+  car is). ``survey_days`` lists the days it was seen on.
+- Vehicles that were driving never collect agreeing votes and the ground
+  the survey vehicle drove over is free by construction, so neither needs a
+  rule; a few detections of an empty kerb are cleared by the frames that
+  pass it and see nothing. The log reports how many occupied blobs were
+  found, split and dropped.
+- One vehicle, one object. All frames of a survey day vote on the same
+  ground, so a car seen on the way in, on the way out and from the side
+  street is one blob, and two cars parked door to door are split where the
+  frames keep seeing two outlines. With ``reid=True``, vehicles that
+  geometry left apart are also compared by appearance (CLIP on a 2048-pixel
+  crop each) and merged when they match; only objects seen at least 100
+  pixels wide take part.
 - The verifier removes objects whose closest crops a model says are not a
   motor vehicle, or are less than half visible, and writes
   ``verify_accepted``, ``verify_label``, ``verify_confidence`` and

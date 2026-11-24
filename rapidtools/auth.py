@@ -57,13 +57,25 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-
-from huggingface_hub import get_token
-from huggingface_hub import login as hf_login
+from typing import Any
 
 from .datasets import download_dataset
 
 logger = logging.getLogger(__name__)
+
+
+def get_token() -> str | None:
+    """The cached Hugging Face token (imports ``huggingface_hub`` on first use)."""
+    from huggingface_hub import get_token as _get_token
+
+    return _get_token()
+
+
+def hf_login(**kwargs: Any) -> None:
+    """``huggingface_hub.login`` (imported on first use)."""
+    from huggingface_hub import login as _login
+
+    _login(**kwargs)
 
 
 def login(token: str | None = None, dataset_id: str = 'hf_token') -> bool:

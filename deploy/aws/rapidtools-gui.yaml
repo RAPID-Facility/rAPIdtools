@@ -1,0 +1,944 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  rapidtools GUI: one EC2 machine serving the rapidtools web app over HTTPS
+  (Docker and Caddy), with a fixed address, an encrypted data volume, an access
+  token kept in Parameter Store, idle shutdown and a wake link. See
+  deploy/aws/README.md in https://github.com/RAPID-Facility/rAPIdtools.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: {default: Machine}
+        Parameters: [InstanceType, DataVolumeSizeGiB, RootVolumeSizeGiB, AvailabilityZone]
+      - Label: {default: Who can reach it}
+        Parameters: [AllowedCidr, AccessToken, DomainName, HostedZoneId, KeyName, SshCidr]
+      - Label: {default: Cost control}
+        Parameters: [IdleShutdownMinutes, EnableWakeUrl, DailyStopHour, ScheduleTimezone]
+      - Label: {default: Software}
+        Parameters: [ImageTag, GitRef, GitRepository, HfToken]
+      - Label: {default: Data (optional)}
+        Parameters: [DataBucketName, DataSnapshotId]
+      - Label: {default: Email notifications (optional)}
+        Parameters: [SmtpHost, SmtpPort, SmtpUser, SmtpPassword, SmtpFrom, SmtpSsl]
+    ParameterLabels:
+      InstanceType: {default: Machine type}
+      DataVolumeSizeGiB: {default: Data disk size (GiB)}
+      RootVolumeSizeGiB: {default: 'System disk size (GiB, 0 = automatic)'}
+      AvailabilityZone: {default: Availability Zone (blank = first in the region)}
+      AllowedCidr: {default: Network allowed to open the GUI}
+      AccessToken: {default: Access token (blank = generate one)}
+      DomainName: {default: Your own DNS name (blank = automatic sslip.io name)}
+      HostedZoneId: {default: Route 53 hosted zone ID for that name}
+      KeyName: {default: EC2 key pair for SSH (blank = no SSH)}
+      SshCidr: {default: Network allowed to use SSH}
+      IdleShutdownMinutes: {default: Stop after this many idle minutes (0 = never)}
+      EnableWakeUrl: {default: Create a wake link}
+      DailyStopHour: {default: Also stop every day at this hour}
+      ScheduleTimezone: {default: Time zone of the daily stop}
+      ImageTag: {default: Container image tag}
+      GitRef: {default: 'Git branch, tag or commit to build when no image is published'}
+      GitRepository: {default: Git repository}
+      HfToken: {default: Hugging Face token}
+      DataBucketName: {default: S3 bucket for imagery and results}
+      DataSnapshotId: {default: Restore the data disk from this snapshot}
+      SmtpHost: {default: SMTP host}
+      SmtpPort: {default: SMTP port}
+      SmtpUser: {default: SMTP user}
+      SmtpPassword: {default: SMTP password}
+      SmtpFrom: {default: Sender address}
+      SmtpSsl: {default: Implicit TLS (port 465)}
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: g5.xlarge
+    AllowedValues:
+      - g5.xlarge
+      - g5.2xlarge
+      - g5.4xlarge
+      - g6.xlarge
+      - g6.2xlarge
+      - g6e.xlarge
+      - g4dn.xlarge
+      - g4dn.2xlarge
+      - t3.large
+      - t3.xlarge
+      - m7i.large
+      - m7i.xlarge
+    Description: >-
+      GPU machines (g5 and g6: one 24 GB card; g6e: 48 GB; g4dn: 16 GB) run the
+      local models and fast SAM 3 and need a quota for "Running On-Demand G and
+      VT instances". The t3 and m7i machines have no GPU: enough when users
+      bring cloud model API keys.
+  DataVolumeSizeGiB:
+    Type: Number
+    Default: 100
+    MinValue: 20
+    MaxValue: 16000
+    Description: >-
+      Disk for imagery, results, model weights and certificates
+      (/srv/rapidtools). It can be enlarged later; it is saved as a snapshot
+      when the stack is deleted.
+  RootVolumeSizeGiB:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 2000
+    Description: >-
+      Disk for the operating system and the container image. 0 picks 150 GiB
+      on GPU machines and 40 GiB otherwise. Use at least 100 on a GPU machine.
+  AvailabilityZone:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^[a-z0-9-]+$'
+    Description: >-
+      For example us-west-2b. Leave blank unless the launch fails with
+      "Insufficient capacity" or "not supported in your requested Availability Zone".
+  AllowedCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    AllowedPattern: '^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$'
+    ConstraintDescription: must look like 203.0.113.0/24 (or 0.0.0.0/0 for anywhere)
+    Description: >-
+      IPv4 range that may open the GUI on port 443, for example your campus
+      range or 198.51.100.7/32 for one address. 0.0.0.0/0 means anywhere; the
+      access token is then the only protection. Port 80 stays open to the world
+      because the certificate authority must reach it; it only redirects.
+  AccessToken:
+    Type: String
+    NoEcho: true
+    Default: ''
+    AllowedPattern: '^$|^[A-Za-z0-9_.~-]{12,128}$'
+    ConstraintDescription: 12 to 128 letters, digits or - _ . ~ (or blank)
+    Description: >-
+      Shared secret users must present. Leave blank to have a random one
+      generated. Either way it is stored in Parameter Store, not shown here.
+  DomainName:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$'
+    Description: >-
+      For example gui.example.edu. Leave blank to get a working name such as
+      rapidtools-203-0-113-10.sslip.io. With your own name, create an A record
+      to the Elastic IP (stack output), or fill in the hosted zone below.
+  HostedZoneId:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^[A-Z0-9]+$'
+    Description: >-
+      Only with your own DNS name, and only when its zone is hosted in Route 53
+      in this account: the stack then creates the A record.
+  KeyName:
+    Type: String
+    Default: ''
+    AllowedPattern: '^[^'']*$'
+    Description: >-
+      Not needed: connect with Session Manager instead. Give an existing key
+      pair name and an SSH network below to open port 22 as well. The key can
+      only be chosen when the stack is created.
+  SshCidr:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$'
+    Description: IPv4 range allowed to use SSH, for example 198.51.100.7/32. Blank keeps port 22 closed.
+  IdleShutdownMinutes:
+    Type: Number
+    Default: 60
+    MinValue: 0
+    MaxValue: 10080
+    Description: >-
+      The machine stops itself when no job is running and nobody has had the
+      page open for this long. A stopped machine only costs its disks and
+      address. 0 keeps it running.
+  EnableWakeUrl:
+    Type: String
+    Default: 'yes'
+    AllowedValues: ['yes', 'no']
+    Description: >-
+      A web link that starts the stopped machine and forwards to the GUI.
+      Anyone who has the link can start (never create or resize) this one
+      machine.
+  DailyStopHour:
+    Type: String
+    Default: 'off'
+    AllowedValues: ['off', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12',
+                    '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23']
+    Description: >-
+      Hour (0 to 23) at which the machine is stopped every day even if a job
+      is running. A safety net on top of the idle shutdown.
+  ScheduleTimezone:
+    Type: String
+    Default: America/Los_Angeles
+    AllowedPattern: '^[A-Za-z0-9_+/-]+$'
+    Description: IANA time zone for the daily stop, for example America/New_York or UTC.
+  ImageTag:
+    Type: String
+    Default: latest
+    AllowedPattern: '^[A-Za-z0-9_][A-Za-z0-9_.-]*$'
+    Description: >-
+      Tag of ghcr.io/rapid-facility/rapidtools-gui to run (latest, 0.2.1, ...;
+      "-cpu" is added on machines without a GPU). If that image is not
+      published the machine builds it from the Git reference below. "build"
+      always builds.
+  GitRef:
+    Type: String
+    Default: main
+    AllowedPattern: '^[A-Za-z0-9_][A-Za-z0-9_./-]*$'
+    Description: Branch, tag or full commit ID used for a source build.
+  GitRepository:
+    Type: String
+    Default: https://github.com/RAPID-Facility/rAPIdtools.git
+    AllowedPattern: '^https://[A-Za-z0-9_./:@-]+$'
+    Description: Repository used for a source build. Change it only to deploy a fork.
+  HfToken:
+    Type: String
+    NoEcho: true
+    Default: ''
+    AllowedPattern: '^[A-Za-z0-9_-]*$'
+    Description: >-
+      Optional Hugging Face access token (hf_...) of an account that accepted
+      the SAM 3 and Gemma licences. Without one the package falls back to its
+      shared token.
+  DataBucketName:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$'
+    Description: >-
+      Optional existing S3 bucket. The machine may then read and write it, and
+      "rapidtools-admin pull-data" and "push-results" copy data/ in and
+      output/ out.
+  DataSnapshotId:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^snap-[0-9a-f]+$'
+    Description: Optional snapshot of an earlier data disk (same region) to start from.
+  SmtpHost:
+    Type: String
+    Default: ''
+    AllowedPattern: '^[A-Za-z0-9.-]*$'
+    Description: Mail relay for job notifications, for example smtp.example.edu. Blank turns email off.
+  SmtpPort:
+    Type: Number
+    Default: 587
+  SmtpUser:
+    Type: String
+    Default: ''
+    AllowedPattern: '^[^''\s]*$'
+  SmtpPassword:
+    Type: String
+    NoEcho: true
+    Default: ''
+    AllowedPattern: '^[^''\r\n]*$'
+    ConstraintDescription: must not contain a single quote or a line break
+  SmtpFrom:
+    Type: String
+    Default: ''
+    AllowedPattern: '^[^''\s]*$'
+  SmtpSsl:
+    Type: String
+    Default: '0'
+    AllowedValues: ['0', '1']
+    Description: 1 for implicit TLS (usually port 465), 0 for STARTTLS (587).
+
+Conditions:
+  IsCpu: !Or
+    - !Equals [!Ref InstanceType, t3.large]
+    - !Equals [!Ref InstanceType, t3.xlarge]
+    - !Equals [!Ref InstanceType, m7i.large]
+    - !Equals [!Ref InstanceType, m7i.xlarge]
+  RootAuto: !Equals [!Ref RootVolumeSizeGiB, 0]
+  HasAz: !Not [!Equals [!Ref AvailabilityZone, '']]
+  HasDomain: !Not [!Equals [!Ref DomainName, '']]
+  HasDnsRecord: !And [!Condition HasDomain, !Not [!Equals [!Ref HostedZoneId, '']]]
+  HasKey: !Not [!Equals [!Ref KeyName, '']]
+  HasSsh: !And [!Condition HasKey, !Not [!Equals [!Ref SshCidr, '']]]
+  HasBucket: !Not [!Equals [!Ref DataBucketName, '']]
+  HasSnapshot: !Not [!Equals [!Ref DataSnapshotId, '']]
+  HasWake: !Equals [!Ref EnableWakeUrl, 'yes']
+  HasDailyStop: !Not [!Equals [!Ref DailyStopHour, 'off']]
+
+Resources:
+  # ------------------------------------------------------------- network
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.77.0.0/24
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: [{Key: Name, Value: !Ref AWS::StackName}]
+  Gateway:
+    Type: AWS::EC2::InternetGateway
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: {VpcId: !Ref Vpc, InternetGatewayId: !Ref Gateway}
+  Subnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.77.0.0/24
+      AvailabilityZone: !If [HasAz, !Ref AvailabilityZone, !Select [0, !GetAZs '']]
+      Tags: [{Key: Name, Value: !Ref AWS::StackName}]
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties: {VpcId: !Ref Vpc}
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties: {RouteTableId: !Ref RouteTable, DestinationCidrBlock: 0.0.0.0/0, GatewayId: !Ref Gateway}
+  SubnetRoute:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: {SubnetId: !Ref Subnet, RouteTableId: !Ref RouteTable}
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: rapidtools GUI - HTTPS from the allowed network, HTTP for certificates and redirect
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: !Ref AllowedCidr, Description: GUI over HTTPS}
+        - {IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0, Description: Certificate validation and redirect to HTTPS}
+        - !If
+          - HasSsh
+          - {IpProtocol: tcp, FromPort: 22, ToPort: 22, CidrIp: !Ref SshCidr, Description: SSH}
+          - !Ref AWS::NoValue
+  # The address belongs to a network interface that outlives stops and starts,
+  # so the machine has its final address (and name) from the first second.
+  Interface:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref Subnet
+      GroupSet: [!Ref SecurityGroup]
+      Description: !Sub ${AWS::StackName} rapidtools GUI
+  Address:
+    Type: AWS::EC2::EIP
+    DependsOn: GatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags: [{Key: Name, Value: !Ref AWS::StackName}]
+  AddressAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties: {AllocationId: !GetAtt Address.AllocationId, NetworkInterfaceId: !Ref Interface}
+  DnsRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: HasDnsRecord
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      TTL: '300'
+      ResourceRecords: [!GetAtt Address.PublicIp]
+
+  # ------------------------------------------------- secrets and AMI lookup
+  # A small function, run by CloudFormation itself, that (1) stores the access
+  # token and the optional Hugging Face and SMTP secrets in Parameter Store as
+  # SecureStrings, generating the token when none was given, (2) looks up the
+  # newest machine image once and keeps it fixed for the life of the stack so
+  # that later stack updates never replace the machine, and (3) removes the
+  # secrets again when the stack is deleted.
+  SetupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - {Effect: Allow, Principal: {Service: lambda.amazonaws.com}, Action: sts:AssumeRole}
+      Policies:
+        - PolicyName: setup
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt SetupLogs.Arn
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource:
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}::parameter/aws/service/deeplearning/ami/*
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}::parameter/aws/service/canonical/ubuntu/*
+              - Effect: Allow
+                Action: [ssm:GetParameter, ssm:PutParameter, ssm:DeleteParameter]
+                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/rapidtools/${AWS::StackName}/*
+  SetupLogs:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties: {RetentionInDays: 14}
+  SetupFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: rapidtools GUI stack setup (secrets in Parameter Store, machine image lookup)
+      Runtime: python3.13
+      Handler: index.handler
+      Timeout: 60
+      Role: !GetAtt SetupRole.Arn
+      LoggingConfig: {LogGroup: !Ref SetupLogs}
+      Code:
+        ZipFile: |
+          import json
+          import secrets
+          import urllib.request
+
+          import boto3
+
+          ssm = boto3.client('ssm')
+          SECRETS = {'gui-token': 'AccessToken', 'hf-token': 'HfToken', 'smtp-password': 'SmtpPassword'}
+
+
+          def put(name, value):
+              ssm.put_parameter(Name=name, Value=value, Type='SecureString', Overwrite=True)
+
+
+          def drop(name):
+              try:
+                  ssm.delete_parameter(Name=name)
+              except ssm.exceptions.ParameterNotFound:
+                  pass
+
+
+          def exists(name):
+              try:
+                  ssm.get_parameter(Name=name)
+                  return True
+              except ssm.exceptions.ParameterNotFound:
+                  return False
+
+
+          def work(event):
+              kind = event['RequestType']
+              props = event['ResourceProperties']
+              old = event.get('OldResourceProperties') or {}
+              prefix = props['ParamPrefix']
+              if kind == 'Delete':
+                  for key in SECRETS:
+                      drop(f'{prefix}/{key}')
+                  return event.get('PhysicalResourceId') or 'none'
+              for key, prop in SECRETS.items():
+                  name, value = f'{prefix}/{key}', props.get(prop) or ''
+                  changed = kind == 'Create' or value != (old.get(prop) or '')
+                  if value and changed:
+                      put(name, value)
+                  elif key == 'gui-token':
+                      if not exists(name):
+                          put(name, secrets.token_urlsafe(18))
+                  elif not value and changed:
+                      drop(name)
+              if kind == 'Create':
+                  return ssm.get_parameter(Name=props['AmiParameter'])['Parameter']['Value']
+              return event['PhysicalResourceId']  # the image stays fixed after creation
+
+
+          def handler(event, context):
+              status, reason, data = 'SUCCESS', 'ok', {}
+              ident = event.get('PhysicalResourceId') or 'none'
+              try:
+                  ident = work(event)
+                  data = {'ImageId': ident}
+              except Exception as exc:  # always answer, or the stack waits for an hour
+                  code = getattr(exc, 'response', {}).get('Error', {}).get('Code', type(exc).__name__)
+                  print('setup failed:', code)  # never log the event: it holds the secrets
+                  reason = f'rapidtools setup failed: {code}'
+                  if event['RequestType'] != 'Delete':  # never block a stack deletion
+                      status = 'FAILED'
+              body = json.dumps({
+                  'Status': status, 'Reason': reason, 'PhysicalResourceId': ident,
+                  'StackId': event['StackId'], 'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'], 'Data': data,
+              }).encode()
+              req = urllib.request.Request(
+                  event['ResponseURL'], data=body, method='PUT', headers={'Content-Type': ''})
+              urllib.request.urlopen(req, timeout=30)
+  Setup:
+    Type: Custom::RapidtoolsSetup
+    Properties:
+      ServiceToken: !GetAtt SetupFunction.Arn
+      ServiceTimeout: 120
+      ParamPrefix: !Sub /rapidtools/${AWS::StackName}
+      AmiParameter: !If
+        - IsCpu
+        - /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id
+        - /aws/service/deeplearning/ami/x86_64/base-oss-nvidia-driver-gpu-ubuntu-22.04/latest/ami-id
+      AccessToken: !Ref AccessToken
+      HfToken: !Ref HfToken
+      SmtpPassword: !Ref SmtpPassword
+
+  # ------------------------------------------------------------- machine
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - {Effect: Allow, Principal: {Service: ec2.amazonaws.com}, Action: sts:AssumeRole}
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: rapidtools
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/rapidtools/${AWS::StackName}/*
+              - Effect: Allow
+                Action: ssm:PutParameter
+                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/rapidtools/${AWS::StackName}/gui-token
+              - !If
+                - HasBucket
+                - Effect: Allow
+                  Action: [s3:ListBucket, s3:GetBucketLocation]
+                  Resource: !Sub arn:${AWS::Partition}:s3:::${DataBucketName}
+                - !Ref AWS::NoValue
+              - !If
+                - HasBucket
+                - Effect: Allow
+                  Action: [s3:GetObject, s3:PutObject]
+                  Resource: !Sub arn:${AWS::Partition}:s3:::${DataBucketName}/*
+                - !Ref AWS::NoValue
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties: {Roles: [!Ref InstanceRole]}
+  # Snapshot on delete: results survive deleting the stack (remove the snapshot to stop paying for it).
+  DataVolume:
+    Type: AWS::EC2::Volume
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      AvailabilityZone: !GetAtt Subnet.AvailabilityZone
+      Size: !Ref DataVolumeSizeGiB
+      VolumeType: gp3
+      Encrypted: true
+      SnapshotId: !If [HasSnapshot, !Ref DataSnapshotId, !Ref AWS::NoValue]
+      Tags: [{Key: Name, Value: !Sub '${AWS::StackName}-data'}]
+  ReadyHandle:
+    Type: AWS::CloudFormation::WaitConditionHandle
+  Instance:
+    Type: AWS::EC2::Instance
+    DependsOn: [PublicRoute, SubnetRoute, AddressAssociation]
+    Properties:
+      ImageId: !GetAtt Setup.ImageId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref InstanceProfile
+      KeyName: !If [HasKey, !Ref KeyName, !Ref AWS::NoValue]
+      InstanceInitiatedShutdownBehavior: stop
+      MetadataOptions: {HttpEndpoint: enabled, HttpTokens: required, HttpPutResponseHopLimit: 1}
+      NetworkInterfaces:
+        - {NetworkInterfaceId: !Ref Interface, DeviceIndex: '0'}
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: !If [RootAuto, !If [IsCpu, 40, 150], !Ref RootVolumeSizeGiB]
+            VolumeType: gp3
+            Encrypted: true
+            DeleteOnTermination: true
+      Volumes:
+        - {Device: /dev/sdf, VolumeId: !Ref DataVolume}
+      Tags: [{Key: Name, Value: !Ref AWS::StackName}]
+      # The user data writes the stack settings to /etc/rapidtools/stack.env and
+      # unpacks deploy/aws/bootstrap.sh (gzip + base64, kept in step with that
+      # file by deploy/aws/build-template.py). No secret is passed this way.
+      UserData:
+        Fn::Base64: !Join
+          - ''
+          - - !Sub
+              - |
+                #!/bin/bash
+                mkdir -p /etc/rapidtools /opt/rapidtools
+                cat >/etc/rapidtools/stack.env <<'RTENV'
+                RT_STACK='${AWS::StackName}'
+                RT_REGION='${AWS::Region}'
+                RT_HOSTNAME='${HostName}'
+                RT_EIP='${Address.PublicIp}'
+                RT_VOLUME_ID='${DataVolume}'
+                RT_PARAM_PREFIX='/rapidtools/${AWS::StackName}'
+                RT_GIT_REPO='${GitRepository}'
+                RT_GIT_REF='${GitRef}'
+                RT_IMAGE_TAG='${ImageTag}'
+                RT_IDLE_MINUTES='${IdleShutdownMinutes}'
+                RT_BUCKET='${DataBucketName}'
+                RT_SMTP_HOST='${SmtpHost}'
+                RT_SMTP_PORT='${SmtpPort}'
+                RT_SMTP_USER='${SmtpUser}'
+                RT_SMTP_FROM='${SmtpFrom}'
+                RT_SMTP_SSL='${SmtpSsl}'
+                RT_SIGNAL_URL='${ReadyHandle}'
+                RTENV
+              - HostName: !If
+                  - HasDomain
+                  - !Ref DomainName
+                  - !Join ['', [rapidtools-, !Join ['-', !Split ['.', !GetAtt Address.PublicIp]], .sslip.io]]
+            - |
+              base64 -d <<'RTBLOB' | gunzip >/opt/rapidtools/bootstrap.sh
+              H4sIAAAAAAAC/608e1/bRrb/+1NMFLe2U+QHeVYEdgk4iW8B88Om6V7CukIa21psSdUDQhP2s9/z
+              mJFGtqHt3e3+NlijmTMzZ857ztHTJ508TTpXQdiR4Y24ctN57alI3DjwsyhapOLD+UBEodj/NHJE
+              EKaZG3pSXEVRlmbQS7ihL1x/GYRiLhexTNq1pzB+PJfiYBHl/vsoWbpZAAAyuYwXbiZFswRuz/Kg
+              fecuFy0hl1fST0U2D1IxDRYS5oIHCbCKSfNUJsJ3M3dL3CZBJrG3FPDSuxapzLIgnEFTJDoy8zrl
+              JB3q0YbdATBcbpKHqfi12EI7ndN+fsVtIsRpkKQZNVF3aJU3MrkTuPqE2ttikOHKUuEu0ohXuFhI
+              wAQANrZHiPlVTCNc952dRTb8EZmbXqcO4UmINPcjsToEN5XlqSj+86Iwc4NQJumW+HB6viX8IL3e
+              EuncTaRYBOH1I7Cy6FqGJSgRJ0GYMer+zPAkgrVIu4ASylvhep5MUwW5SThIsygBBMCA0ei49Qi8
+              PPaRCsrl5IuFAAQl8ioPFj4tLFi6M7kFTYCHJHtscdyjAKafEUiJs0cA0Ckb/7lxvLgT3twNZ7Cb
+              FdqCVabSS2SWijC6fQTqIoLeF0CuN4EnLwUQwGIR3VZXRZ0egYF4sZHa1crS506n8/Yq965lttfh
+              F/ae6KTJjUns+OJRqOncBizli4zIa3V4lGdxniHg6nzcTjTbR2YAPg1nyACBD3wdZTLMHGSsEJt/
+              ZXZyZ7BRYB9AaCJh3x6wteJZmeUxSAqxP0WWkn6ACDaYHyAJIgdbi412fCeAzHB0IUmUzAiydg0g
+              Crsv80jEQSynbrCo1c7Gk/74YNeqf+Vfjr0iGe4tWEIKcmvhzSUcNDCVe7WQu6ODXvfHXi2Yigth
+              T4VV5/GlILHE5Q4uJRTtTW93YBM0/Wi8f/CTWgD9duyq8IMVwKuz/ofB8ET14wfHzlP7FqjZ3uY+
+              H4ej8cn+cV/10o+OfW+Z9PtUHJ6MROgu5Q6gJ87uhC+T4Abw7oJUSRdB3A4iei+mSbQkfLq+DxSR
+              Er4Gpxpfg9NV2OYsOK6/cNMs8MTg1BDEbgZ/5tJHaD8Pj86P+5PBoYJZPFchA0m9G5FgFzfRIoel
+              gRBfRjlIKZC9MO5wf7yP8E73z/aPJ6dn/feDXxRIswnO16DkusY54+/DAFF7OlTj9KNjz7MsToHU
+              Z0E2z6/aXrTsnO2fDg7t9y4QbJDddRJ4ZKBt6GSCe1+B9t6xl0Dx3GFwvP+hb85YNjj2bO4lcA68
+              XHtaTLSBNnjYeP9DBQw8OzbyQJoxJp8Ki/jFEul1EDOXJXIWgIa7Iy1Gb1NRLpaAHx71J8eDk/Nx
+              f6ThG02O3SXoT0VX8wZDDvwFao8886PbEAG9Oz/4qT9WIPgBz5h4YPDhZP9ocn52pBmhaDDJ4Omq
+              vXDrBpkAOQxTEZjj8SlRvYain4t5sOF0eFbpgM+O/fLNa6PP+ah/ZvbB5wqQ92fDY7MDPlc6jEZH
+              5nt4JEzVmE8NHkX+7ERxVpE5artAaHGUSpJ3oNVRcIBCj/IELB0SRyBya4r4FUD8CQCrIrsAaDCQ
+              Qw8dwVK7IzxkSfzj+3cdBHo01PQEvwDkjZt0QB+ZFFjaR/CCN380LKQZ/kR+y8OHxnjXilPOB8bh
+              qydmO+C63vbrdhf+13PevH71Uom6/v7R+ONkPDjuD8/1cVYbHfvHbledyD9G4/7x4eRwUJxq2aJE
+              fnqXgtLw1V8e925wYoxRT9AfrWFYvbtAm5i7nvbP3g2HY6O70aKxF1x1PKTgTuolQZylHTCGCSEM
+              4z3IondqNP1WS5uC2LzSrH5YcCH8LHH06sf29ssXbfWXOx/04Z/x2aBg3LLBsZ93C8YCUQ1qKkX9
+              C+zvxmhPQUfg8Mn5KWJTDS8bHPtVt1tQVYi2LzG8DSZeDBQaofGSAWeyvnan2iqujT6ejw+Hn04m
+              B8ck8s1npFt0MrTUEPYcjSjYjPwSR2CyHfbfDfZPkNlOxv2Tw90wAlsCQLteBvqrVgMqbLbEVyG9
+              eSSsi3qTzEg7Fz9893783fh/W5ei/swSe99v74j7mh9I6g2jhNU/OxueOfgalOIXECs97AK63/4P
+              /1M+T1qrBUs/pQkBZfhbvI3dbC7yENSv6LCk7uxtCTzYm20yimpCEJ2JDH5lu/WmlycLYadTYS/F
+              S2H/Ik7Px8L+KBq/2O5taktv217KzEXWZnPczrKFrY7WEb3tboOtEZxEzwnM2aHOVkt8+wY6IcuT
+              UPRgypXpPgrroXkAdZm1Drres2qARrIqJvMozQgB5F5MRcMQC9+lbW16fA5xjV97nU67AyKVzgGM
+              j2hxIwkEWiYaj14OFLckY2VLyAXIynUbJkpIIcX51QIsEW3JaMwG8S6bZ4NTCxrZoAt5J9qCKm05
+              pqzKux2FMLLohB4dxDAIsQnw6006bkQYWesdXoodxDcvCONAicIKo5UloonDlplwBW68tMlwpSVO
+              eTrE89xNJ7M4J+yA8liiVrdvRHgT+IFrp8tAgFsgbzohOlTbe9/3xPffm2/to9UOhH3w5yZ0ynx6
+              YNlH4XNhe6IRLIkxlcuzwyfbVI9tGjMBGkrdqWz23rRaDYIHemwyk5k+RPUofur/wxE37iKXIpri
+              k3LwSfGREtwSv+URevWJXEY3YEECGsAHQ4ynnX/We7uNz5+b7WefP7can+udz597ndjSx3Xc77Bd
+              vm1s8Rt42sECAfQQf7CKCYg/d6mXRvthg4YWpg87BXNnCuanvyV6IKMy/QBsC33BXUmSKCloDNU0
+              kRb8AGoADoLTWwqYzabZJIpH20ZjLFKkxya+Ba106NRmGrLIWeJzjQW4bd+CZWr7gPa7mCwj2/4t
+              x3jEqQbf/pnwatvKe8vkl4wOuMWUXSvcfuDL71LkQOhp1dhjJoHQhQcicc9NpXqPJ/SsmOQkyt4j
+              Hp61CiEidnZE+biNjzJ1PUQ2LMOgKkD2/4yGJwAQ2tHKAaLn4AHokUyQz54K3KewbAvdSkR7Il2K
+              qADXR7RzWJ5GL8D5E+j1FoFNc9r/SultcwN94ytY011aYwLH57afL+O0+dU6gRksB9+23WR2c9G7
+              3BIWodts3cbW8V2MjdZIgmSVowyAzSxoH4ICpXgVvBwnubwHTlGnu37yYPezzEXS7lkty+BZxOsi
+              cv0qYkejY0QYeWBsPQJ/ZUmezXcEcCoqSXKaCd23cxkazpof+IjpUhNF1yLxkBRArk7w/OvA77/B
+              Sfe2gZb8iEnG2+3SD+gOFF/wlSgWz6rG263/jfqR3LXqiWeJXeCtSxRMSpRC9zUBjG0rglcYAHoM
+              4Ar2dk2v0oWUseh1C8e0iBgmEfgpHloq7jUK2mW0lBj7isQVaM0lhhTRqQEoPlg1NZ7la+I56HWr
+              qbQIBzAFUT58bOxVF0wjRhgWQ05jXBXCtlXDyJfiEY2HlakopMYeuhlvg1PZAN/AHSnlYBa6C00j
+              /CRG5wcH/dHo2/v9wdH5WV+8hc0Ase+JC9Rclw5wWnorWaM+7I2B8eLJUhlWPDqlFw2hciGeCFua
+              cpoXI/31vkyEV5GPthH+2f0DhgW/KdkSIJpzOKySR52Xl5t4eURBVeRb4Moz2jo8JBd2r9vtOsjC
+              52EAonXgQ3MOj4eAFfjpXzjY47LCuD1k0G385+tz8mOtIuBgtVghmAbW865p0B1EIUbMbBQZTgME
+              FdlaYB67INatOm7dWkdtKQkMsZ5FuTffiF4kCjCaqBeZwV6UL4jfNT1Uz9hiFQDEE4UTNJM19fR/
+              GYwFBftBsnBsD9Am6SxcgbE2UNNG0BzYqwq5OFov8iULBQJnM2gwzxXr4XtLPGEhsUobsIPy2kHN
+              2iRznsaBfJqi1seOKLjYtyVjiuUDiYeFRPUIhtYiT+dE6NAf+zBGNGdYxgXI6qRtceTCVnGeRRBK
+              sLzrTW1ovOKTwIlXTZFEND6HVkM0RLvRIl4HIY2nQ1tQe0fs+55GvA9ONLCjjhSQfiSfy5fxIrpD
+              WdbggGlp8tLTblOHLYkmGI6t4LTvlgsi0YsVxsxTaYOBabF8JUA/PA4Jej8KTYWk/jQ86l9AXNm+
+              bcdJ9C/pZbYfJPAnIl5RkIgRaYqLv18SN/6dkPkf+nhM0GkmY/Tx+JoHlJ137c4k+XsF3t04223C
+              PzYau/adsH8TdiQOT69njnMEG3GccbCUaCOCd60ExBPTjp8BFZgU8636moTJI+/z8Pcg3iwiADOw
+              MMYL376sNaut0SJoJgbnubYnkyyYBh66fNpGXF26OqiNkxPfKvAY4z+kvtZfXRhPgX5flWRscKYB
+              FSxqp+noSBTxXJm11SjoCxyYzvX6OQzkZQvwTlD/oyEe3SrIen8r1AdGXIqKcM2FenCnKFx4t+JA
+              AYkX+SwIefPLayBjYcfCiDhhEInn7aDpyt1T6m7sEOjqD8escFbhTVgbwt16NHftJHIBulGm2s3H
+              aA2anSsgbdhk/sWuN3NyYuxli/flzZeRL3748pfXSKM3Y/0hwkNv4E9RHZ7F/qeRODga8CrTEOS5
+              Ji6MesC6yGFw0xS8dCCprwpjK4jPlnEH+kP3m+028kiBUW5tu0v39yiEB8ItN9ryywZ84XBLzcL8
+              xkJjfQ7bp0YUo/plRy/etg3WudeYeorXxGLpenNWUUs0gFPwSzRJXgPFs9dw8vPgcLCPV24ZSCjR
+              JLpFjXkk3YTu8/aPB8JdoOV7Bwck01abz0JFJHBZ6wEJL7s2mQX6FDwVhNNoRT3OwJ6A7QdqtHGU
+              Bji9RC8Kp8EMNwOOH7ftKtAwTcnd+ja4YGw2b+hqaYIml1a0U7JURJONGJoDI3StLXUNhTubJeoG
+              d+WyqmawMqkjjNKvRZuKq6/C26lxfPUkyJKoOCiBwdCU52DwKXrAJz8fS1D6eJsMbvIce2DYGCQX
+              0ZLnJkmgrmbUDVrgtxUjoHLCK37jDmFy2P95cIB3E3gCmErQubqzA78T3iylvU8EPFG3e5N3GMqf
+              kJ8xqd7idezOPYhochgVbxK64ggTDICWS3QYW97gXL7qls4l+3r2FQzGVVurzl7p8L1Uz8p12zBQ
+              +1Pm1WLlMLQDjNf+QOyIah5c08FztmH5Epuc56vFNYyBQwowLE1X22gIpxTjIwOEyM9Spuk20BCH
+              0EF3gCNKsaO2Al840kKBJRLi1a/G8ioO9YpLvV2hqUL+MVVnWv5h4saDmLCKocvradqWX7IXJI2O
+              zFQgq4IcuTAWwTb7yipMZxbEVQxGW3UFCE40ee9sySdeS8NXjr/QskFYFxdOCsaXdC4vC1q+NxqV
+              z0TXK2hhFwtRzjFNp2lS0B59OXUxF2IrjNC63/piq7uiNrObnRVWG4YFweHb2zMmUTOwlKhwf7F+
+              EELB73J7mj52tOgKCJZEmCkCTK9xJMMFOLWcWVMEbrSUXxc8lP9hGc8cEjRb6DKw2oDXgqsDuZVF
+              LZnSGAKYAE1NVAhbC88D7AjUxelblbQATDhZuJgvJqcYy4ATxtwnkgCuMEzLSjgBo/Vr/t+jQgOp
+              8JE4vMZwC5nFnAIkizGFKViUUCE++rR/djI4+eBUY0uoCFWYkjxhY9tqBnEnM8YcRv8mMrzRKCsa
+              xFt96bEn3lJ4B/7Op0L/TJdZLGKwSW6jxIdnSoyCv1cYpdUPIJq9OSzMl1/2Sj9wdyU0Dm/yJWBf
+              dF+/ht9s3jBjPBWfYEF4T3h1t54yVOS/oS+0o3KjyqQoRZcr8SJOhrGMSSipYjwcHo0mh8Pj/cHJ
+              bqPeazzQA6+Jx8Of+thpW3UCAvkdTu+5og0e8/F90e/5Q8DK1IFG3cwceLQ/ZRKU/fHx0f6UVVD2
+              x8fH4e+PRp+GZ4cw5sWjHSkboQSMj4/2x+SEsjs8PdSbMkmg68tKh3f7o37x6lXl1Xh4dvBxMjg5
+              7P8C715X4apEhYaWH/T2XoCwnLZB8+DT8kboJ/xhUOT2dskmyvRXzjUIB7H3aCRDvH3b6A/fN2qP
+              U3GTYyZkOpupn622GKENtXDvQFSCeAI4quv6ZFs6BkNyOJPiWsaZThs1NFu7hiztGKuoqWTA1IFN
+              zfLAYZsJOdgRoMxWjuW+ZmQzOuAdgF2R0gV8TBdjgu7V0Nxw6AJNNwVJFGJYyFGKyYB7ev7uaHBA
+              yReFj1yZmLnyvkNDlfGp4diiVLikKRxONNzwlhWOozMGN/QgBeTwH76aQgOqnMqqJoXQP0xrc+ku
+              sjllx+ju6KI64sI6OD60Rx/7R0d45VL4bBht/Wz9Yp+V5DBWN9r1TeLms6Uu3I0Bp0l0BWjuNcTG
+              nBW6YWdqqIZnONPAutQWGyYz3LgLRzzvpnrxbFw44qVuoQOfxDIJIp+u9FPtz4LHPHPE9+qXtn3x
+              BjlxKCRuIzmodr4vA7/v69IFkwYMEEdY290lIAcbmHCs59Y9sRjo7wo9csv2H9Lg6rm96Tpvulb5
+              /OLFcwf+b/0J6mTiW2EFRZGbCbLdIcODtkKZNGywlI1JtJn4tLHzMAmbpo+j/nJ0QsYy9NNJFJbr
+              AGauHtEzfUQglf5QgukIaiHFNsoJFkh6TsyXwIu+AhnUhMTFh14rUyuVz2g24Zo12bBvXasmd3po
+              zDrg8C9WX7ixe4WZigFGFC5g6Zd/ao9lVPfxXVI/vVTMkwYLHcRbJ1Uepo4OMfUqIX1YNKk+YC0b
+              +y3VGdJW+XRf9DC0GnYxHu83766gMFP1sBEcXWFud8pVBhIUHVvEhqFbZKyQ4w6KKshSuZiKJjuR
+              b7o0Fpim1a59ra/zgrLbErTIUjmJk+jLHWEQRVERs6L7FXC40C5FoWW84NF4icyyR/S6y8pL1sKb
+              3t7Xyn9liPcVYvZ7EGvqrzG+QJFPgR3nEybSIpmHMqwRZJmCCq4fLNObb4nMnWF2PV3gYCgJJGfg
+              t1BmRqJAPNMBm7fw2zBw4amIuDzBaJlVh6YOputW4y0Y3w7CQEUn1DButg9UC+WfZJQWDWsKgJXZ
+              Z9Apw5b2vjaOArvYRu3z0MjqIMIUOdo20DOYFr0NA9+vj9MJojR0Kt73x0C0H/v7hwYWpgoLa4xS
+              XrjDuSQSPNNo4Zc5fVKzFjqjPsXNKp5mCVMFfJk9HphKs8j+2QeDGXfjO/JaOuqvs91+1e7aXu67
+              ve32C/wRhj/q4F4Njd4V9kV4pkFqWbX+yc/i9B/jj8OT85N35+/f98/6h7s9cTo4nZwMJwf7Bx/7
+              lMLZE+A1UJ4u2yCdeU4Ce4qe6opVAAPfnQ0/oXHfq52dnwh9xaPKWMCD1C1FQPaO7hNs9Wxj7cNy
+              iXqjvF5Bx3Mp7GQqiuRRAAN/0yztPKOJyvChsc3y6OKgjF+zA0j/3gQppwiRO0iUWAVACRXgePwE
+              mBDEUgfD03+INv/GiU3IbWopryrIxtVFIgp7RoBoHZ90KAaua/1fToejvkBxVQObDSy3atY7mm+2
+              jV4x/uqSodXlRhRn+IvsQWoBLF8l0S1oE36ma/QErHt85IgGtfOC8d6QXqiYiNZexMzk6asEGiDo
+              enOVu28w34iuIdM5ylXktpZoGmzaImcf3CFQehMypYr8CywZIsLdMphgyyRgkvuUD6euYUVHlHeo
+              YLUl15hoWsi/fDoNvgDVo0LxJAZ3e5yEbuq8Xesv8RkOXuEpM87/WNaBvjs2kw6QwqcPdBLFDmxP
+              t6ysew5W1vN2r2eni2DJPSqL006Mvp9qqz22o2TWuZ0vOgowHa8CW6U1h3BZ55VYdGuyr0PxnJmm
+              bz3wEDK+eweBKUG3e+j8yRirj1K2XITrJVGaaos53SGAFDn+laXFr3B40XWK9FWtz8BCqXatiOrS
+              kVJMtVckSz12t17GwFAWG/1o2ZVMhDIEppWSMChY1AlPBlR9Y4PUXMRwLd3t4cvQ1bTCjbTAWyj3
+              bZa30PYZr6YCV+dYrxbUVEYa5/kwRv8f+yr2VOSkkczAOj0MsauxelY1AVU3krHBrx8CVY74y6g2
+              1qEyVHaINHXcX6fexHeYv2MuU1Sjn+auuJvOxKRYajpHyHQkCJoS3SqEhGLToCXUIcA8f5EFN0oW
+              RSiY10b+MUUXC+FaNom3dNB7jqIcurHByLT0txjxfCFI5aaqInG1VrQIoFblKo5cxrtrzFVc9D3I
+              oJVraYR864bZ7h/y4AbyLRISDV6nZa2y+BPkcZyGY6XqsJ/8ByRmmvQm1RXkoAim2XuJ+V/bL8Uy
+              CHPM5tYOz8H54T7PXNzw+J46J+1DFzc1vPY9vb2SPOkfGJfTpThbAAQCU4AxbdyOkhjs2BSJRSfs
+              5GDxl9UZVMqiq1BQ7SVbQtfqCFDe14UqXgsiqltupJGQMvvKIzdjiuoaRdUUdVbBWGs3N0Y5kVVx
+              OI0XBhia4u1btF6ePqHSfVW2fyZRlZf3RI0Uzc0Ec16L4vlqPJ9ralHTVYueAViZXo3Zs6mQ0ymS
+              C9f78BQR1/8zU63cAABK8QIybdfGu5//O8UtD9a2tFhdmXP0un9Q0vK5PrbWICKWuOga8zBWqtvw
+              Jb7DDwbQfPKL9OiLCY91rVGvjXTCVVMqyEBpM69fvhR/cPAV+jBK3czpkcbbKsaiKeXiHLjgsnYo
+              uT4Njmh3hAdIRo02eor88JUPQFCh90LWahcjVdRew9zV3SiUYA3DHmCPI6SC3c0bJaYjp3UtpvLY
+              Fog7H9nAAQUVmJqnWEujhQ7sg0o1Ht0KJuQll7Vh+A6WOpLebq8L4+EZJ9qnsjNsfYmNtYsBC5PL
+              2ieQTdJ/d7dLq0vbGd7P6mMsk098F+RRCFIJbdOqjWOU2FrCnmUrV+cPpKdtRI5pbxtzc7HuYwOr
+              +TdFMipnyIA8nlBIm4uNymi6wVcbQuo9a/2djp4rmajqP8ugeUV1UQER3TNzpP+uuDA12vRFKYak
+              s2BBZ4wHy8nr4IQWsAtd7oMdgrm6u/Vmc9Q/GJ4cjsQPYq2qtIV5mbdzNArwqFRP2NQCtaQGQipd
+              XTzDoRa44qTw1XQ0VpOK8HiJWBeys24Crl0+g5qjD0nYNqUXv+jiXMZZUXqF3n2RycIp/BFnQK+h
+              my6w8BZ9vab2Pi2v+Y2IZeUIzEhmeXXtoDrOogoL6rSXKUjBxab7eyKHsmjVaplIXSM5kMYFtaKq
+              p4pBxDheMDjFjYxVpuPVe50V2jLMGTYzyLd7zBTWlSXlmfBAEw14I4AGEGxLVdokUY6V8mBKUO4N
+              6DAUVq3/Qj4yOM1XygZJazVv6U9QylbykFfNVqoh5MKR+VRQPgGunvP1d7s1nTwBFlTe0vU5OnEK
+              jQkXPFo0FJr4QZHWuu2is6+b0FiWs2EGPHUm7ffjnmo8+IncAUwpw9jWj8VMbsi1dWWyPc4dUHpB
+              nEQzqpkkFCvoJfA9sdfElH7bNaYmC3ZDVnrxqR6VRcBo6JGrjh8tMutcCoaVPtW8UOEa+fMrXwnS
+              KWBrhQ9tXenQUAUYnCSpihdABaI8EfWjwUn/ZGg1VCUEl1pwDQZVSOjw1MaiBDK+mADJBSrKUPD7
+              OVPTs9hShj8G2ysec8vwwZsJi7lr9te7lnYnVl5stHtbVXeniIguxetul6A9NLLI8F3Jsa+p5KqJ
+              uqtbTUKCJqTwXVxetYq4xUVXMoR3ZdUcts6nlaq1+dQoWoN3FPVCRqn0wgZbZ+JQV+pCnSuJC2TL
+              lSHAwnsr+mHaj1WnCCcXbHGx33yK/yJQq3TJrHoZFLNWIrk1UXF9jXkqfo9Gmtaeekpcp0SDrbkm
+              2dXqWpvc8ZKBCqpEKWrkFODYjmh+HI9PR2AUIGD6aBXWyRgZwyRJ78BW07k8YdTaKjIiaMdEl+T/
+              Iq8Zwqlaz1ZhDKVp89hUBbwkc0U71Zk4cgvyFA2kCRmqZXiBjGRZ2MjsAK3YcaRXKYFE/Cu6EpTf
+              hrH4zKgUZinMavgqT+/IDp3gWtU2H7INV1Lh8pg+FpCBB9wGZuyJDkhIr5PHaNi1FCxEgD1Tsq/8
+              uMN6Yh3GPPWHm0qpolKhybfeUpcdLWC1hUryQwnukMFBJqWWxW8eEPRvVrP5+EUu3hhcqkvFNyVm
+              tJjaMzThTItLsY9O8CvzCJVxWdktZVgigeC68xgNDvw553wKquy0k8rRvBVvm9XCaQX3W6VSvrZW
+              megDsVLxIYqeJpYmphmYCS1Vl2iBpYIhvzZWyls4I6gs+sSBhZcd2AVQ5GZN/8LipViXrRYO0Y+o
+              GH0eYvdatYY+d4IlNlXQKQGvx6NR211JRh/SPSBiSH0uiBGkUxx5qAP6C4T6FQod1Hh4891IdY0q
+              iIR2EdEsDNgwsuGXHYNGCr7gFUqAAfT1Lw7dLy3OPtlcHiAaIG1+y8FTtxoVe26T8car3a0Te+ny
+              kQoGgD3AIVjl5GeYWtpaidvNZlhmnlWyoekrSGjX1r8yyPt0i76KROoYw0vWA14WyZVN3x3b7r55
+              xffrFDQwP6BSOGcopsoKcDZIC0m3iYk4daDV+dufYjT+JgdOwl/+K+cyBZmyMO+tkuO4lJt2uV7r
+              rD4rQH3wswIXT/bt/3Xt37v2j5P2v+3LZy22A/OUSy+wUDOjzx36wQyvWKi4BDyItvi3TjlVvK+/
+              OqCqt59C8z0fbm/bsGURMlpcEos34Y03d/HbMjCH9ZdqsR8rwqbvVQTCSr/9c2Mya/vZtweSXAFq
+              49va5yweiHVyuJRP/kTeGt9xdEitawLR1MJfk1RHCADjdMO9XuVTIfyFCbys26XPryzlMkruMKzt
+              698ZUAf6YlxlsOulN1thBEYGSJAdlku8QNL8IXhPlvJ0/Sl++6djpMtjcR5grpF2/tkRotMoNjcw
+              vzPmiFUFKSixswvSLppOW5u3fhcW5bT6ufy04rfK5xAv5BfQffyJieeCerrJLMeMtfSykqHOXzgz
+              S0zCSIyeC/5aIthbeNV/g6G0yPjaQrOMqGJl+TvqjB+YaFkFa93OXbwb6BE1zYNpVootfIWSvfww
+              pCmizFVv/hyGRV90LJdP9+Mda6V2oKNqZ4240p8AvVJu0NkwW/mGwataLDeoyhY4JCVbmGqVhKmD
+              4yx/K+w/hRklVWAMShVOIgMTpiW0awwDdnaoXZswxZueflPGJvltaQLqHso9KIhLt5ufRuXXpsik
+              jequvBnupD7uqoHwdXELGVMXrKlXqDxbpRad6khQj5ypEnhJEd8qH/hslSSvkGSOApGrvq/T2N7a
+              7sYNctDUF7K2uZf+nIsiQczA+TgZDc/PDvoX3ct7vkzullkpeJw0CfH6/wEIKRvYXFgAAA==
+              RTBLOB
+              chmod 700 /opt/rapidtools/bootstrap.sh
+              exec /opt/rapidtools/bootstrap.sh boot
+  # CREATE_COMPLETE only once the GUI answers; a source build can take 25 minutes.
+  Ready:
+    Type: AWS::CloudFormation::WaitCondition
+    DependsOn: Instance
+    Properties:
+      Handle: !Ref ReadyHandle
+      Timeout: '3600'
+      Count: 1
+
+  # ---------------------------------------------------------- cost control
+  WakeRole:
+    Type: AWS::IAM::Role
+    Condition: HasWake
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - {Effect: Allow, Principal: {Service: lambda.amazonaws.com}, Action: sts:AssumeRole}
+      Policies:
+        - PolicyName: wake
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt WakeLogs.Arn
+              - {Effect: Allow, Action: ec2:DescribeInstances, Resource: '*'}
+              - Effect: Allow
+                Action: ec2:StartInstances
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${Instance}
+  WakeLogs:
+    Type: AWS::Logs::LogGroup
+    Condition: HasWake
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties: {RetentionInDays: 14}
+  WakeFunction:
+    Type: AWS::Lambda::Function
+    Condition: HasWake
+    Properties:
+      Description: Starts the stopped rapidtools GUI machine and forwards to the GUI
+      Runtime: python3.13
+      Handler: index.handler
+      Timeout: 20
+      MemorySize: 128
+      Role: !GetAtt WakeRole.Arn
+      LoggingConfig: {LogGroup: !Ref WakeLogs}
+      Environment:
+        Variables:
+          INSTANCE_ID: !Ref Instance
+          GUI_HOST: !If
+            - HasDomain
+            - !Ref DomainName
+            - !Join ['', [rapidtools-, !Join ['-', !Split ['.', !GetAtt Address.PublicIp]], .sslip.io]]
+      Code:
+        ZipFile: |
+          import os
+          import urllib.error
+          import urllib.request
+
+          import boto3
+
+          ec2 = boto3.client('ec2')
+          IID = os.environ['INSTANCE_ID']
+          HOST = os.environ['GUI_HOST']
+          URL = f'https://{HOST}/'
+          PAGE = (
+              '<!doctype html><html><head><meta charset="utf-8">{meta}'
+              '<meta name="viewport" content="width=device-width, initial-scale=1">'
+              '<meta name="robots" content="noindex"><title>rapidtools GUI</title>'
+              '<style>body{{font-family:system-ui,sans-serif;max-width:34rem;margin:14vh auto;'
+              'padding:0 1rem;line-height:1.5}}button{{font-size:1rem;padding:.6rem 1.2rem}}</style>'
+              '</head><body><h2>rapidtools GUI</h2><p>{msg}</p></body></html>'
+          )
+          BUTTON = '<form method="post"><button type="submit">Start the server</button></form>'
+
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args, **kwargs):
+                  return None
+
+
+          def page(msg, refresh=None, target=None, code=200):
+              meta = ''
+              if refresh is not None:
+                  goto = f';url={target}' if target else ''
+                  meta = f'<meta http-equiv="refresh" content="{refresh}{goto}">'
+              return {
+                  'statusCode': code,
+                  'headers': {'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store'},
+                  'body': PAGE.format(meta=meta, msg=msg),
+              }
+
+
+          def web_up():
+              # Caddy answers on port 80 (a redirect to HTTPS) once the containers run.
+              try:
+                  urllib.request.build_opener(NoRedirect).open(f'http://{HOST}/', timeout=4)
+                  return True
+              except urllib.error.HTTPError:
+                  return True
+              except Exception:
+                  return False
+
+
+          def handler(event, context):
+              http = event.get('requestContext', {}).get('http', {})
+              method = http.get('method', 'GET')
+              if event.get('rawPath', '/') != '/' or method not in ('GET', 'POST'):
+                  return {'statusCode': 404, 'body': 'not found'}
+              try:
+                  inst = ec2.describe_instances(InstanceIds=[IID])['Reservations'][0]['Instances'][0]
+                  state = inst['State']['Name']
+                  if state == 'stopped':
+                      if method != 'POST':  # a click, so link previews and crawlers start nothing
+                          return page('The server is stopped to save cost.' + BUTTON)
+                      ec2.start_instances(InstanceIds=[IID])
+                      state = 'pending'
+                  if state == 'running':
+                      if web_up():
+                          return page(
+                              f'The server is up. Opening <a href="{URL}">{URL}</a>. If you get an '
+                              'error there, wait half a minute and reload.', 2, URL)
+                      return page('The server is booting. This page opens the GUI when it is ready.', 10, '?')
+                  if state in ('pending', 'stopping'):
+                      return page(
+                          f'The server is {state}. This page opens the GUI when it is ready, '
+                          'usually within three minutes.', 10, '?')
+                  return page(f'The server is {state} and cannot be started from here.', code=503)
+              except Exception as exc:
+                  code = getattr(exc, 'response', {}).get('Error', {}).get('Code', type(exc).__name__)
+                  print('wake failed:', code)
+                  return page(
+                      f'Could not start the server ({code}). Try again in a few minutes, or start '
+                      'it in the EC2 console.', code=503)
+  WakeUrl:
+    Type: AWS::Lambda::Url
+    Condition: HasWake
+    Properties: {TargetFunctionArn: !GetAtt WakeFunction.Arn, AuthType: NONE}
+  WakeUrlPermission:
+    Type: AWS::Lambda::Permission
+    Condition: HasWake
+    Properties:
+      FunctionName: !GetAtt WakeFunction.Arn
+      Action: lambda:InvokeFunctionUrl
+      Principal: '*'
+      FunctionUrlAuthType: NONE
+  WakeInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: HasWake
+    Properties:
+      FunctionName: !GetAtt WakeFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: '*'
+      InvokedViaFunctionUrl: true
+  StopScheduleRole:
+    Type: AWS::IAM::Role
+    Condition: HasDailyStop
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - {Effect: Allow, Principal: {Service: scheduler.amazonaws.com}, Action: sts:AssumeRole}
+      Policies:
+        - PolicyName: stop
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ec2:StopInstances
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${Instance}
+  StopSchedule:
+    Type: AWS::Scheduler::Schedule
+    Condition: HasDailyStop
+    Properties:
+      Description: Daily stop of the rapidtools GUI machine
+      FlexibleTimeWindow: {Mode: 'OFF'}
+      ScheduleExpression: !Sub cron(0 ${DailyStopHour} * * ? *)
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      Target:
+        Arn: !Sub arn:${AWS::Partition}:scheduler:::aws-sdk:ec2:stopInstances
+        RoleArn: !GetAtt StopScheduleRole.Arn
+        Input: !Sub '{"InstanceIds": ["${Instance}"]}'
+
+Outputs:
+  GuiUrl:
+    Description: Address of the GUI. Add ?token=<access token> to make the share link.
+    Value: !If
+      - HasDomain
+      - !Sub https://${DomainName}/
+      - !Join ['', ['https://rapidtools-', !Join ['-', !Split ['.', !GetAtt Address.PublicIp]], .sslip.io/]]
+  GetTokenCommand:
+    Description: Prints the access token (AWS CLI or CloudShell). The token itself is never shown here.
+    Value: !Sub >-
+      aws ssm get-parameter --region ${AWS::Region} --name /rapidtools/${AWS::StackName}/gui-token
+      --with-decryption --query Parameter.Value --output text
+  TokenConsoleLink:
+    Description: The access token in the console (press Show decrypted value).
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/systems-manager/parameters/rapidtools/${AWS::StackName}/gui-token/description?region=${AWS::Region}&tab=Table
+  WakeLink:
+    Condition: HasWake
+    Description: Open this to start the machine after it stopped; it forwards to the GUI.
+    Value: !GetAtt WakeUrl.FunctionUrl
+  ElasticIp:
+    Description: Fixed public address. With your own DNS name, point an A record here.
+    Value: !GetAtt Address.PublicIp
+  InstanceId:
+    Description: The EC2 machine.
+    Value: !Ref Instance
+  ConnectCommand:
+    Description: Opens a shell on the machine through Session Manager (no SSH key needed).
+    Value: !Sub aws ssm start-session --region ${AWS::Region} --target ${Instance}
+  StartCommand:
+    Description: Starts the machine after it stopped.
+    Value: !Sub aws ec2 start-instances --region ${AWS::Region} --instance-ids ${Instance}
+  StopCommand:
+    Description: Stops the machine (disks and address are kept).
+    Value: !Sub aws ec2 stop-instances --region ${AWS::Region} --instance-ids ${Instance}
+  DataVolumeId:
+    Description: Data disk mounted on /srv/rapidtools. Saved as a snapshot when the stack is deleted.
+    Value: !Ref DataVolume
+  BootstrapResult:
+    Description: What the machine reported when it finished setting up.
+    Value: !GetAtt Ready.Data

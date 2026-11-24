@@ -27,9 +27,6 @@
     display: flex; align-items: center; gap: 16px; padding: 10px 20px; background: var(--panel);
     border-bottom: 1px solid var(--line); flex: 0 0 auto;
   }
-  .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 15px; letter-spacing: .2px; }
-  .brand .logo { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, #2f6fed, #6fb1ff); display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 13px; }
-  .brand small { color: var(--muted); font-weight: 500; }
   .stepper { display: flex; gap: 6px; margin-left: 24px; }
   .step-tab {
     display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; border: 1px solid transparent;
@@ -60,7 +57,6 @@
   .lead { color: var(--muted); margin: 0 0 16px; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; box-shadow: var(--shadow); }
   .card h2 { font-size: 14px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
-  .card h2 .tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #fff3e0; color: var(--warn); }
   .choice-grid { display: grid; gap: 10px; }
   .choice {
     display: grid; grid-template-columns: 34px 1fr; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px;
@@ -335,9 +331,9 @@
 
       <div class="card start-panel" id="area-card" data-start="area">
         <h2>Selected area</h2>
-        <div class="area-info" id="area-info">No area yet: hold Shift and drag on the map, or press Draw box.</div>
+        <div class="area-info" id="area-info">No area yet: hold Shift and drag on the map, or press Draw area.</div>
         <div class="row" style="margin-top:8px">
-          <button class="btn" id="btn-area-draw">✏️ Draw on map</button>
+          <button class="btn" id="btn-area-draw">✏️ Draw area</button>
           <button class="btn" id="btn-map-region">🗺️ Show on map</button>
           <button class="btn" id="btn-area-clear">Clear</button>
         </div>
@@ -412,7 +408,7 @@
           <input class="input grow" id="output-dir">
           <button class="btn" data-browse="output-dir" data-kind="dir">Browse…</button>
         </div>
-        <div class="hint">Downloads, image crops and GeoJSON results are written here.</div>
+        <div class="hint" id="output-dir-hint">Downloads, image crops and GeoJSON results are written here.</div>
       </div>
 
       <div class="footer-nav">
@@ -474,7 +470,7 @@
             <label>Objects to discover</label>
             <input class="input" id="street-classes" value="vehicles" list="street-class-list" placeholder="vehicles, utility poles, fire hydrants">
             <datalist id="street-class-list"></datalist>
-            <div class="hint">Plain English, comma separated. Found in every Mapillary image within the survey area from Mapillary's own detections, without downloading pictures.</div>
+            <div class="hint">Plain English, comma separated. Found in every Mapillary image within the survey area from Mapillary's own detections. Vehicles and other objects become points; buildings become footprint polygons.</div>
           </div>
           <div class="field">
             <label>Survey area</label>
@@ -508,10 +504,8 @@
               <div class="grid3">
                 <div class="field"><label>Frame spacing (m)</label><input class="input" type="number" id="street-spacing" value="3" min="0" step="0.5"></div>
                 <div class="field"><label>Min. sightings</label><input class="input" type="number" id="street-minobs" value="2" min="1"></div>
-                <div class="field"><label>Cluster radius (m)</label><input class="input" type="number" id="street-cluster" value="4" min="0.5" step="0.5"></div>
                 <div class="field"><label>Camera height (m)</label><input class="input" type="number" id="street-camera" value="2.4" min="0.5" step="0.1"></div>
-                <div class="field"><label>Max range (m)</label><input class="input" type="number" id="street-range" value="60" min="2"></div>
-                <div class="field"><label>Detections from</label><select class="input" id="street-detsource"><option value="auto">Auto</option><option value="mapillary">Mapillary labels</option><option value="sam3">SAM 3 on thumbnails</option></select></div>
+                <div class="field"><label>Detections from</label><select class="input" id="street-detsource"><option value="auto">Auto</option><option value="mapillary">Mapillary labels</option><option value="sam3">SAM 3 on thumbnails</option><option value="map_features">Mapillary map features</option></select></div>
               </div>
             </div>
           </details>
@@ -701,7 +695,7 @@
         <div class="geo-wrap"><input class="input" id="geo-q" placeholder="Search an address or place…" autocomplete="off"><div class="geo-results" id="geo-results"></div></div>
         <button class="btn sm" id="geo-go">Go</button>
         <span class="sep"></span>
-        <button class="btn sm" id="map-draw" title="Then drag on the map (or hold Shift and drag at any time)">✏️ Draw box</button>
+        <button class="btn sm" id="map-draw" title="Then drag on the map (or hold Shift and drag at any time)">✏️ Draw area</button>
         <button class="btn sm" id="map-clear">Clear box</button>
         <span class="hint" id="map-cov-info" style="margin-left:10px"></span>
         <span class="spacer"></span>
@@ -710,7 +704,7 @@
     <div class="viewer" id="viewer">
       <canvas id="canvas"></canvas>
       <canvas id="map-canvas"></canvas>
-      <div class="map-ui map-help" id="map-help">Drag to pan · scroll to zoom · hold Shift and drag (or press Draw box) to choose an area</div>
+      <div class="map-ui map-help" id="map-help">Drag to pan · scroll to zoom · hold Shift and drag (or press Draw area) to choose an area</div>
       <div class="map-ui map-layers" id="map-layers">
         <label class="ml-row"><input type="checkbox" id="map-coverage" checked> <i class="swatch"></i>Street-level imagery <span id="map-legend-who">(RAPID surveys)</span></label>
         <label class="ml-row ml-sub"><input type="checkbox" id="map-rapid" checked> RAPID surveys only</label>
@@ -721,7 +715,7 @@
       <div class="map-ui map-zoom"><button id="map-zoom-in" title="Zoom in">+</button><span id="map-zoom-label">z4</span><button id="map-zoom-out" title="Zoom out">−</button></div>
       <div class="map-ui map-readout" id="map-readout"></div>
       <div class="map-ui map-attrib" id="map-attrib">Imagery © Microsoft Bing · Coverage © Mapillary · Search © OpenStreetMap</div>
-      <div class="empty" id="empty"><div><div class="big">🛰️</div>Load an aerial image to see it here.<br><small>Detections and inference results will be drawn on top as they arrive.</small></div></div>
+      <div class="empty" id="empty"><div><div class="big">🛰️</div>Pick an area on the map or load an aerial image.<br><small>Detections and inference results will be drawn on top as they arrive.</small></div></div>
       <div class="tooltip" id="tooltip"></div>
       <div class="legend" id="legend"></div>
       <div class="viewer-badge" id="viewer-badge" style="display:none"></div>
@@ -936,7 +930,15 @@ Justification: [2-3 sentences citing visual evidence]`;
   }
   document.querySelectorAll('.step-tab').forEach(t => t.addEventListener('click', () => goto(+t.dataset.step)));
   document.querySelectorAll('[data-goto]').forEach(b => b.addEventListener('click', () => goto(+b.dataset.goto)));
-  $('next-1').addEventListener('click', () => { unlock(2); goto(2); });
+  $('next-1').addEventListener('click', () => {
+    unlock(2); goto(2);
+    // With only a box drawn on the map there is nothing to detect in: go
+    // straight to the street survey over that box.
+    if (!(S.state && S.state.raster) && M.box) {
+      const mode = $('asset-mode').querySelector('button[data-mode="street"]'); if (mode && assetMode !== 'street') mode.click();
+      const area = $('street-area').querySelector('button[data-area="box"]'); if (area && streetArea !== 'box') area.click();
+    }
+  });
   $('next-2').addEventListener('click', () => { unlock(3); goto(3); });
 
   // ------------------------------------------------------------ step 1
@@ -1041,13 +1043,13 @@ Justification: [2-3 sentences citing visual evidence]`;
     const specs = S.state.options.backends || {};
     $('backend').innerHTML = Object.entries(specs).map(([key, sp]) =>
       `<button class="radio-card ${sp.kind}" data-backend="${key}"><b>${esc(sp.label)}</b><span>${esc(sp.description)}</span></button>`).join('');
-    document.querySelectorAll('.radio-card').forEach(c => c.addEventListener('click', () => setBackend(c.dataset.backend)));
+    document.querySelectorAll('#backend .radio-card').forEach(c => c.addEventListener('click', () => setBackend(c.dataset.backend)));
   }
   function setBackend(b) {
     const sp = backendSpec(b);
     if (!sp) return;
     backend = b;
-    document.querySelectorAll('.radio-card').forEach(c => c.classList.toggle('selected', c.dataset.backend === b));
+    document.querySelectorAll('#backend .radio-card').forEach(c => c.classList.toggle('selected', c.dataset.backend === b));
     const isApi = sp.kind === 'api';
     $('field-api-key').style.display = isApi ? '' : 'none';
     $('api-key-label').textContent = sp.key_label || 'API key';
@@ -1096,8 +1098,8 @@ Justification: [2-3 sentences citing visual evidence]`;
     const body = {
       classes: $('street-classes').value, mapillary_token: $('street-token').value,
       start_date: $('street-start').value, end_date: $('street-end').value, rapid_only: $('street-rapid').checked,
-      frame_spacing_m: num('street-spacing'), min_observations: num('street-minobs'), cluster_radius_m: num('street-cluster'),
-      camera_height_m: num('street-camera'), max_range_m: num('street-range'), detection_source: $('street-detsource').value,
+      frame_spacing_m: num('street-spacing'), min_observations: num('street-minobs'),
+      camera_height_m: num('street-camera'), detection_source: $('street-detsource').value,
     };
     if (streetArea === 'box') Object.assign(body, { min_lon: $('sbox-min-lon').value, min_lat: $('sbox-min-lat').value, max_lon: $('sbox-max-lon').value, max_lat: $('sbox-max-lat').value });
     return body;
@@ -1138,9 +1140,10 @@ Justification: [2-3 sentences citing visual evidence]`;
     const busy = st.busy, hasRaster = !!st.raster, hasAssets = !!(st.collection && st.collection.count);
     const canFind = assetMode === 'detect' || assetMode === 'street';
     const hasArea = hasRaster || (assetMode === 'street' && streetArea === 'box');
-    $('btn-run-all').disabled = busy || !hasArea || !canFind;
     $('btn-detect').disabled = busy || !hasArea || !canFind;
-    $('btn-infer').disabled = busy || !hasRaster || !hasAssets;
+    const needsRaster = imagery === 'aerial';
+    $('btn-run-all').disabled = busy || !hasArea || !canFind || (needsRaster && !hasRaster);
+    $('btn-infer').disabled = busy || !hasAssets || (needsRaster && !hasRaster);
     $('btn-load-geojson').disabled = busy;
     $('btn-load-local').disabled = busy; $('btn-download-sample').disabled = busy; $('btn-download-region').disabled = busy; $('btn-sample-prompt').disabled = busy;
     $('next-1').disabled = !hasRaster && !M.box;
@@ -1148,7 +1151,8 @@ Justification: [2-3 sentences citing visual evidence]`;
     $('next-2').disabled = !hasAssets;
     const needsToken = assetMode === 'street' || (imagerySpec(imagery) || {}).needs_token;
     const hasToken = !!($('mly-token').value.trim() || $('street-token').value.trim());
-    $('run-hint').textContent = !hasRaster ? 'Load an image in step 1 first (its extent defines the survey area).' :
+    $('run-hint').textContent = !hasArea ? (assetMode === 'street' ? 'Draw an area on the map (step 1) or load an image: either defines the survey area.' : 'Load an image in step 1 first: detection runs over its extent.') :
+      needsRaster && !hasRaster && hasAssets ? 'Aerial crops need an image from step 1. Choose a street-level imagery source instead, or load an image.' :
       needsToken && !hasToken ? 'A Mapillary access token is required for this imagery.' :
       assetMode === 'load' && !hasAssets ? 'Load an asset file above, then run inference.' :
       hasAssets ? `${st.collection.count} assets ready (${st.collection.source}).` : '';
@@ -1156,7 +1160,7 @@ Justification: [2-3 sentences citing visual evidence]`;
 
   // ------------------------------------------------------------ form persistence
   const PERSISTED = ['assets', 'asset-size', 'threshold', 'mask-threshold', 'regularize', 'instances', 'model-id', 'model-id-custom', 'max-workers', 'batch-size', 'load-4bit', 'temperature', 'max-tokens', 'json-mode', 'overlay-outline', 'outline-shape', 'outline-buffer', 'outline-width', 'outline-color', 'prompt', 'raster-path', 'geojson-path',
-    'street-classes', 'street-token', 'street-start', 'street-end', 'street-rapid', 'street-spacing', 'street-minobs', 'street-cluster', 'street-camera', 'street-range', 'street-detsource',
+    'street-classes', 'street-token', 'street-start', 'street-end', 'street-rapid', 'street-spacing', 'street-minobs', 'street-camera', 'street-detsource',
     'min-coverage', 'pad-edges', 'gsv-radius', 'gsv-images', 'gsv-top', 'gsv-bottom', 'mly-token', 'mly-start', 'mly-end', 'mly-images', 'mly-rapid', 'obj-images', 'obj-size', 'obj-buffer',
     'region-zoom', 'bbox-min-lon', 'bbox-min-lat', 'bbox-max-lon', 'bbox-max-lat', 'region-geojson-path', 'sample-prompt',
     'sbox-min-lon', 'sbox-min-lat', 'sbox-max-lon', 'sbox-max-lat'];
@@ -1200,7 +1204,7 @@ Justification: [2-3 sentences citing visual evidence]`;
       buildBackendCards(); buildImageryCards(); buildAssistBackends();
       restoreForm();
       if (st.options.shared) $('shared-note').style.display = '';
-      if (st.options.data_root) document.querySelector('#body-local .hint, #panel-1 .hint').textContent = `Files are limited to ${st.options.data_root}.`;
+      if (st.options.data_root) $('output-dir-hint').textContent += ` Imagery and asset files can be opened from ${st.options.data_root} only.`;
       setBackend(backend); setImagery(imagery);
       // Resume where the server left off (e.g. after a page reload).
       if (st.raster) { unlock(2); if (st.collection && st.collection.count) unlock(3); goto(2); setPreview('raster'); }
@@ -2271,7 +2275,7 @@ Justification: [2-3 sentences citing visual evidence]`;
   function updateAreaCard() {
     autoZoom();
     const b = M.box, info = $('area-info');
-    if (!b) info.textContent = 'No area yet: hold Shift and drag on the map, or press Draw box.';
+    if (!b) info.textContent = 'No area yet: hold Shift and drag on the map, or press Draw area.';
     else info.textContent = `${boxSizeText(b)}\n${b[1].toFixed(5)}, ${b[0].toFixed(5)}  →  ${b[3].toFixed(5)}, ${b[2].toFixed(5)}`;
     const busy = !!(S.state && S.state.busy);
     $('btn-download-region').disabled = busy || (regionMode === 'bbox' && !b);

@@ -43,8 +43,13 @@ Local web server behind the rapidtools asset-analysis GUI.
 The server is intentionally built on the Python standard library only
 (``http.server``) so that the GUI adds no dependencies to ``rapidtools``. It
 serves a single-page application from ``rapidtools/gui/static`` and exposes a
-small JSON API that drives :class:`~rapidtools.gui.workflow.AssetAnalysisWorkflow`
-on a background thread.
+small JSON API to the page.
+
+The server never calls the analysis code directly. Every run (a download, a
+detection, an inference, a prompt-assistant request) is written as a *job
+file* under ``<output_dir>/jobs`` and handed to :mod:`rapidtools.jobs`, which
+executes it on a background thread and reports in a result file next to it.
+The same job files run unchanged from a terminal with ``rapidtools-job run``.
 
 Launch with ``rapidtools-gui`` or ``python -m rapidtools.gui``.
 
@@ -67,8 +72,10 @@ import logging
 import mimetypes
 import os
 import secrets
+import shutil
 import socket
 import sys
+import tempfile
 import threading
 import time
 import webbrowser
@@ -106,18 +113,19 @@ from rapidtools.gui.workflow import (
     MODEL_BACKENDS,
     STREET_CLASS_EXAMPLES,
     AssetAnalysisWorkflow,
-    AssistSettings,
-    DetectionSettings,
-    InferenceSettings,
-    RegionImagerySettings,
-    StreetDetectionSettings,
     list_available_models,
     parse_asset_list,
 )
+from rapidtools.jobs import Job, JobError, JobRunner, Secrets, StepResult, new_job
+from rapidtools.jobs.schema import write_json_atomic
 
 logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / 'static'
+# Job files are written to this folder inside the output directory.
+JOBS_DIRNAME = 'jobs'
+# How the GUI identifies itself in the job files it writes.
+GUI_CLIENT = 'rapidtools-gui'
 SAMPLE_RASTERS = ('eaton_patch1', 'eaton_patch2')
 # Prompts from the dataset registry offered in the GUI, keyed by short name.
 SAMPLE_PROMPTS: dict[str, dict[str, str]] = {
@@ -420,6 +428,8 @@ class AppState:
         self.tilers: dict[str, RasterTiler] = {}
         self.raster_path: Path | None = None
         self.collection: PhysicalAssetCollection | None = None
+        # The GeoJSON file that holds the collection; jobs read assets from it.
+        self.collection_path: Path | None = None
         self.collection_source = ''
         self.collection_version = 0
         self.results: list[dict[str, str]] = []
@@ -482,7 +492,10 @@ class AppState:
             self.status = message
 
     def set_collection(
-        self, collection: PhysicalAssetCollection | None, source: str
+        self,
+        collection: PhysicalAssetCollection | None,
+        source: str,
+        path: Path | None = None,
     ) -> None:
         """
         Replace the active asset collection and bump its version counter.
@@ -491,9 +504,13 @@ class AppState:
             collection (PhysicalAssetCollection | None): The new collection, or
                 ``None`` to clear it.
             source (str): Short provenance label (e.g. ``'detected'``).
+            path (Path | None): The GeoJSON file holding the collection, which
+                the next job reads its assets from. ``None`` when it was
+                never written; a copy is then made on demand.
         """
         with self.lock:
             self.collection = collection
+            self.collection_path = Path(path) if path is not None else None
             self.collection_source = source
             self.collection_version += 1
 
@@ -536,6 +553,7 @@ class AppState:
             self.tilers.clear()
             self.raster_path = None
             self.collection = None
+            self.collection_path = None
             self.collection_source = ''
             self.collection_version += 1
             self.results.clear()
@@ -567,7 +585,12 @@ class AppState:
         """
         return self._worker is not None and self._worker.is_alive()
 
-    def start_job(self, name: str, target: Callable[[], Any]) -> None:
+    def start_job(
+        self,
+        name: str,
+        target: Callable[[], Any],
+        details: dict[str, Any] | None = None,
+    ) -> None:
         """
         Run ``target`` on a background thread, streaming logs and tqdm.
 
@@ -580,6 +603,9 @@ class AppState:
         Args:
             name (str): Job name shown in the GUI (e.g. ``'Detection'``).
             target (Callable[[], Any]): The work to perform.
+            details (dict[str, Any] | None): Extra fields for the job record
+                of ``GET /api/state``; a rapidtools job passes the paths of
+                its job file (``file``) and result file (``result_file``).
 
         Raises:
             ApiError: With status ``409 Conflict`` if a job is already running.
@@ -604,9 +630,12 @@ class AppState:
                 'status': 'running',
                 'message': '',
                 'started_at': time.time(),
+                **(details or {}),
             }
             self.status = f'{name} started...'
             self.log.add_line(f'--- {name} ---')
+            if details and details.get('file'):
+                self.log.add_line(f'Job file: {details["file"]}')
 
         def runner() -> None:
             """Thread body: redirect stderr, run the target, record the outcome."""
@@ -850,6 +879,138 @@ class Api:
                 return True
         return False
 
+    # ---------------------------------------------------------------- jobs
+    def _prepare_job(
+        self,
+        name: str,
+        steps: list[dict[str, Any]],
+        secrets: dict[str, str] | None = None,
+    ) -> Job:
+        """
+        Describe a piece of work as a rapidtools job and validate it.
+
+        Everything the package needs is in the returned job: the GUI passes
+        no Python objects to it. Credentials are the one exception to "in
+        the job file": the steps refer to them as ``{"$secret": name}`` and
+        the values travel in a separate, private secrets file.
+
+        Args:
+            name (str): Job name shown in the GUI (e.g. ``'Detection'``).
+            steps (list[dict[str, Any]]): Step documents, see
+                :mod:`rapidtools.jobs`.
+            secrets (dict[str, str] | None): Values of the secrets the steps
+                refer to.
+
+        Returns:
+            Job: The validated job, not yet written to disk.
+
+        Raises:
+            ApiError: ``400`` if a step is invalid.
+        """
+        from rapidtools import __version__
+
+        job = new_job(
+            steps,
+            output_dir=self.state.output_dir,
+            name=name,
+            created_by={'client': GUI_CLIENT, 'version': __version__},
+        )
+        try:
+            JobRunner(workflow=self.state.workflow).validate(job, secrets)
+        except JobError as exc:
+            raise ApiError(str(exc)) from exc
+        return job
+
+    def _start_job(
+        self,
+        job: Job,
+        secrets: dict[str, str] | None = None,
+        on_failure: Callable[[BaseException], None] | None = None,
+    ) -> Path:
+        """
+        Write the job file and run it on the background thread.
+
+        The file goes to ``<output_dir>/jobs/<job id>.json``; rapidtools
+        keeps ``<job id>.result.json`` next to it up to date while the job
+        runs. Both paths are reported under ``job`` in ``GET /api/state``.
+
+        Args:
+            job (Job): A job from :meth:`_prepare_job`.
+            secrets (dict[str, str] | None): Values of its secrets. They are
+                written to a private temporary file that is deleted when
+                the job ends.
+            on_failure (Callable[[BaseException], None] | None): Called with
+                the exception when the job fails or is cancelled.
+
+        Returns:
+            Path: The job file.
+
+        Raises:
+            ApiError: ``409 Conflict`` if a job is already running.
+        """
+        state = self.state
+        if state.busy():
+            raise ApiError(
+                f'A job is already running ({state.job["name"]}).',
+                HTTPStatus.CONFLICT,
+            )
+        job_file = job.save(state.output_dir / JOBS_DIRNAME / f'{job.id}.json')
+        secrets_file = _write_secrets(secrets)
+
+        def target() -> None:
+            """Run the job file and surface its outcome as an exception."""
+            try:
+                result = JobRunner(workflow=state.workflow).run(
+                    job_file, secrets=secrets_file, on_step=self._publish_step
+                )
+            finally:
+                _discard_secrets(secrets_file)
+            if result.exception is not None and on_failure is not None:
+                on_failure(result.exception)
+            result.raise_for_status()
+
+        try:
+            state.start_job(
+                job.name,
+                target,
+                details={'file': str(job_file), 'result_file': str(job.result_path)},
+            )
+        except ApiError:  # lost a race with another request
+            _discard_secrets(secrets_file)
+            job_file.unlink(missing_ok=True)
+            raise
+        return job_file
+
+    def _submit(
+        self,
+        name: str,
+        steps: list[dict[str, Any]],
+        secrets: dict[str, str] | None = None,
+    ) -> Path:
+        """Validate a job, write its file and start it; see :meth:`_start_job`."""
+        return self._start_job(self._prepare_job(name, steps, secrets), secrets)
+
+    def _publish_step(self, step: StepResult) -> None:
+        """
+        Show the outcome of a finished job step in the GUI.
+
+        Called by the job runner after every step, so the results of
+        detection are on screen while inference is still running.
+
+        Args:
+            step (StepResult): The step that just ended (in any status).
+        """
+        publish = {
+            'imagery.basemap': self._publish_raster,
+            'data.download': self._publish_raster,
+            'detect.aerial': self._publish_detection,
+            'detect.street': self._publish_street,
+            'analyze.vlm': self._publish_inference,
+            'prompt.assist': self._publish_assistant,
+        }.get(step.type)
+        if publish is not None:
+            publish(step)
+
     # ----------------------------------------------------------- imagery
     def load_local_raster(self, body: dict[str, Any]) -> dict[str, Any]:
         """
@@ -874,6 +1035,8 @@ class Api:
         """
         ``POST /api/imagery/sample``: download a sample dataset and preview it.
 
+        Runs a ``data.download`` job.
+
         Args:
             body (dict[str, Any]): Must contain ``name``, one of
                 :data:`SAMPLE_RASTERS`.
@@ -887,22 +1050,15 @@ class Api:
         name = str(body.get('name', '')).strip()
         if name not in SAMPLE_RASTERS:
             raise ApiError(f'Unknown sample dataset: {name!r}')
-        state = self.state
-
-        def job() -> None:
-            """Download the sample into ``output_dir`` and render its preview."""
-            from rapidtools import download_dataset
-
-            state.output_dir.mkdir(parents=True, exist_ok=True)
-            [path] = download_dataset(name, output_dir=state.output_dir)
-            self._load_raster(Path(path))
-
-        state.start_job(f'Download {name}', job)
+        step = {'id': 'download', 'type': 'data.download', 'params': {'dataset': name}}
+        self._submit(f'Download {name}', [step])
         return {'ok': True}
 
     def download_region_imagery(self, body: dict[str, Any]) -> dict[str, Any]:
         """
         ``POST /api/imagery/region``: stitch a satellite basemap and preview it.
+
+        Runs an ``imagery.basemap`` job.
 
         Args:
             body (dict[str, Any]): ``provider`` (``'bing'`` or ``'google'``),
@@ -917,29 +1073,34 @@ class Api:
                 outside ``data_root``.
         """
         geojson = str(body.get('geojson', '') or '').strip()
+        provider = str(body.get('provider') or 'bing').strip().lower()
+        inputs: dict[str, Any] = {}
         try:
-            settings = RegionImagerySettings(
-                output_dir=self.state.output_dir,
-                provider=str(body.get('provider', 'bing')),
-                zoom=int(body.get('zoom') or 19),
-                min_lon=_optional_float(body.get('min_lon')),
-                min_lat=_optional_float(body.get('min_lat')),
-                max_lon=_optional_float(body.get('max_lon')),
-                max_lat=_optional_float(body.get('max_lat')),
-                geojson_path=self._user_path(geojson) if geojson else None,
-            )
+            params = {'provider': provider, 'zoom': int(body.get('zoom') or 19)}
+            if geojson:
+                inputs['region'] = {'geojson': str(self._user_path(geojson))}
+            else:
+                keys = ('min_lon', 'min_lat', 'max_lon', 'max_lat')
+                bounds = [_optional_float(body.get(k)) for k in keys]
+                if all(b is not None for b in bounds):
+                    inputs['region'] = {'bbox': bounds}
         except (TypeError, ValueError) as exc:
             raise ApiError(str(exc)) from exc
-        state = self.state
-
-        def job() -> None:
-            """Download the basemap into ``output_dir`` and render its preview."""
-            path = state.workflow.download_basemap(settings)
-            self._load_raster(Path(path))
-
-        label = BASEMAP_PROVIDERS[settings.provider]['label']
-        state.start_job(f'Download {label} imagery', job)
+        step = {
+            'id': 'basemap',
+            'type': 'imagery.basemap',
+            'inputs': inputs,
+            'params': params,
+        }
+        label = BASEMAP_PROVIDERS.get(provider, {}).get('label', provider)
+        self._submit(f'Download {label} imagery', [step])
         return {'ok': True}
+
+    def _publish_raster(self, step: StepResult) -> None:
+        """Preview the raster a download step wrote and make it the active one."""
+        path = step.outputs.get('raster') or step.outputs.get('file')
+        if step.status == 'done' and path is not None:
+            self._load_raster(path)
 
     def _start_preview_job(self, path: Path, label: str) -> None:
         """Queue a background job that renders and installs a raster preview."""
@@ -956,6 +1117,7 @@ class Api:
             state.tilers.pop('basemap', None)
             state.set_preview('raster', preview)
             state.collection = None
+            state.collection_path = None
             state.collection_source = ''
             state.collection_version += 1
             state.results.clear()
@@ -985,7 +1147,7 @@ class Api:
             raise ApiError(f'Could not read GeoJSON: {exc}') from exc
         if len(collection) == 0:
             raise ApiError('The GeoJSON file contains no features.')
-        self.state.set_collection(collection, f'loaded from {path.name}')
+        self.state.set_collection(collection, f'loaded from {path.name}', path=path)
         self.state.add_result('Loaded assets', path)
         self.state.set_status(f'Loaded {len(collection)} assets from {path.name}.')
         return {'ok': True, 'count': len(collection)}
@@ -994,9 +1156,11 @@ class Api:
         """
         ``POST /api/detect``: start SAM 3 asset detection in the background.
 
+        Runs a ``detect.aerial`` job.
+
         Args:
             body (dict[str, Any]): Detection options, see
-                :meth:`_detection_settings`.
+                :meth:`_detection_step`.
 
         Returns:
             dict[str, Any]: ``{'ok': True}`` once the job is queued.
@@ -1005,17 +1169,19 @@ class Api:
             ApiError: If no raster is loaded, the options are invalid, or a job
                 is already running.
         """
-        settings = self._detection_settings(body)
-        self.state.start_job('Detection', lambda: self._run_detection(settings))
+        self._submit('Detection', [self._detection_step(body)])
         return {'ok': True}
 
     def infer(self, body: dict[str, Any]) -> dict[str, Any]:
         """
         ``POST /api/infer``: run VLM inference on the current collection.
 
+        Runs an ``analyze.vlm`` job that reads the assets from the file the
+        current collection was written to (or loaded from).
+
         Args:
             body (dict[str, Any]): Inference options, see
-                :meth:`_inference_settings`.
+                :meth:`_inference_step`.
 
         Returns:
             dict[str, Any]: ``{'ok': True}`` once the job is queued.
@@ -1028,18 +1194,19 @@ class Api:
             collection = self.state.collection
         if collection is None or len(collection) == 0:
             raise ApiError('Detect assets or load an asset file first.')
-        settings = self._inference_settings(body)
-        self.state.start_job(
-            'Inference', lambda: self._run_inference(collection, settings)
-        )
+        step, secrets = self._inference_step(body)
+        step['inputs']['assets'] = self._assets_file()
+        self._submit('Inference', [step], secrets)
         return {'ok': True}
 
     def discover_street(self, body: dict[str, Any]) -> dict[str, Any]:
         """
         ``POST /api/street/discover``: find objects along a Mapillary survey.
 
+        Runs a ``detect.street`` job.
+
         Args:
-            body (dict[str, Any]): Options, see :meth:`_street_settings`.
+            body (dict[str, Any]): Options, see :meth:`_street_step`.
 
         Returns:
             dict[str, Any]: ``{'ok': True}`` once the job is queued.
@@ -1048,15 +1215,16 @@ class Api:
             ApiError: If no raster is loaded, the options are invalid, or a job
                 is already running.
         """
-        settings = self._street_settings(body)
-        self.state.start_job(
-            'Street discovery', lambda: self._run_street_discovery(settings)
-        )
+        step, secrets = self._street_step(body)
+        self._submit('Street discovery', [step], secrets)
         return {'ok': True}
 
     def run_all(self, body: dict[str, Any]) -> dict[str, Any]:
         """
         ``POST /api/run_all``: detection followed by inference as one job.
+
+        The job has two steps; the inference step reads the ``assets``
+        output of the detection step.
 
         Args:
             body (dict[str, Any]): ``{'detect': {...}, 'infer': {...}}`` with the
@@ -1070,68 +1238,44 @@ class Api:
         Raises:
             ApiError: If either option set is invalid or a job is running.
         """
-        inference = self._inference_settings(body.get('infer') or {})
+        inference, secrets = self._inference_step(body.get('infer') or {})
         if body.get('mode') == 'street':
-            street = self._street_settings(body.get('street') or {})
-
-            def street_job() -> None:
-                """Discover objects, then analyze them."""
-                collection = self._run_street_discovery(street)
-                if len(collection) == 0:
-                    raise ValueError('No objects were found; skipping inference.')
-                self._run_inference(collection, inference)
-
-            self.state.start_job('Street discovery + inference', street_job)
-            return {'ok': True}
-
-        detection = self._detection_settings(body.get('detect') or {})
-
-        def job() -> None:
-            """Detect, then analyze; fail loudly if nothing was detected."""
-            collection = self._run_detection(detection)
-            if len(collection) == 0:
-                raise ValueError('No assets were detected; skipping inference.')
-            self._run_inference(collection, inference)
-
-        self.state.start_job('Detection + inference', job)
+            first, street_secrets = self._street_step(body.get('street') or {})
+            secrets.update(street_secrets)
+            name = 'Street discovery + inference'
+        else:
+            first = self._detection_step(body.get('detect') or {})
+            name = 'Detection + inference'
+        inference['inputs']['assets'] = {'step': first['id'], 'output': 'assets'}
+        self._submit(name, [first, inference], secrets)
         return {'ok': True}
 
-    def _run_street_discovery(
-        self, settings: StreetDetectionSettings
-    ) -> PhysicalAssetCollection:
-        """
-        Run street discovery and publish its results.
-
-        Args:
-            settings (StreetDetectionSettings): Validated options.
-
-        Returns:
-            PhysicalAssetCollection: The discovered point assets.
-        """
+    def _publish_street(self, step: StepResult) -> None:
+        """Show the objects a ``detect.street`` step found."""
+        if step.status != 'done':
+            return
         state = self.state
-        result = state.workflow.discover_street(settings)
+        result = step.objects['result']
         with state.lock:
             state.results = [r for r in state.results if r['label'] != 'Loaded assets']
-        state.set_collection(result.collection, 'street survey')
+        state.set_collection(
+            result.collection, 'street survey', path=result.geojson_path
+        )
         state.add_result('Street objects', result.geojson_path)
-        return result.collection
 
-    def _run_detection(self, settings: DetectionSettings) -> PhysicalAssetCollection:
-        """
-        Run detection, publish its results and (if used) the Bing basemap.
-
-        Args:
-            settings (DetectionSettings): Validated detection options.
-
-        Returns:
-            PhysicalAssetCollection: The detected assets.
-        """
+    def _publish_detection(self, step: StepResult) -> None:
+        """Show the assets a ``detect.aerial`` step found and its basemap."""
+        if step.status != 'done':
+            return
         state = self.state
-        result = state.workflow.detect(settings)
+        result = step.objects['result']
+        settings = step.settings
         with state.lock:
             # A fresh detection supersedes any previously loaded asset file.
             state.results = [r for r in state.results if r['label'] != 'Loaded assets']
-        state.set_collection(result.collection, 'detected')
+        state.set_collection(
+            result.collection, 'detected', path=result.combined_geojson
+        )
         for name, path in result.per_asset_geojson.items():
             state.add_result(f'{name} footprints', path)
         state.add_result('All detected assets', result.combined_geojson)
@@ -1143,33 +1287,61 @@ class Api:
             with state.lock:
                 state.basemap_label = f'{label} basemap'
             state.add_result(f'{label} basemap', result.detection_raster)
-        return result.collection
 
-    def _run_inference(
-        self, collection: PhysicalAssetCollection, settings: InferenceSettings
-    ) -> None:
+    def _publish_inference(self, step: StepResult) -> None:
         """
-        Run inference and publish the results, keeping partial output on cancel.
+        Show the result of an ``analyze.vlm`` step.
 
-        Args:
-            collection (PhysicalAssetCollection): Assets to analyze.
-            settings (InferenceSettings): Validated inference options.
-
-        Raises:
-            OperationCancelled: Re-raised after recording partial results.
+        A cancelled step keeps what was analyzed before the user pressed
+        cancel: attributes are written in place, so the collection the step
+        was working on is shown as partially analyzed.
         """
         state = self.state
-        try:
-            result = state.workflow.analyze(collection, settings)
-        except OperationCancelled:
-            # Attributes were written in place; keep what finished.
-            state.set_collection(collection, 'partially analyzed')
-            partial = settings.output_dir / 'assets_inferred_partial.geojson'
-            if partial.is_file():
-                state.add_result('Partial inference results', partial)
-            raise
-        state.set_collection(result.collection, 'analyzed')
-        state.add_result('Inference results', result.geojson_path)
+        if step.status == 'cancelled':
+            collection = step.objects.get('assets')
+            if collection is not None:
+                # The file the collection came from is still the complete
+                # input, so the next run starts from it.
+                with state.lock:
+                    source_file = state.collection_path
+                state.set_collection(collection, 'partially analyzed', path=source_file)
+            state.add_result(
+                'Partial inference results', step.outputs.get('partial_assets')
+            )
+        elif step.status == 'done':
+            result = step.objects['result']
+            state.set_collection(
+                result.collection, 'analyzed', path=result.geojson_path
+            )
+            state.add_result('Inference results', result.geojson_path)
+
+    def _assets_file(self) -> str:
+        """
+        Return the GeoJSON file that holds the current collection.
+
+        That is the file detection or inference wrote, or the one the user
+        loaded. A collection that has no file (or whose file is gone) is
+        written to ``<output_dir>/jobs/inputs`` first, so that a job always
+        reads its assets from disk.
+        """
+        state = self.state
+        with state.lock:
+            collection = state.collection
+            path = state.collection_path
+            version = state.collection_version
+        if path is not None and Path(path).is_file():
+            return str(path)
+        if collection is None:
+            raise ApiError('Detect assets or load an asset file first.')
+        snapshot = (
+            state.output_dir / JOBS_DIRNAME / 'inputs' / f'assets_v{version}.geojson'
+        )
+        snapshot.parent.mkdir(parents=True, exist_ok=True)
+        collection.to_geojson(snapshot)
+        with state.lock:
+            if state.collection_version == version:
+                state.collection_path = snapshot
+        return str(snapshot)
 
     def _raster_path(self) -> Path:
         """
@@ -1184,9 +1356,9 @@ class Api:
             raise ApiError('Load an aerial image first (step 1).')
         return raster
 
-    def _detection_settings(self, body: dict[str, Any]) -> DetectionSettings:
+    def _detection_step(self, body: dict[str, Any]) -> dict[str, Any]:
         """
-        Validate a detection request body.
+        Turn a detection request body into a ``detect.aerial`` step.
 
         Args:
             body (dict[str, Any]): ``assets`` (comma/newline separated string,
@@ -1196,7 +1368,7 @@ class Api:
                 and ``merge_overlaps``.
 
         Returns:
-            DetectionSettings: The validated settings.
+            dict[str, Any]: The step document.
 
         Raises:
             ApiError: If no assets are given, no raster is loaded, or a value
@@ -1205,24 +1377,32 @@ class Api:
         assets = parse_asset_list(str(body.get('assets', '')))
         if not assets:
             raise ApiError('Enter at least one asset to detect (e.g. "building").')
+        raster = self._raster_path()
+        basemap = str(body.get('basemap') or body.get('source') or 'bing')
         try:
-            return DetectionSettings(
-                raster_path=self._raster_path(),
-                output_dir=self.state.output_dir,
-                assets=assets,
-                asset_size_m=float(body.get('asset_size_m', 50.0)),
-                basemap=str(body.get('basemap') or body.get('source') or 'bing'),
-                threshold=float(body.get('threshold', 0.5)),
-                mask_threshold=float(body.get('mask_threshold', 0.4)),
-                regularize=bool(body.get('regularize', True)),
-                merge_overlaps=bool(body.get('merge_overlaps', True)),
-            )
+            params = {
+                'assets': assets,
+                'asset_size_m': float(body.get('asset_size_m', 50.0)),
+                'basemap': basemap.strip().lower(),
+                'threshold': float(body.get('threshold', 0.5)),
+                'mask_threshold': float(body.get('mask_threshold', 0.4)),
+                'regularize': bool(body.get('regularize', True)),
+                'merge_overlaps': bool(body.get('merge_overlaps', True)),
+            }
         except (TypeError, ValueError) as exc:
             raise ApiError(str(exc)) from exc
+        return {
+            'id': 'detect',
+            'type': 'detect.aerial',
+            'inputs': {'raster': str(raster)},
+            'params': params,
+        }
 
-    def _street_settings(self, body: dict[str, Any]) -> StreetDetectionSettings:
+    def _street_step(
+        self, body: dict[str, Any]
+    ) -> tuple[dict[str, Any], dict[str, str]]:
         """
-        Validate a street-discovery request body.
+        Turn a street-discovery request body into a ``detect.street`` step.
 
         Args:
             body (dict[str, Any]): ``classes`` (comma separated, required),
@@ -1235,7 +1415,8 @@ class Api:
                 on the map), in which case no raster is needed.
 
         Returns:
-            StreetDetectionSettings: The validated settings.
+            tuple[dict[str, Any], dict[str, str]]: The step document and the
+            secrets it refers to.
 
         Raises:
             ApiError: If neither a raster nor a box defines the area, or a
@@ -1248,29 +1429,53 @@ class Api:
             raise ApiError(
                 'Load an aerial image first (step 1), or pick an area on the map.'
             )
+        classes = parse_asset_list(str(body.get('classes', '')))
+        if not classes:
+            raise ApiError('Enter at least one object class (e.g. "vehicles").')
+        inputs: dict[str, Any] = {}
+        if region is not None:
+            inputs['region'] = {'bbox': list(region.bounds)}
+        if raster is not None:
+            inputs['raster'] = str(raster)
+        secrets: dict[str, str] = {}
         try:
-            return StreetDetectionSettings(
-                output_dir=self.state.output_dir,
-                classes=parse_asset_list(str(body.get('classes', ''))),
-                access_token=str(body.get('mapillary_token', '')),
-                raster_path=raster,
-                region=region,
-                start_date=str(body.get('start_date', '') or ''),
-                end_date=str(body.get('end_date', '') or ''),
-                filter_rapid_only=bool(body.get('rapid_only', True)),
-                detection_source=str(body.get('detection_source') or 'auto'),
-                frame_spacing_m=float(body.get('frame_spacing_m', 3.0)),
-                min_observations=int(body.get('min_observations', 2)),
-                cluster_radius_m=float(body.get('cluster_radius_m', 4.0)),
-                camera_height_m=float(body.get('camera_height_m', 2.4)),
-                max_range_m=float(body.get('max_range_m', 60.0)),
-            )
+            params: dict[str, Any] = {
+                'classes': classes,
+                'start_date': str(body.get('start_date', '') or ''),
+                'end_date': str(body.get('end_date', '') or ''),
+                'filter_rapid_only': bool(body.get('rapid_only', True)),
+                'detection_source': str(body.get('detection_source') or 'auto'),
+                'frame_spacing_m': float(body.get('frame_spacing_m', 3.0)),
+                'min_observations': int(body.get('min_observations', 2)),
+                'cluster_radius_m': float(body.get('cluster_radius_m', 4.0)),
+                'camera_height_m': float(body.get('camera_height_m', 2.4)),
+                'max_range_m': float(body.get('max_range_m', 60.0)),
+            }
         except (TypeError, ValueError) as exc:
             raise ApiError(str(exc)) from exc
+        _add_secret(
+            params,
+            secrets,
+            'access_token',
+            'street_mapillary_token',
+            body.get('mapillary_token'),
+        )
+        step = {
+            'id': 'discover',
+            'type': 'detect.street',
+            'inputs': inputs,
+            'params': params,
+        }
+        return step, secrets
 
-    def _inference_settings(self, body: dict[str, Any]) -> InferenceSettings:
+    def _inference_step(
+        self, body: dict[str, Any]
+    ) -> tuple[dict[str, Any], dict[str, str]]:
         """
-        Validate an inference request body.
+        Turn an inference request body into an ``analyze.vlm`` step.
+
+        The caller adds the ``assets`` input: a GeoJSON file, or a reference
+        to the detection step of the same job.
 
         Args:
             body (dict[str, Any]): ``backend`` (a :data:`MODEL_BACKENDS` key),
@@ -1289,57 +1494,73 @@ class Api:
                 ``object_image_size`` and ``object_crop_buffer``.
 
         Returns:
-            InferenceSettings: The validated settings.
+            tuple[dict[str, Any], dict[str, str]]: The step document and the
+            secrets it refers to.
 
         Raises:
-            ApiError: If the backend is unknown, no raster is loaded, or the
-                settings fail validation (e.g. missing API key or prompt).
+            ApiError: If the backend is unknown or a value cannot be coerced.
         """
         backend = str(body.get('backend', 'gemini'))
         spec = MODEL_BACKENDS.get(backend)
         if spec is None:
             raise ApiError(f'Unknown inference backend: {backend!r}')
-        default_model = spec['default_model']
+        with self.state.lock:
+            raster = self.state.raster_path
+        secrets: dict[str, str] = {}
         try:
-            return InferenceSettings(
-                raster_path=self._raster_path(),
-                output_dir=self.state.output_dir,
-                prompt=str(body.get('prompt', '')),
-                backend=backend,  # type: ignore[arg-type]
-                api_key=str(body.get('api_key', '')),
-                model_id=str(body.get('model_id') or default_model).strip(),
-                max_workers=int(body.get('max_workers', 5)),
-                batch_size=int(body.get('batch_size', 4)),
-                temperature=float(body.get('temperature', 0.4)),
-                max_tokens=int(body.get('max_tokens', 2048)),
-                json_mode=bool(body.get('json_mode', False)),
-                load_in_4bit=bool(body.get('load_in_4bit', True)),
-                overlay_asset_outline=bool(body.get('overlay_outline', True)),
-                outline_shape=str(body.get('outline_shape') or 'geometry'),
-                outline_buffer=body.get('outline_buffer') or 0,
-                outline_width=body.get('outline_width') or 6,
-                outline_color=str(body.get('outline_color') or 'red'),
-                imagery=str(body.get('imagery') or 'aerial'),
-                min_footprint_coverage=_optional_float(
+            params: dict[str, Any] = {
+                'prompt': str(body.get('prompt', '')),
+                'backend': backend,
+                'model_id': str(body.get('model_id') or spec['default_model']).strip(),
+                'max_workers': int(body.get('max_workers', 5)),
+                'batch_size': int(body.get('batch_size', 4)),
+                'temperature': float(body.get('temperature', 0.4)),
+                'max_tokens': int(body.get('max_tokens', 2048)),
+                'json_mode': bool(body.get('json_mode', False)),
+                'load_in_4bit': bool(body.get('load_in_4bit', True)),
+                'overlay_asset_outline': bool(body.get('overlay_outline', True)),
+                'outline_shape': str(body.get('outline_shape') or 'geometry'),
+                'outline_buffer': body.get('outline_buffer') or 0,
+                'outline_width': body.get('outline_width') or 6,
+                'outline_color': str(body.get('outline_color') or 'red'),
+                'imagery': str(body.get('imagery') or 'aerial').strip().lower(),
+                'min_footprint_coverage': _optional_float(
                     body.get('min_footprint_coverage')
                 ),
-                pad_edges=bool(body['pad_edges']) if 'pad_edges' in body else None,
-                street_search_radius_m=float(body.get('street_search_radius_m', 50)),
-                street_max_images=int(body.get('street_max_images', 1)),
-                street_vertical_crop=(
+                'pad_edges': bool(body['pad_edges']) if 'pad_edges' in body else None,
+                'street_search_radius_m': float(body.get('street_search_radius_m', 50)),
+                'street_max_images': int(body.get('street_max_images', 1)),
+                'street_vertical_crop': [
                     float(body.get('street_crop_top', 0.0) or 0.0),
                     float(body.get('street_crop_bottom', 1.0) or 1.0),
-                ),
-                mapillary_token=str(body.get('mapillary_token', '') or ''),
-                mapillary_start_date=str(body.get('mapillary_start_date', '') or ''),
-                mapillary_end_date=str(body.get('mapillary_end_date', '') or ''),
-                mapillary_rapid_only=bool(body.get('mapillary_rapid_only', True)),
-                mapillary_max_images=int(body.get('mapillary_max_images', 4)),
-                object_image_size=str(body.get('object_image_size') or '2048'),
-                object_crop_buffer=body.get('object_crop_buffer') or '25%',
-            )
+                ],
+                'mapillary_start_date': str(body.get('mapillary_start_date', '') or ''),
+                'mapillary_end_date': str(body.get('mapillary_end_date', '') or ''),
+                'mapillary_rapid_only': bool(body.get('mapillary_rapid_only', True)),
+                'mapillary_max_images': int(body.get('mapillary_max_images', 4)),
+                'object_image_size': str(body.get('object_image_size') or '2048'),
+                'object_crop_buffer': body.get('object_crop_buffer') or '25%',
+            }
         except (TypeError, ValueError) as exc:
             raise ApiError(str(exc)) from exc
+        _add_secret(params, secrets, 'api_key', 'api_key', body.get('api_key'))
+        _add_secret(
+            params,
+            secrets,
+            'mapillary_token',
+            'mapillary_token',
+            body.get('mapillary_token'),
+        )
+        inputs: dict[str, Any] = {}
+        if raster is not None:
+            inputs['raster'] = str(raster)
+        step = {
+            'id': 'analyze',
+            'type': 'analyze.vlm',
+            'inputs': inputs,
+            'params': params,
+        }
+        return step, secrets
 
     # ---------------------------------------------------------- utilities
     def set_output_dir(self, body: dict[str, Any]) -> dict[str, Any]:
@@ -2047,49 +2268,59 @@ class Api:
         Raises:
             ApiError: If the settings are invalid or a job is running.
         """
-        try:
-            settings = AssistSettings(
-                action=str(body.get('action', '')),
-                backend=str(body.get('backend') or 'gemma4'),  # type: ignore[arg-type]
-                api_key=str(body.get('api_key', '') or ''),
-                model_id=str(body.get('model_id', '') or ''),
-                load_in_4bit=bool(body.get('load_in_4bit', True)),
-                brief=str(body.get('brief', '') or ''),
-                instruction=str(body.get('instruction', '') or ''),
-                prompt_text=str(body.get('prompt_text', '') or ''),
-                class_value=str(body.get('class_value', '') or ''),
-                spec=body.get('spec') or None,
-                context=dict(body.get('context') or {}),
-            )
-        except (TypeError, ValueError) as exc:
-            raise ApiError(str(exc)) from exc
+        backend = str(body.get('backend') or 'gemma4')
+        secrets: dict[str, str] = {}
+        params: dict[str, Any] = {
+            'action': str(body.get('action', '')).strip().lower(),
+            'backend': backend,
+            'model_id': str(body.get('model_id', '') or ''),
+            'load_in_4bit': bool(body.get('load_in_4bit', True)),
+            'brief': str(body.get('brief', '') or ''),
+            'instruction': str(body.get('instruction', '') or ''),
+            'prompt_text': str(body.get('prompt_text', '') or ''),
+            'class_value': str(body.get('class_value', '') or ''),
+            'spec': body.get('spec') or None,
+            'context': body.get('context') or {},
+        }
+        _add_secret(
+            params, secrets, 'api_key', 'assistant_api_key', body.get('api_key')
+        )
+        step = {'id': 'assist', 'type': 'prompt.assist', 'params': params}
+        job = self._prepare_job('Prompt assistant', [step], secrets)
+        spec = MODEL_BACKENDS[backend]
         state = self.state
         state.set_assistant(
             seq=True,
             status='running',
-            action=settings.action,
-            model=f'{settings.backend_spec["label"]} · {settings.model_id}',
+            action=params['action'],
+            model=f'{spec["label"]} · {params["model_id"] or spec["default_model"]}',
             result=None,
             error='',
         )
 
-        def job() -> None:
-            """Run the assistant and record its answer (or failure)."""
-            try:
-                result = state.workflow.assist(settings)
-            except Exception as exc:
+        def failed(exc: BaseException) -> None:
+            """Record a failure that happened before the step could report."""
+            with state.lock:
+                still_running = state.assistant['status'] == 'running'
+            if still_running:
                 state.set_assistant(status='error', error=str(exc))
-                raise
-            state.set_assistant(status='done', result=result)
 
         try:
-            state.start_job('Prompt assistant', job)
+            self._start_job(job, secrets, on_failure=failed)
         except ApiError:
             state.set_assistant(status='error', error='Another job is running.')
             raise
         with state.lock:
             seq = state.assistant['seq']
         return {'ok': True, 'seq': seq}
+
+    def _publish_assistant(self, step: StepResult) -> None:
+        """Record the answer (or the failure) of a ``prompt.assist`` step."""
+        if step.status == 'done':
+            self.state.set_assistant(status='done', result=step.data)
+        else:
+            message = step.error['message'] if step.error else 'No answer.'
+            self.state.set_assistant(status='error', error=message)
 
     def read_text_file(self, query: dict[str, str]) -> dict[str, Any]:
         """
@@ -2403,6 +2634,60 @@ class Api:
         if str(path) not in allowed or not path.is_file():
             raise ApiError('File is not available for download.', HTTPStatus.FORBIDDEN)
         return path
+
+
+def _add_secret(
+    params: dict[str, Any],
+    secrets: dict[str, str],
+    param: str,
+    name: str,
+    value: Any,
+) -> None:
+    """
+    Pass a credential to a job step without writing it into the job file.
+
+    A non-blank ``value`` is stored in ``secrets`` under ``name`` and the
+    parameter becomes the reference ``{"$secret": name}``; a blank one leaves
+    the parameter out, so the step reports the missing credential itself.
+
+    Example:
+        >>> params, secrets = {}, {}
+        >>> _add_secret(params, secrets, 'api_key', 'api_key', ' k-1 ')
+        >>> params, secrets
+        ({'api_key': {'$secret': 'api_key'}}, {'api_key': 'k-1'})
+    """
+    text = str(value or '').strip()
+    if text:
+        secrets[name] = text
+        params[param] = {'$secret': name}
+
+
+def _write_secrets(values: dict[str, str] | None) -> Path | None:
+    """
+    Write the secrets of a job to a private temporary file.
+
+    The file lives in its own ``0700`` folder outside the output directory
+    (which the file browser of a shared server can read) and is readable by
+    the server's user only.
+
+    Args:
+        values (dict[str, str] | None): Secret values by name.
+
+    Returns:
+        Path | None: The secrets file, or ``None`` when there are no secrets.
+    """
+    if not values:
+        return None
+    folder = Path(tempfile.mkdtemp(prefix='rapidtools-job-'))
+    return write_json_atomic(
+        folder / 'secrets.json', Secrets.document(values), private=True
+    )
+
+
+def _discard_secrets(path: Path | None) -> None:
+    """Delete a secrets file written by :func:`_write_secrets`."""
+    if path is not None:
+        shutil.rmtree(path.parent, ignore_errors=True)
 
 
 def _json_primitive(value: Any) -> Any:

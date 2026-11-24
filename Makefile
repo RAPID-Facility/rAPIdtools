@@ -9,7 +9,7 @@ SITE    = docs/build/html
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install lint format typecheck check test coverage docs docs-serve clean
+.PHONY: help install lint format typecheck check test coverage docs docs-serve job-reference clean
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -41,6 +41,12 @@ docs:  ## Build the documentation site into docs/build/html
 
 docs-serve: docs  ## Build the docs and serve them at http://localhost:8000
 	$(PYTHON) -m http.server --directory $(SITE) 8000
+
+job-reference:  ## Regenerate the JSON job schemas and step tables of the docs
+	$(PYTHON) -m rapidtools.jobs schema job > $(DOCS)/_static/schemas/rapidtools-job-1.0.schema.json
+	$(PYTHON) -m rapidtools.jobs schema result > $(DOCS)/_static/schemas/rapidtools-job-result-1.0.schema.json
+	$(PYTHON) -m rapidtools.jobs schema secrets > $(DOCS)/_static/schemas/rapidtools-secrets-1.0.schema.json
+	$(PYTHON) -m rapidtools.jobs steps --format rst > $(DOCS)/_generated/job_steps.inc
 
 clean:  ## Remove build, cache and coverage artifacts
 	rm -rf build dist *.egg-info .pytest_cache .ruff_cache .mypy_cache .coverage htmlcov

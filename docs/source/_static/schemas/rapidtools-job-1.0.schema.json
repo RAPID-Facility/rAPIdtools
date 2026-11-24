@@ -1,0 +1,1031 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rapidtools:schema:job:1.0",
+  "title": "rapidtools job file",
+  "description": "An ordered list of steps for rapidtools to run, with the folder they write into.",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "output_dir",
+    "steps"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "rapidtools.job"
+    },
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+$",
+      "description": "Interface version; currently \"1.0\"."
+    },
+    "id": {
+      "$ref": "#/$defs/identifier",
+      "description": "Identifier of the job. Generated when omitted."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name."
+    },
+    "created_at": {
+      "type": "string",
+      "description": "UTC creation time, ISO 8601."
+    },
+    "created_by": {
+      "type": "object",
+      "description": "The client that wrote the file."
+    },
+    "output_dir": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Folder every step writes into; absolute, or relative to the folder of the job file."
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The steps, run in order.",
+      "items": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "imagery.basemap",
+              "data.download",
+              "detect.aerial",
+              "detect.street",
+              "analyze.vlm",
+              "prompt.assist"
+            ]
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "imagery.basemap"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            "then": {
+              "$ref": "#/$defs/step.imagery.basemap"
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "data.download"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            "then": {
+              "$ref": "#/$defs/step.data.download"
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "detect.aerial"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            "then": {
+              "$ref": "#/$defs/step.detect.aerial"
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "detect.street"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            "then": {
+              "$ref": "#/$defs/step.detect.street"
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "analyze.vlm"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            "then": {
+              "$ref": "#/$defs/step.analyze.vlm"
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "prompt.assist"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            "then": {
+              "$ref": "#/$defs/step.prompt.assist"
+            }
+          }
+        ]
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Free-form notes; never interpreted."
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    },
+    "stepRef": {
+      "description": "A reference to an earlier step's output.",
+      "type": "object",
+      "required": [
+        "step",
+        "output"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "step": {
+          "$ref": "#/$defs/identifier"
+        },
+        "output": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "secretRef": {
+      "description": "A credential kept outside the job file.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "$secret"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "$secret": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "$env"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "$env": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "region": {
+      "description": "A WGS84 bounding box, or the extent of a GeoJSON file.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "bbox"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "bbox": {
+              "description": "[min_lon, min_lat, max_lon, max_lat]",
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 4,
+              "maxItems": 4
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "geojson"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "geojson": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "step.imagery.basemap": {
+      "title": "Download a satellite basemap",
+      "description": "Stitches Bing or Google satellite tiles over a region into one georeferenced GeoTIFF. An existing file for the same provider, zoom and bounds is reused instead of downloaded again.",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "type": {
+          "const": "imagery.basemap"
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "region": {
+              "$ref": "#/$defs/region",
+              "description": "Area to cover: a WGS84 box, or a GeoJSON file whose extent is used."
+            }
+          }
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "provider": {
+              "type": "string",
+              "enum": [
+                "bing",
+                "google"
+              ],
+              "description": "Tile provider.",
+              "default": "bing"
+            },
+            "zoom": {
+              "type": "integer",
+              "minimum": 10,
+              "maximum": 21,
+              "description": "Web Mercator zoom level (Bing up to 20, Google up to 21). One level up doubles the resolution and quadruples the tile count.",
+              "default": 19
+            },
+            "max_tiles": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Refuse the download when the region needs more tiles than this.",
+              "default": 2500
+            },
+            "max_workers": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Concurrent tile downloads.",
+              "default": 10
+            }
+          }
+        },
+        "metadata": {
+          "type": "object"
+        }
+      }
+    },
+    "step.data.download": {
+      "title": "Download a sample dataset",
+      "description": "Fetches a dataset of the rapidtools registry (sample orthomosaics, footprints, prompts) into the output folder. Files that are already there are not downloaded again.",
+      "type": "object",
+      "required": [
+        "type",
+        "params"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "type": {
+          "const": "data.download"
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "dataset": {
+              "type": "string",
+              "description": "Registry name of the dataset, e.g. \"eaton_patch1\" (see rapidtools.list_datasets())."
+            }
+          },
+          "required": [
+            "dataset"
+          ]
+        },
+        "metadata": {
+          "type": "object"
+        }
+      }
+    },
+    "step.detect.aerial": {
+      "title": "Detect assets in aerial imagery",
+      "description": "Finds every instance of the named asset types in an orthomosaic with SAM 3, by default on a pre-event satellite basemap stitched over the raster extent (assets destroyed in the post-event imagery are still found there). Buildings and roads are regularized into clean polygons.",
+      "type": "object",
+      "required": [
+        "type",
+        "inputs",
+        "params"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "type": {
+          "const": "detect.aerial"
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "raster": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "$ref": "#/$defs/stepRef"
+                }
+              ],
+              "description": "The georeferenced orthomosaic that defines the area."
+            }
+          },
+          "required": [
+            "raster"
+          ]
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "assets": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1,
+              "description": "Asset types to find, as plain-English prompts, e.g. [\"building\", \"tree\"]. Each is scanned for separately."
+            },
+            "asset_size_m": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Approximate size of one asset in meters; sets the size of the patches SAM 3 looks at.",
+              "default": 50.0
+            },
+            "basemap": {
+              "type": "string",
+              "enum": [
+                "bing",
+                "google",
+                "recon"
+              ],
+              "description": "Imagery to detect in: a \"bing\" or \"google\" basemap stitched over the raster extent, or \"recon\" for the raster itself.",
+              "default": "bing"
+            },
+            "threshold": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Detection confidence threshold.",
+              "default": 0.5
+            },
+            "mask_threshold": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Mask binarization threshold.",
+              "default": 0.4
+            },
+            "overlap_ratio": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Overlap between neighbouring patches, as a fraction of the patch size.",
+              "default": 0.25
+            },
+            "batch_size": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Patches per SAM 3 forward pass.",
+              "default": 4
+            },
+            "crop_buffer": {
+              "type": "string",
+              "description": "Margin around each detection in the crops used for regularization, e.g. \"20 m\".",
+              "default": "20 m"
+            },
+            "regularize": {
+              "type": "boolean",
+              "description": "Regularize building footprints and road polygons.",
+              "default": true
+            },
+            "merge_overlaps": {
+              "type": "boolean",
+              "description": "Merge detections that overlap across patches into one asset. Turn off to keep touching instances separate.",
+              "default": true
+            },
+            "max_workers": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Concurrent tile downloads when a basemap is stitched.",
+              "default": 10
+            }
+          },
+          "required": [
+            "assets"
+          ]
+        },
+        "metadata": {
+          "type": "object"
+        }
+      }
+    },
+    "step.detect.street": {
+      "title": "Discover objects along a street survey",
+      "description": "Locates objects of the requested classes in the Mapillary street-level images of an area and fuses the sightings into one asset per object: a point for vehicles, poles and other objects, a footprint polygon for buildings. The area is the \"region\" input, or the extent of \"raster\" when no region is given.",
+      "type": "object",
+      "required": [
+        "type",
+        "params"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "type": {
+          "const": "detect.street"
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "region": {
+              "$ref": "#/$defs/region",
+              "description": "Survey area: a WGS84 box, or a GeoJSON file whose extent is used."
+            },
+            "raster": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "$ref": "#/$defs/stepRef"
+                }
+              ],
+              "description": "A raster whose extent defines the area when no region is given."
+            }
+          }
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "classes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1,
+              "description": "Object classes in plain English, e.g. [\"vehicles\", \"utility poles\", \"buildings\"]."
+            },
+            "access_token": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/$defs/secretRef"
+                }
+              ],
+              "description": "Mapillary access token.",
+              "default": ""
+            },
+            "start_date": {
+              "type": "string",
+              "description": "Only images captured on or after this date (YYYY-MM-DD). Empty for no limit.",
+              "default": ""
+            },
+            "end_date": {
+              "type": "string",
+              "description": "Only images captured on or before this date (YYYY-MM-DD). Empty for no limit.",
+              "default": ""
+            },
+            "filter_rapid_only": {
+              "type": "boolean",
+              "description": "Use only imagery uploaded by the RAPID Facility.",
+              "default": true
+            },
+            "detection_source": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "mapillary",
+                "sam3",
+                "map_features"
+              ],
+              "description": "Where detections come from: Mapillary segmentation metadata, SAM 3 run on the frames, Mapillary map features, or \"auto\" to choose per class.",
+              "default": "auto"
+            },
+            "frame_spacing_m": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Thin each survey to one frame per this many meters; 0 keeps every frame.",
+              "default": 3.0
+            },
+            "min_observations": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Sightings required before an object is reported.",
+              "default": 2
+            },
+            "cluster_radius_m": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Sightings closer than this are treated as the same object.",
+              "default": 4.0
+            },
+            "camera_height_m": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Height of the survey camera above the road.",
+              "default": 2.4
+            },
+            "max_range_m": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Ignore sightings farther from the camera than this.",
+              "default": 60.0
+            },
+            "max_workers": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Concurrent Mapillary requests.",
+              "default": 10
+            }
+          },
+          "required": [
+            "classes"
+          ]
+        },
+        "metadata": {
+          "type": "object"
+        }
+      }
+    },
+    "step.analyze.vlm": {
+      "title": "Analyze assets with a vision-language model",
+      "description": "Gathers imagery of every asset (aerial crops of a raster, Google Street View, Mapillary panoramas or Mapillary object crops) and asks a vision-language model the prompt about each one. The answers become attributes of the assets. Assets that already carry attributes keep them, so two models can be run one after the other on the same file.",
+      "type": "object",
+      "required": [
+        "type",
+        "inputs",
+        "params"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "type": {
+          "const": "analyze.vlm"
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "assets": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "$ref": "#/$defs/stepRef"
+                }
+              ],
+              "description": "The assets to analyze: a GeoJSON file, or the \"assets\" output of an earlier detection step."
+            },
+            "raster": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "$ref": "#/$defs/stepRef"
+                }
+              ],
+              "description": "The orthomosaic to crop. Required for the \"aerial\" imagery source only."
+            }
+          },
+          "required": [
+            "assets"
+          ]
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "The question put to the model about each asset."
+            },
+            "backend": {
+              "type": "string",
+              "enum": [
+                "gemini",
+                "claude",
+                "openai",
+                "muse_spark",
+                "qwen",
+                "gemma4",
+                "llama",
+                "muse_glimmer",
+                "qwen_vl",
+                "hf"
+              ],
+              "description": "Model provider: a cloud API or a local checkpoint.",
+              "default": "gemini"
+            },
+            "api_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/$defs/secretRef"
+                }
+              ],
+              "description": "API key of a cloud backend. Not used by local backends.",
+              "default": ""
+            },
+            "model_id": {
+              "type": "string",
+              "description": "Model name or Hugging Face repository. Empty selects the backend's default.",
+              "default": ""
+            },
+            "max_workers": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Concurrent requests to a cloud backend, and concurrent image downloads.",
+              "default": 5
+            },
+            "batch_size": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Assets per forward pass of a local backend that supports batching.",
+              "default": 4
+            },
+            "temperature": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Sampling temperature.",
+              "default": 0.4
+            },
+            "max_tokens": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Longest answer the model may give, in tokens.",
+              "default": 2048
+            },
+            "json_mode": {
+              "type": "boolean",
+              "description": "Ask the model for a JSON answer; each key becomes an attribute.",
+              "default": false
+            },
+            "load_in_4bit": {
+              "type": "boolean",
+              "description": "Load a local model with 4-bit quantization (less GPU memory).",
+              "default": true
+            },
+            "overlay_asset_outline": {
+              "type": "boolean",
+              "description": "Draw the outline of the asset on each crop so the model knows which one is meant.",
+              "default": true
+            },
+            "outline_shape": {
+              "type": "string",
+              "enum": [
+                "geometry",
+                "bbox",
+                "rotated_bbox",
+                "convex_hull",
+                "corners"
+              ],
+              "description": "Shape of the outline.",
+              "default": "geometry"
+            },
+            "outline_buffer": {
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Offset of the outline from the asset: pixels, a percentage (\"5%\") or a distance (\"2 m\").",
+              "default": 0
+            },
+            "outline_width": {
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Stroke width: pixels, or a percentage of the shorter crop side.",
+              "default": 6
+            },
+            "outline_color": {
+              "type": "string",
+              "description": "Outline colour: a name or a hex code (\"#00ffff\").",
+              "default": "red"
+            },
+            "image_prefix": {
+              "type": "string",
+              "description": "Prefix of the aerial crop file names.",
+              "default": "aerial"
+            },
+            "only_analyze_inference_crops": {
+              "type": "boolean",
+              "description": "Show the model only the crops gathered by this step, not images already attached to the assets.",
+              "default": true
+            },
+            "imagery": {
+              "type": "string",
+              "enum": [
+                "aerial",
+                "google_streetview",
+                "mapillary",
+                "mapillary_objects"
+              ],
+              "description": "Where the imagery of each asset comes from.",
+              "default": "aerial"
+            },
+            "min_footprint_coverage": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Aerial crops: skip an asset when less than this fraction of its footprint lies inside the raster. null uses the extractor default.",
+              "default": null
+            },
+            "pad_edges": {
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "description": "Aerial crops: pad crops that reach past the raster edge instead of clipping them. null uses the extractor default.",
+              "default": null
+            },
+            "street_search_radius_m": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Google Street View: how far from the asset to look for a panorama.",
+              "default": 50.0
+            },
+            "street_max_images": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Google Street View: panoramas per asset.",
+              "default": 1
+            },
+            "street_vertical_crop": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 2,
+              "maxItems": 2,
+              "description": "Google Street View: [top, bottom] fractions of the panorama height to keep, with 0 <= top < bottom <= 1.",
+              "default": [
+                0.0,
+                1.0
+              ]
+            },
+            "mapillary_token": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/$defs/secretRef"
+                }
+              ],
+              "description": "Mapillary access token. Required for the two Mapillary imagery sources.",
+              "default": ""
+            },
+            "mapillary_start_date": {
+              "type": "string",
+              "description": "Mapillary panoramas: only images captured on or after this date (YYYY-MM-DD).",
+              "default": ""
+            },
+            "mapillary_end_date": {
+              "type": "string",
+              "description": "Mapillary panoramas: only images captured on or before this date (YYYY-MM-DD).",
+              "default": ""
+            },
+            "mapillary_rapid_only": {
+              "type": "boolean",
+              "description": "Mapillary panoramas: use only RAPID Facility uploads.",
+              "default": true
+            },
+            "mapillary_max_images": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Mapillary sources: images per asset.",
+              "default": 4
+            },
+            "object_image_size": {
+              "type": "string",
+              "description": "Mapillary object crops: thumbnail size to download, \"1024\", \"2048\" or \"original\".",
+              "default": "2048"
+            },
+            "object_crop_buffer": {
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "Mapillary object crops: margin around the object, as a percentage (\"25%\"), pixels or a distance (\"1 m\").",
+              "default": "25%"
+            }
+          },
+          "required": [
+            "prompt"
+          ]
+        },
+        "metadata": {
+          "type": "object"
+        }
+      }
+    },
+    "step.prompt.assist": {
+      "title": "Ask a model for help with a prompt",
+      "description": "Runs one prompt-assistant action: drafting a prompt specification from a brief, refining or reviewing one, suggesting visual indicators for a class, or importing an existing prompt. The answer is returned as \"data\" in the result file; no file is written.",
+      "type": "object",
+      "required": [
+        "type",
+        "params"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "type": {
+          "const": "prompt.assist"
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "refine",
+                "review",
+                "indicators",
+                "import"
+              ],
+              "description": "What to do."
+            },
+            "backend": {
+              "type": "string",
+              "enum": [
+                "gemini",
+                "claude",
+                "openai",
+                "muse_spark",
+                "qwen",
+                "gemma4",
+                "llama",
+                "muse_glimmer",
+                "qwen_vl",
+                "hf"
+              ],
+              "description": "Model provider answering the request.",
+              "default": "gemma4"
+            },
+            "api_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/$defs/secretRef"
+                }
+              ],
+              "description": "API key of a cloud backend.",
+              "default": ""
+            },
+            "model_id": {
+              "type": "string",
+              "description": "Model name. Empty selects the backend's default.",
+              "default": ""
+            },
+            "load_in_4bit": {
+              "type": "boolean",
+              "description": "Load a local model with 4-bit quantization.",
+              "default": true
+            },
+            "brief": {
+              "type": "string",
+              "description": "Plain-language description of the task (\"draft\").",
+              "default": ""
+            },
+            "instruction": {
+              "type": "string",
+              "description": "What to change (\"refine\").",
+              "default": ""
+            },
+            "prompt_text": {
+              "type": "string",
+              "description": "An existing prompt (\"review\", \"import\").",
+              "default": ""
+            },
+            "class_value": {
+              "type": "string",
+              "description": "The class to describe (\"indicators\").",
+              "default": ""
+            },
+            "spec": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "The current prompt specification, as produced by the prompt builder.",
+              "default": null
+            },
+            "context": {
+              "type": "object",
+              "description": "Extra facts for the assistant (asset type, imagery, outline).",
+              "default": {}
+            },
+            "temperature": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Sampling temperature.",
+              "default": 0.2
+            },
+            "max_tokens": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Longest answer the model may give, in tokens.",
+              "default": 4096
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        "metadata": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

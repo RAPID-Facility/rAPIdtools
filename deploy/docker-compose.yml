@@ -1,10 +1,13 @@
 # Shared rapidtools GUI behind Caddy (automatic HTTPS).
 #   cp deploy/.env.example deploy/.env   # then edit it
-#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
 # For a GPU machine add the override:
-#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.gpu.yml --env-file deploy/.env up -d --build
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.gpu.yml --env-file deploy/.env up -d
+# `up -d` pulls the image published on GitHub (RAPIDTOOLS_IMAGE); add --build to
+# build it from this checkout instead.
 services:
   gui:
+    image: ${RAPIDTOOLS_IMAGE:-ghcr.io/rapid-facility/rapidtools-gui:latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile

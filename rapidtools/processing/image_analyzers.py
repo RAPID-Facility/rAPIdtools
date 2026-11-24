@@ -86,19 +86,7 @@ from rapidtools.core import (
     is_cancelled,
     raise_if_cancelled,
 )
-from rapidtools.models import (
-    ClaudeInference,
-    GeminiInference,
-    Gemma4Inference,
-    GenerationConfig,
-    HFVisionInference,
-    LlamaVisionInference,
-    MuseGlimmerInference,
-    MuseSparkInference,
-    OpenAIInference,
-    QwenInference,
-    QwenVisionInference,
-)
+from rapidtools.models import GenerationConfig
 from rapidtools.models.base import BaseInferenceModel, resolve_prompt_text
 from rapidtools.models.catalogs import (
     ANTHROPIC_DEFAULT_MODEL,
@@ -117,6 +105,43 @@ from rapidtools.models.local_base import BaseLocalInferenceModel
 from .step import Stage
 
 logger = logging.getLogger(__name__)
+
+# The model wrappers behind the deprecated provider-specific analyzers. They
+# are looked up on first use, so importing this module (and with it
+# ``Pipeline`` and every extractor) does not load PyTorch and Transformers.
+_MODEL_WRAPPERS = frozenset(
+    {
+        'ClaudeInference',
+        'GeminiInference',
+        'Gemma4Inference',
+        'HFVisionInference',
+        'LlamaVisionInference',
+        'MuseGlimmerInference',
+        'MuseSparkInference',
+        'OpenAIInference',
+        'QwenInference',
+        'QwenVisionInference',
+    }
+)
+
+
+def __getattr__(name: str) -> Any:
+    """Resolve a model wrapper class from :mod:`rapidtools.models` on first use."""
+    if name in _MODEL_WRAPPERS:
+        import rapidtools.models as models
+
+        value = getattr(models, name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
+
+
+def _model_class(spec: Any) -> Any:
+    """A wrapper class given the class itself or its name in this module."""
+    if isinstance(spec, str):
+        return globals().get(spec) or __getattr__(spec)
+    return spec
+
 
 # Analyzers default to the cheapest current Gemini tier because they may run
 # over thousands of assets; pass ``model_id`` for a stronger model.
@@ -200,8 +225,12 @@ class AssetAnalyzer:
     Describe every asset in a collection with a vision-language model.
 
     Args:
-        model (BaseInferenceModel):
-            Any rapidtools model wrapper (see :func:`rapidtools.models.load`).
+        model (BaseInferenceModel | str):
+            A rapidtools model wrapper, or the name of a provider
+            (``'gemini'``, ``'claude'``, ``'gemma4'``, ...; see
+            :func:`rapidtools.models.list_providers`), in which case the
+            model is built with :func:`rapidtools.models.load` from
+            ``model_options``.
         prompt (str | Path):
             Prompt text or path to a prompt file applied to every asset.
         attribute_prefix (str | None):
@@ -229,6 +258,11 @@ class AssetAnalyzer:
         mode (str | None):
             Force ``'api'`` (threaded) or ``'local'`` (sequential/batched)
             execution; inferred from the model when ``None``.
+        **model_options:
+            With a provider name as ``model``, the arguments of
+            :func:`rapidtools.models.load` for it (``api_key``, ``model_id``,
+            ``device``, ...). Hosted providers read their key from the
+            environment when ``api_key`` is left out.
 
     Example:
         >>> from rapidtools.models import GenerationConfig, load
@@ -252,7 +286,7 @@ class AssetAnalyzer:
 
     def __init__(
         self,
-        model: BaseInferenceModel,
+        model: BaseInferenceModel | str,
         prompt: str | Path = '',
         attribute_prefix: str | None = None,
         max_workers: int | None = None,
@@ -263,8 +297,21 @@ class AssetAnalyzer:
         rate_limit: RateLimitPolicy | None = None,
         generation: GenerationConfig | None = None,
         mode: str | None = None,
+        **model_options: Any,
     ) -> None:
         """Wrap ``model`` for use as the analysis step of a pipeline."""
+        if isinstance(model, str):
+            from rapidtools.models import load
+
+            model = load(model, **model_options)
+        elif model_options:
+            raise TypeError(
+                'Model options ('
+                + ', '.join(sorted(model_options))
+                + ') can only be given with a provider name such as '
+                "AssetAnalyzer('gemini', ...); configure a loaded model where it "
+                'is built.'
+            )
         self.model = model
         self.prompt = resolve_prompt_text(prompt)
         self.image_filter = image_filter
@@ -568,6 +615,12 @@ class AssetAnalyzer:
             logger.warning('No assets with images found to analyze. Skipping.')
             return asset_collection
 
+        if not self.prompt.strip():
+            raise ValueError(
+                'AssetAnalyzer has no prompt: pass prompt="..." (or a path to a '
+                'prompt file) when creating it, or set analyzer.prompt.'
+            )
+
         if self.mode == 'api':
             failed = self._run_api(assets_with_images)
         else:
@@ -590,7 +643,7 @@ class AssetAnalyzer:
 def _warn_deprecated(old: str, provider: str) -> None:
     """Emit the standard deprecation warning for a provider-specific analyzer."""
     warnings.warn(
-        f'{old} is deprecated and will be removed in rapidtools 0.2; use '
+        f'{old} is deprecated and will be removed in a future release; use '
         f"AssetAnalyzer(rapidtools.models.load('{provider}', ...), prompt=...) "
         'instead.',
         DeprecationWarning,
@@ -609,7 +662,7 @@ class BaseAPIAssetAnalyzer(AssetAnalyzer):
         >>> collection = analyzer(collection)
     """
 
-    MODEL_CLASS: type = GeminiInference
+    MODEL_CLASS: Any = 'GeminiInference'
     ATTRIBUTE_PREFIX = 'gemini'
     PROVIDER_NAME = 'Gemini API'
     DEFAULT_MODEL_ID: str | None = None
@@ -658,7 +711,7 @@ class BaseAPIAssetAnalyzer(AssetAnalyzer):
         chosen = model_id or self.DEFAULT_MODEL_ID
         if chosen:
             model_kwargs['model_id'] = chosen
-        model = self.MODEL_CLASS(**model_kwargs)
+        model = _model_class(self.MODEL_CLASS)(**model_kwargs)
         super().__init__(
             model,
             prompt=prompt,
@@ -674,7 +727,7 @@ class BaseAPIAssetAnalyzer(AssetAnalyzer):
 class GeminiAssetAnalyzer(BaseAPIAssetAnalyzer):
     """Deprecated: use ``AssetAnalyzer(load('gemini', ...))``. Prefix ``gemini_``."""
 
-    MODEL_CLASS = GeminiInference
+    MODEL_CLASS = 'GeminiInference'
     ATTRIBUTE_PREFIX = 'gemini'
     PROVIDER_NAME = 'Gemini API'
     DEFAULT_MODEL_ID = GEMINI_ANALYZER_DEFAULT_MODEL
@@ -683,7 +736,7 @@ class GeminiAssetAnalyzer(BaseAPIAssetAnalyzer):
 class ClaudeAssetAnalyzer(BaseAPIAssetAnalyzer):
     """Deprecated: use ``AssetAnalyzer(load('claude', ...))``. Prefix ``claude_``."""
 
-    MODEL_CLASS = ClaudeInference
+    MODEL_CLASS = 'ClaudeInference'
     ATTRIBUTE_PREFIX = 'claude'
     PROVIDER_NAME = 'Claude API'
     DEFAULT_MODEL_ID = ANTHROPIC_DEFAULT_MODEL
@@ -692,7 +745,7 @@ class ClaudeAssetAnalyzer(BaseAPIAssetAnalyzer):
 class OpenAIAssetAnalyzer(BaseAPIAssetAnalyzer):
     """Deprecated: use ``AssetAnalyzer(load('openai', ...))``. Prefix ``openai_``."""
 
-    MODEL_CLASS = OpenAIInference
+    MODEL_CLASS = 'OpenAIInference'
     ATTRIBUTE_PREFIX = 'openai'
     PROVIDER_NAME = 'OpenAI API'
     DEFAULT_MODEL_ID = OPENAI_DEFAULT_MODEL
@@ -701,7 +754,7 @@ class OpenAIAssetAnalyzer(BaseAPIAssetAnalyzer):
 class MuseSparkAssetAnalyzer(BaseAPIAssetAnalyzer):
     """Deprecated: use ``AssetAnalyzer(load('muse_spark', ...))``."""
 
-    MODEL_CLASS = MuseSparkInference
+    MODEL_CLASS = 'MuseSparkInference'
     ATTRIBUTE_PREFIX = 'muse_spark'
     PROVIDER_NAME = 'Meta Model API'
     DEFAULT_MODEL_ID = MUSE_SPARK_DEFAULT_MODEL
@@ -710,7 +763,7 @@ class MuseSparkAssetAnalyzer(BaseAPIAssetAnalyzer):
 class QwenAssetAnalyzer(BaseAPIAssetAnalyzer):
     """Deprecated: use ``AssetAnalyzer(load('qwen', ...))``. Prefix ``qwen_``."""
 
-    MODEL_CLASS = QwenInference
+    MODEL_CLASS = 'QwenInference'
     ATTRIBUTE_PREFIX = 'qwen'
     PROVIDER_NAME = 'Qwen API'
     DEFAULT_MODEL_ID = QWEN_DEFAULT_MODEL
@@ -784,7 +837,7 @@ class Gemma4AssetAnalyzer(BaseLocalAssetAnalyzer):
     ) -> None:
         """Build a :class:`~rapidtools.models.Gemma4Inference` and wrap it."""
         _warn_deprecated('Gemma4AssetAnalyzer', 'gemma4')
-        model = Gemma4Inference(
+        model = _model_class('Gemma4Inference')(
             model_id=model_id,
             device=device,
             temperature=temperature,
@@ -820,7 +873,7 @@ class LlamaVisionAssetAnalyzer(BaseLocalAssetAnalyzer):
     ) -> None:
         """Build a :class:`~rapidtools.models.LlamaVisionInference` and wrap it."""
         _warn_deprecated('LlamaVisionAssetAnalyzer', 'llama')
-        model = LlamaVisionInference(
+        model = _model_class('LlamaVisionInference')(
             model_id=model_id,
             device=device,
             load_in_4bit=load_in_4bit,
@@ -844,7 +897,7 @@ class HFVisionAssetAnalyzer(BaseLocalAssetAnalyzer):
     Subclasses swap ``MODEL_CLASS`` for a family-specific wrapper.
     """
 
-    MODEL_CLASS: type[HFVisionInference] = HFVisionInference
+    MODEL_CLASS: Any = 'HFVisionInference'
     ATTRIBUTE_PREFIX = 'vlm'
     PROVIDER_NAME = 'Hugging Face VLM'
 
@@ -864,10 +917,11 @@ class HFVisionAssetAnalyzer(BaseLocalAssetAnalyzer):
         trust_remote_code: bool = False,
     ) -> None:
         """Build ``MODEL_CLASS`` and wrap it."""
-        info = getattr(self.MODEL_CLASS, 'INFO', None)
+        model_class = _model_class(self.MODEL_CLASS)
+        info = getattr(model_class, 'INFO', None)
         _warn_deprecated(type(self).__name__, info.key if info else 'hf')
-        model = self.MODEL_CLASS(
-            model_id=model_id or self.MODEL_CLASS.DEFAULT_MODEL,
+        model = model_class(
+            model_id=model_id or model_class.DEFAULT_MODEL,
             device=device,
             load_in_4bit=load_in_4bit,
             temperature=temperature,
@@ -888,7 +942,7 @@ class HFVisionAssetAnalyzer(BaseLocalAssetAnalyzer):
 class MuseGlimmerAssetAnalyzer(HFVisionAssetAnalyzer):
     """Deprecated: use ``AssetAnalyzer(load('muse_glimmer', ...))``."""
 
-    MODEL_CLASS = MuseGlimmerInference
+    MODEL_CLASS = 'MuseGlimmerInference'
     ATTRIBUTE_PREFIX = 'muse_glimmer'
     PROVIDER_NAME = 'Muse Glimmer'
 
@@ -925,7 +979,7 @@ class MuseGlimmerAssetAnalyzer(HFVisionAssetAnalyzer):
 class QwenVisionAssetAnalyzer(HFVisionAssetAnalyzer):
     """Deprecated: use ``AssetAnalyzer(load('qwen_vl', ...))``. Prefix ``qwen_vl_``."""
 
-    MODEL_CLASS = QwenVisionInference
+    MODEL_CLASS = 'QwenVisionInference'
     ATTRIBUTE_PREFIX = 'qwen_vl'
     PROVIDER_NAME = 'Qwen (local)'
 

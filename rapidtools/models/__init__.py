@@ -65,6 +65,7 @@ Example:
 from __future__ import annotations
 
 import importlib
+import inspect
 from collections.abc import Iterator, Mapping
 from typing import TYPE_CHECKING, Any
 
@@ -141,13 +142,31 @@ def load(provider: str, **kwargs: Any) -> BaseInferenceModel:
     Returns:
         BaseInferenceModel: The ready-to-use model.
 
+    Raises:
+        KeyError: If ``provider`` is not registered.
+        TypeError: If an argument is not one the wrapper takes; the message
+            lists the arguments it does.
+
     Example:
         >>> from rapidtools.models import load
         >>> gemini = load('gemini', api_key='AIza...')
         >>> qwen = load('qwen_vl', model_id='Qwen/Qwen3.5-9B', load_in_4bit=True)
         >>> qwen.run_inference('roof.jpg', 'Describe the roof.').text
     """
-    return get_model_class(provider)(**kwargs)
+    model_class = get_model_class(provider)
+    try:
+        parameters = inspect.signature(model_class.__init__).parameters
+    except (TypeError, ValueError):  # pragma: no cover - builtin constructors
+        parameters = {}
+    takes_any = any(p.kind is p.VAR_KEYWORD for p in parameters.values())
+    unknown = [k for k in kwargs if k not in parameters] if not takes_any else []
+    if unknown and parameters:
+        accepted = ', '.join(k for k in parameters if k != 'self')
+        raise TypeError(
+            f"load('{provider}') does not take {', '.join(map(repr, unknown))}. "
+            f'{model_class.__name__} accepts: {accepted}.'
+        )
+    return model_class(**kwargs)
 
 
 def catalog(provider: str) -> list[dict[str, str]]:

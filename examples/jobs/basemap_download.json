@@ -1,0 +1,15 @@
+{
+  "schema": "rapidtools.job",
+  "schema_version": "1.0",
+  "id": "spokane-basemap",
+  "name": "Download Bing imagery",
+  "output_dir": "output/spokane",
+  "steps": [
+    {
+      "id": "basemap",
+      "type": "imagery.basemap",
+      "inputs": {"region": {"bbox": [-117.489, 47.711, -117.487, 47.7125]}},
+      "params": {"provider": "bing", "zoom": 19}
+    }
+  ]
+}

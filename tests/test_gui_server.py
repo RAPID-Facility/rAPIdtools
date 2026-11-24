@@ -146,7 +146,8 @@ class FakeWorkflow:
         collection = _asset_collection_covering_pixel(10, 4)
         combined = settings.output_dir / 'assets_final.geojson'
         settings.output_dir.mkdir(parents=True, exist_ok=True)
-        combined.write_text('{}')
+        # A real file: the next job (inference) reads its assets from it.
+        collection.to_geojson(combined)
         return DetectionResult(
             collection=collection,
             detection_raster=settings.raster_path.resolve(),
@@ -2203,3 +2204,186 @@ def test_idle_seconds_ignore_probes(shared_gui):
     srv.state.last_activity -= 100
     client.json('GET', '/api/state', expect=401)
     assert client.json('GET', '/api/state', headers=probe)['idle_s'] >= 100
+
+
+# ------------------------------------------------------------- job files
+def _job_documents(srv):
+    """Return (job, result) documents of the job the server ran last."""
+    record = srv.state.job
+    job = json.loads(Path(record['file']).read_text())
+    result = json.loads(Path(record['result_file']).read_text())
+    return job, result
+
+
+def test_every_run_is_handed_over_as_a_job_file(gui, raster_path, monkeypatch):
+    """The server passes work to rapidtools through JSON files only."""
+    client, srv = gui
+    secret_dirs = []
+    real_mkdtemp = server_module.tempfile.mkdtemp
+
+    def recording_mkdtemp(**kwargs):
+        secret_dirs.append(Path(real_mkdtemp(**kwargs)))
+        return str(secret_dirs[-1])
+
+    monkeypatch.setattr(server_module.tempfile, 'mkdtemp', recording_mkdtemp)
+    out = srv.state.output_dir
+    client.json('POST', '/api/imagery/local', {'path': str(raster_path)})
+    client.wait_idle()
+
+    client.json('POST', '/api/detect', {'assets': 'building, tree', 'source': 'recon'})
+    state = client.wait_idle()
+    job_file = Path(state['job']['file'])
+    assert job_file.parent == out / 'jobs'
+    assert state['job']['result_file'] == str(
+        job_file.with_name(f'{job_file.stem}.result.json')
+    )
+    job, result = _job_documents(srv)
+    assert job['schema'] == 'rapidtools.job' and job['name'] == 'Detection'
+    assert job['created_by'] == {
+        'client': 'rapidtools-gui',
+        'version': rapidtools.__version__,
+    }
+    assert job['output_dir'] == str(out)
+    [step] = job['steps']
+    assert step['type'] == 'detect.aerial'
+    assert step['inputs'] == {'raster': str(raster_path)}
+    assert step['params']['assets'] == ['building', 'tree']
+    assert step['params']['basemap'] == 'recon'
+    assert result['status'] == 'done' and result['job_id'] == job['id']
+    assert result['steps'][0]['outputs']['assets']['path'] == str(
+        out / 'assets_final.geojson'
+    )
+    assert not secret_dirs  # no credentials, no secrets file
+    log = [e['text'] for e in client.json('GET', '/api/log?since=0')['entries']]
+    assert f'Job file: {job_file}' in log
+
+    # Inference reads the assets from the file detection wrote, and its API
+    # key travels outside the job file:
+    client.json(
+        'POST',
+        '/api/infer',
+        {'prompt': 'Rate it.', 'backend': 'gemini', 'api_key': 'k-SECRET-123'},
+    )
+    client.wait_idle()
+    job, result = _job_documents(srv)
+    [step] = job['steps']
+    assert step['type'] == 'analyze.vlm'
+    assert step['inputs'] == {
+        'raster': str(raster_path),
+        'assets': str(out / 'assets_final.geojson'),
+    }
+    assert step['params']['api_key'] == {'$secret': 'api_key'}
+    assert 'mapillary_token' not in step['params']
+    assert srv.state.workflow.analyze_calls[-1].api_key == 'k-SECRET-123'
+    assert result['status'] == 'done'
+    [secret_dir] = secret_dirs
+    assert not secret_dir.exists()  # deleted when the job ended
+    for path in out.rglob('*'):
+        if path.is_file():
+            assert b'k-SECRET-123' not in path.read_bytes(), path
+
+    # The job file alone reruns the detection from a terminal:
+    from rapidtools.jobs import run_job
+
+    rerun = run_job(job_file, workflow=srv.state.workflow)
+    assert rerun.ok and len(srv.state.workflow.detect_calls) == 2
+
+
+def test_run_all_is_one_job_with_two_steps(gui, raster_path):
+    client, srv = gui
+    client.json('POST', '/api/imagery/local', {'path': str(raster_path)})
+    client.wait_idle()
+    client.json(
+        'POST',
+        '/api/run_all',
+        {
+            'detect': {'assets': 'building'},
+            'infer': {'prompt': 'p', 'backend': 'gemma4'},
+        },
+    )
+    client.wait_idle()
+    job, result = _job_documents(srv)
+    assert [s['id'] for s in job['steps']] == ['detect', 'analyze']
+    assert job['steps'][1]['inputs']['assets'] == {
+        'step': 'detect',
+        'output': 'assets',
+    }
+    assert [s['status'] for s in result['steps']] == ['done', 'done']
+
+
+def test_collection_without_a_file_is_written_for_the_job(gui, raster_path):
+    """Assets that exist only in memory are saved so the job can read them."""
+    client, srv = gui
+    client.json('POST', '/api/imagery/local', {'path': str(raster_path)})
+    client.wait_idle()
+    srv.state.workflow.detect = lambda settings: DetectionResult(
+        collection=_asset_collection_covering_pixel(10, 4),
+        detection_raster=settings.raster_path.resolve(),
+    )
+    client.json('POST', '/api/detect', {'assets': 'building', 'source': 'recon'})
+    client.wait_idle()
+    assert srv.state.collection_path is None
+    client.json('POST', '/api/infer', {'prompt': 'p', 'backend': 'gemma4'})
+    state = client.wait_idle()
+    assert state['job']['status'] == 'done'
+    job, _ = _job_documents(srv)
+    assets = Path(job['steps'][0]['inputs']['assets'])
+    assert assets.parent == srv.state.output_dir / 'jobs' / 'inputs'
+    assert len(PhysicalAssetCollection.from_geojson(assets)) == 1
+
+
+def test_a_refused_job_leaves_no_job_file(gui, raster_path, monkeypatch):
+    client, srv = gui
+    client.json('POST', '/api/imagery/local', {'path': str(raster_path)})
+    client.wait_idle()
+    jobs_dir = srv.state.output_dir / 'jobs'
+    srv.state.workflow.block.clear()
+    client.json('POST', '/api/detect', {'assets': 'building'})
+    before = sorted(jobs_dir.glob('*.json'))
+    client.json('POST', '/api/detect', {'assets': 'tree'}, expect=409)
+    # Losing the race after the busy check is cleaned up as well:
+    monkeypatch.setattr(srv.state, 'busy', lambda: False, raising=False)
+    step = srv.api._detection_step({'assets': 'tree'})
+    job = srv.api._prepare_job('Detection', [step], {'k': 'v'})
+    monkeypatch.undo()
+    real_busy, calls = srv.state.busy, []
+
+    def busy_on_second_look():
+        calls.append(1)
+        return len(calls) > 1 and real_busy()
+
+    monkeypatch.setattr(srv.state, 'busy', busy_on_second_look)
+    with pytest.raises(server_module.ApiError):
+        srv.api._start_job(job, {'k': 'v'})
+    monkeypatch.undo()
+    assert sorted(p for p in jobs_dir.glob('*.json') if 'result' not in p.name) == [
+        p for p in before if 'result' not in p.name
+    ]
+    srv.state.workflow.block.set()
+    client.wait_idle()
+
+
+def test_failed_steps_publish_nothing(gui, raster_path):
+    client, srv = gui
+    client.json('POST', '/api/imagery/local', {'path': str(raster_path)})
+    client.wait_idle()
+
+    def broken(settings):
+        raise RuntimeError('no GPU')
+
+    srv.state.workflow.detect = broken
+    srv.state.workflow.discover_street = broken
+    client.json('POST', '/api/detect', {'assets': 'building'})
+    state = client.wait_idle()
+    assert state['job']['status'] == 'error' and 'no GPU' in state['job']['message']
+    assert state['collection'] is None and state['results'] == []
+    _, result = _job_documents(srv)
+    assert result['status'] == 'error'
+    assert result['steps'][0]['error'] == {'type': 'RuntimeError', 'message': 'no GPU'}
+    client.json(
+        'POST', '/api/street/discover', {'classes': 'vehicles', 'mapillary_token': 't'}
+    )
+    state = client.wait_idle()
+    assert state['job']['status'] == 'error' and state['collection'] is None
+    with pytest.raises(server_module.ApiError, match='Detect assets or load'):
+        srv.api._assets_file()

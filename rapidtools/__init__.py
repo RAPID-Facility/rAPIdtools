@@ -50,11 +50,12 @@ application; call :func:`configure_logging` to see progress messages, and
 Example:
     >>> import rapidtools
     >>> rapidtools.__version__
-    '0.2.0'
+    '0.2.1'
     >>> rapidtools.configure_logging()  # doctest: +ELLIPSIS
     <Logger rapidtools (INFO)>
     >>> rapidtools.GeminiInference  # imported on first access
     <class 'rapidtools.models.gemini.GeminiInference'>
+    >>> model = rapidtools.load('gemini', api_key='AIza...')  # doctest: +SKIP
 """
 
 from __future__ import annotations
@@ -70,6 +71,7 @@ from .config import configure_logging
 from .core import (
     BoundingBox,
     ImageAsset,
+    ImageCollection,
     Observation,
     OperationCancelled,
     PhysicalAsset,
@@ -80,20 +82,22 @@ from .core import (
 # Import the data sources and clients:
 from .data_sources import (
     BingAerialImageExtractor,
+    DroneCamera,
     GoogleAerialImageExtractor,
     GoogleStreetViewClient,
     MapillaryClient,
     MapillaryLabels,
     OrthomosaicReader,
     TileUtils,
+    read_drone_images,
 )
 
 # Import the dataset download utilities:
-from .datasets import download_dataset
+from .datasets import download_dataset, list_datasets
 
 # Package metadata:
 name = 'rapidtools'
-__version__ = '0.2.0'
+__version__ = '0.2.1'
 __copyright__ = 'Copyright (c) 2025, The University of Washington'
 __license__ = 'BSD 3-Clause License'
 
@@ -108,6 +112,11 @@ _LAZY_SUBMODULES = frozenset({'models', 'processing', 'gui'})
 _LAZY_ATTRIBUTES: dict[str, str] = {
     # rapidtools.models
     'ClaudeInference': 'rapidtools.models',
+    'GenerationConfig': 'rapidtools.models',
+    'ModelOutput': 'rapidtools.models',
+    'catalog': 'rapidtools.models',
+    'list_providers': 'rapidtools.models',
+    'load': 'rapidtools.models',
     'GeminiInference': 'rapidtools.models',
     'Gemma4Inference': 'rapidtools.models',
     'HFVisionInference': 'rapidtools.models',
@@ -127,6 +136,8 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     'BuildingRegularizer': 'rapidtools.processing',
     'ClaudeAssetAnalyzer': 'rapidtools.processing',
     'DetectionVerifier': 'rapidtools.processing',
+    'DroneImageExtractor': 'rapidtools.processing',
+    'DroneViewSelector': 'rapidtools.processing',
     'DuplicateResolver': 'rapidtools.processing',
     'GeminiAssetAnalyzer': 'rapidtools.processing',
     'Gemma4AssetAnalyzer': 'rapidtools.processing',
@@ -142,6 +153,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     'MuseSparkAssetAnalyzer': 'rapidtools.processing',
     'OpenAIAssetAnalyzer': 'rapidtools.processing',
     'Pipeline': 'rapidtools.processing',
+    'PipelineStep': 'rapidtools.processing',
     'QwenAssetAnalyzer': 'rapidtools.processing',
     'QwenVisionAssetAnalyzer': 'rapidtools.processing',
     'RoadwayRegularizer': 'rapidtools.processing',
@@ -149,30 +161,32 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     'SAM3OrthoFeatureExtractor': 'rapidtools.processing',
 }
 
-# Explicitly define the top-level public API:
+# Explicitly define the top-level public API. The provider-specific
+# ``*AssetAnalyzer`` classes are deprecated: they still resolve as attributes
+# (see ``_LAZY_ATTRIBUTES``) but are left out of ``__all__`` and ``dir()`` so
+# tab completion offers ``AssetAnalyzer`` alone.
 __all__ = [
     'AerialImageryExtractor',
-    'AssetAnalyzer',
     'BingAerialImageExtractor',
     'BingOrthomosaicExtractor',
     'BoundingBox',
     'BuildingRegularizer',
-    'ClaudeAssetAnalyzer',
     'ClaudeInference',
     'DetectionVerifier',
+    'DroneCamera',
+    'DroneImageExtractor',
+    'DroneViewSelector',
     'DuplicateResolver',
-    'GeminiAssetAnalyzer',
     'GeminiInference',
-    'Gemma4AssetAnalyzer',
     'Gemma4Inference',
+    'GenerationConfig',
     'GoogleAerialImageExtractor',
     'GoogleOrthomosaicExtractor',
     'GoogleStreetViewClient',
     'GoogleStreetViewImageExtractor',
-    'HFVisionAssetAnalyzer',
     'HFVisionInference',
     'ImageAsset',
-    'LlamaVisionAssetAnalyzer',
+    'ImageCollection',
     'LlamaVisionInference',
     'MapillaryClient',
     'MapillaryFeatureExtractor',
@@ -180,22 +194,19 @@ __all__ = [
     'MapillaryLabelMapper',
     'MapillaryLabels',
     'MapillaryObjectImageExtractor',
-    'MuseGlimmerAssetAnalyzer',
+    'ModelOutput',
     'MuseGlimmerInference',
-    'MuseSparkAssetAnalyzer',
     'MuseSparkInference',
     'Observation',
-    'OpenAIAssetAnalyzer',
     'OpenAIInference',
     'OperationCancelled',
     'OrthomosaicReader',
     'PhysicalAsset',
     'PhysicalAssetCollection',
     'Pipeline',
+    'PipelineStep',
     'PolygonRegion',
-    'QwenAssetAnalyzer',
     'QwenInference',
-    'QwenVisionAssetAnalyzer',
     'QwenVisionInference',
     'RateLimitPolicy',
     'RoadwayRegularizer',
@@ -204,10 +215,16 @@ __all__ = [
     'SAM3OrthoFeatureExtractor',
     'Stage',
     'TileUtils',
+    'catalog',
     'configure_logging',
     'download_dataset',
     'ensure_huggingface_login',
+    'list_datasets',
+    'list_providers',
+    'load',
     'login',
+    'models',
+    'read_drone_images',
 ]
 
 
@@ -243,14 +260,19 @@ if TYPE_CHECKING:  # pragma: no cover - static analysis only
         ClaudeInference,
         GeminiInference,
         Gemma4Inference,
+        GenerationConfig,
         HFVisionInference,
         LlamaVisionInference,
+        ModelOutput,
         MuseGlimmerInference,
         MuseSparkInference,
         OpenAIInference,
         QwenInference,
         QwenVisionInference,
         SAM3Inference,
+        catalog,
+        list_providers,
+        load,
     )
     from .processing import (  # noqa: F401
         AerialImageryExtractor,
@@ -259,18 +281,24 @@ if TYPE_CHECKING:  # pragma: no cover - static analysis only
         BuildingRegularizer,
         ClaudeAssetAnalyzer,
         DetectionVerifier,
+        DroneImageExtractor,
+        DroneViewSelector,
+        DuplicateResolver,
         GeminiAssetAnalyzer,
         Gemma4AssetAnalyzer,
         GoogleOrthomosaicExtractor,
         GoogleStreetViewImageExtractor,
         HFVisionAssetAnalyzer,
         LlamaVisionAssetAnalyzer,
+        MapillaryFeatureExtractor,
         MapillaryImageExtractor,
         MapillaryLabelMapper,
+        MapillaryObjectImageExtractor,
         MuseGlimmerAssetAnalyzer,
         MuseSparkAssetAnalyzer,
         OpenAIAssetAnalyzer,
         Pipeline,
+        PipelineStep,
         QwenAssetAnalyzer,
         QwenVisionAssetAnalyzer,
         RateLimitPolicy,

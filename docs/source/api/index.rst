@@ -1,8 +1,11 @@
 API Reference
 =============
 
-Everything below is importable from the top-level ``rapidtools`` package as
-well as from the subpackage shown. Heavy dependencies load on first use.
+The classes and factory functions below are importable from the top-level
+``rapidtools`` package (``import rapidtools as rt``) as well as from the
+subpackage shown; the lower-level functions listed by module name
+(``street_fusion.fuse_observations``, ...) are imported from that module.
+Heavy dependencies load on first use.
 
 Core objects
 ------------
@@ -54,6 +57,8 @@ Imagery extractors
    GoogleStreetViewImageExtractor
    MapillaryImageExtractor
    MapillaryObjectImageExtractor
+   DroneImageExtractor
+   DroneViewSelector
    MapillaryLabelMapper
 
 Detection, segmentation and regularization
@@ -74,8 +79,9 @@ Street-level localisation
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 How sightings in street-level images become positioned objects: the camera
-model, tracking and triangulation, covariance-aware merging, the ray-voting
-baseline and appearance re-identification.
+model, occupancy fusion, structures from the survey's point cloud, the
+earlier tracking and triangulation method with its covariance-aware merging
+and ray-voting baseline, and appearance re-identification.
 
 .. autosummary::
    :toctree: generated
@@ -89,6 +95,17 @@ baseline and appearance re-identification.
    street_localization.intersect_bearings
    street_localization.estimate_ego_mask
    street_localization.thin_frames
+   street_fusion.fuse_observations
+   street_fusion.scan_from_observation
+   street_fusion.set_range_bands
+   street_fusion.FusedObject
+   street_structures.discover_structures
+   street_structures.label_points
+   street_structures.structures_from_points
+   street_structures.footprint_rectangle
+   street_structures.fetch_sfm_cluster
+   street_structures.Structure
+   street_structures.PointCloud
    street_tracking.discover_objects
    street_tracking.suppress_duplicate_sightings
    street_tracking.prune_unwitnessed
@@ -197,6 +214,10 @@ Data sources
    MapillaryClient
    MapillaryLabels
    TileUtils
+   DroneCamera
+   read_drone_images
+   read_pose_table
+   write_pose_metadata
 
 Datasets, configuration and authentication
 ------------------------------------------
@@ -214,6 +235,39 @@ Datasets, configuration and authentication
    models.api_base.api_session
    auth.login
    auth.ensure_huggingface_login
+
+JSON job interface
+------------------
+
+The file format is specified in :doc:`../json_interface`.
+
+.. currentmodule:: rapidtools.jobs
+
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+
+   run_job
+   JobRunner
+   JobResult
+   StepResult
+   Job
+   StepSpec
+   new_job
+   load_job
+   Secrets
+   JobError
+   StepType
+   Param
+   Input
+   Output
+   StepContext
+   register_step
+   get_step_type
+   job_schema
+   result_schema
+   secrets_schema
+   describe_steps
 
 Graphical interface
 -------------------

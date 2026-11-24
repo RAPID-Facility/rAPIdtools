@@ -22,7 +22,7 @@ The UW RAPID Facility collects terabytes of perishable, hyper-resolution data in
 ## High-Level Impact & Key Features
 
 **Large-scale geospatial ingestion**
-Seamlessly fuse massive local orthomosaics, regional shapefiles, and street-view vector tiles. The `PhysicalAssetCollection` engine provides fast lookups, patial filtering, and native conversions between GeoJSON, ESRI Shapefiles, and Pandas DataFrames.
+Seamlessly fuse massive local orthomosaics, regional shapefiles, and street-view vector tiles. The `PhysicalAssetCollection` engine provides fast lookups, spatial filtering, and native conversions between GeoJSON, ESRI Shapefiles, and Pandas DataFrames.
 
 **Scalable AI Inference (Local & Cloud)**
 Run deployments tailored to your resources. Deploy powerful local vision-language models directly on consumer hardware: Google's Gemma-4 (E2B to 31B), Meta's Llama 4 and Llama 3.2 Vision, Meta's open-weight Muse Glimmer, Alibaba's Qwen3.8 / Qwen3.6 / Qwen3.5 / Qwen3-VL, or any Hugging Face checkpoint (Gemma 3, LLaVA, InternVL, Pixtral, Granite Vision, ...) through `HFVisionAssetAnalyzer`, using dynamic batching, automated tensor precision scaling, and strict VRAM garbage collection to prevent Out-Of-Memory (OOM) crashes. Alternatively, scale instantly using built-in integrations for enterprise APIs (OpenAI GPT-5.x/GPT-6, Google Gemini 3.x, Anthropic Claude Opus 5 / Fable 5.1, Meta Muse Spark, Alibaba Qwen via Model Studio), which feature thread-safe global cooldowns and exponential backoff to handle rate limits automatically.
@@ -81,88 +81,60 @@ import rapidtools as rt
 
 rt.configure_logging()                                   # opt in to progress output
 buildings = rt.PhysicalAssetCollection.from_geojson('buildings.geojson')
-model = rt.models.load('gemini', api_key='AIza...')      # or 'claude', 'openai', 'muse_spark', 'qwen',
-                                                         #    'gemma4', 'llama', 'muse_glimmer', 'qwen_vl', 'hf'
 pipeline = rt.Pipeline([
     rt.AerialImageryExtractor('ortho.tif', save_directory='crops', buffer_m=20),
-    rt.AssetAnalyzer(model, prompt='Rate the damage 0-5 as JSON.'),
-])
+    rt.AssetAnalyzer('gemini', prompt='Rate the damage 0-5 as JSON.'),   # or 'claude', 'openai', 'muse_spark',
+])                                                                      #    'qwen', 'gemma4', 'llama', 'qwen_vl', 'hf'
 buildings = pipeline.run(buildings)
 ```
 
-* `rapidtools.models.load(provider, **kwargs)` builds any wrapper from its registry key; `list_providers()`, `catalog(provider)` and `PROVIDERS` describe them without importing PyTorch.
-* `AssetAnalyzer(model, prompt, ...)` replaces the provider-specific `XAssetAnalyzer` classes (still available, deprecated). Hosted models run threaded with a `RateLimitPolicy` (shared cooldown after failures, then retry passes for the assets that failed, so timeouts and 429s do not leave holes); local models run sequentially or in batches. Hosted wrappers take `timeout=` (default 60 s) for slow responses. Pass `generation=GenerationConfig(json_mode=True, temperature=0.0)` for per-call options.
+* `AssetAnalyzer('gemini', ...)` builds the model for you; hosted providers read their key from the environment (`GOOGLE_API_KEY`, `ANTHROPIC_API_KEY`, ...) or take `api_key=`. `rt.load(provider, **kwargs)` builds a wrapper on its own, and `rt.list_providers()` and `rt.catalog(provider)` describe them without importing PyTorch.
+* `AssetAnalyzer(model_or_provider, prompt, ...)` replaces the provider-specific `XAssetAnalyzer` classes (still importable, deprecated). Hosted models run threaded with a `RateLimitPolicy` (shared cooldown after failures, then retry passes for the assets that failed, so timeouts and 429s do not leave holes); local models run sequentially or in batches. Hosted wrappers take `timeout=` (default 60 s) for slow responses. Pass `generation=GenerationConfig(json_mode=True, temperature=0.0)` for per-call options.
 * `AerialImageryExtractor` judges imagery coverage from the raster's mask (nodata value, alpha band or internal mask). By default a crop is skipped when more than `max_missing_data_ratio` of it is empty; pass `min_footprint_coverage=0.3` to keep every building whose footprint is at least 30% imaged, with edge crops padded so they keep their size.
 * `SAM3OrthoFeatureExtractor(prompt, ...)` scans a whole orthomosaic for a text concept. By default touching detections dissolve into one polygon (roofs, roads, vegetation); pass `merge_overlaps=False` for countable objects such as vehicles to keep one asset per detected instance, with its SAM 3 `confidence`, and only remove cross-tile duplicates.
 * Pipeline steps declare a `Stage` (`DETECT`, `EXTRACT_IMAGERY`, `REGULARIZE`, `SEGMENT`, `ANALYZE`, `EXPORT`), so steps can be added in any order.
-* `import rapidtools` is side-effect free and fast (about 2 s); model and processing classes load on first use. Call `rapidtools.login()` to authenticate with the Hugging Face Hub for gated weights, or let local model wrappers do it when they load.
+* `import rapidtools` is side-effect free and fast (about half a second); PyTorch and Transformers load only when a model is built, so pipelines of extractors and regularizers never pay for them. Mapillary components read `MAPILLARY_ACCESS_TOKEN` when no token is passed. Call `rapidtools.login()` to authenticate with the Hugging Face Hub for gated weights, or let local model wrappers do it when they load.
 
 ## Quick Start: Aerial Damage Detection Pipeline
 
 Run state-of-the-art damage assessments completely offline. This example demonstrates how to download `rapidtools` sample datasets, extract building-specific image patches from a local drone orthomosaic, and analyze them using a local Gemma-4 vision model that does not require paid API usage or cloud tokens.
 
 ```python
-from pathlib import Path
-from rapidtools import (
-    AerialImageryExtractor,
-    Gemma4AssetAnalyzer,
-    PhysicalAssetCollection,
-    Pipeline,
-    download_dataset,
+import rapidtools as rt
+
+rt.configure_logging()
+
+# 1. Download the example datasets from the rapidtools registry
+raster_path, footprint_path, prompt_path = rt.download_dataset(
+    ['eaton_patch2', 'altadena_sample_buildings', 'aerial_chs_prompts']
 )
-
-# 1. Download required example datasets from the rapidtools registry
-raster_path, footprint_path, prompt_path = download_dataset([
-    'eaton_patch2',
-    'altadena_sample_buildings',
-    'aerial_chs_prompts'
-])
-
-image_save_dir = Path('eaton_fire_aerial_feb25/overlaid_imagery')
 
 # 2. Load the regional building footprints
-building_data = PhysicalAssetCollection.from_geojson(footprint_path)
+buildings = rt.PhysicalAssetCollection.from_geojson(footprint_path)
 
-# 3. Configure the Extractor
-# Crops the orthomosaic around each asset and draws a reference outline.
-# The outline can trace the footprint itself (default), its bounding box,
-# rotated bounding box, convex hull or just corner brackets, optionally
-# pushed away from the asset by a buffer, with any stroke width and colour.
-extractor = AerialImageryExtractor(
-    dataset=raster_path,
-    save_directory=image_save_dir,
-    overlay_asset_outline=True,
-    outline_shape='rotated_bbox',
-    outline_buffer='2 m',
-    outline_width='1%',
-    image_prefix='eaton_trinity_25',
-    keep_multiple_copies=True,
-)
+pipeline = rt.Pipeline([
+    # 3. Crop the orthomosaic around each building and draw a reference
+    #    outline. The outline can trace the footprint itself (default), its
+    #    bounding box, rotated bounding box, convex hull or corner brackets,
+    #    optionally pushed away from the asset, in any width and colour.
+    rt.AerialImageryExtractor(
+        raster_path,
+        save_directory='eaton_fire_aerial_feb25/overlaid_imagery',
+        overlay_asset_outline=True,
+        outline_shape='rotated_bbox',
+        outline_buffer='2 m',
+        outline_width='1%',
+    ),
+    # 4. Apply the prompt to every crop with a local Gemma 4 model. Any
+    #    provider name works here ('gemini', 'claude', 'openai', ...); hosted
+    #    ones read their API key from the environment.
+    rt.AssetAnalyzer('gemma4', prompt=prompt_path, batch_size=8),
+])
 
-# 4. Configure the AI Analyzer
-# Ingests the newly cropped images and applies the configured prompt to evaluate damage
-analyzer = Gemma4AssetAnalyzer(
-    model_id='google/gemma-4-E2B-it',
-    prompt=prompt_path,
-    batch_size=8
-)
-
-# 5. Build and execute the pipeline
-pipeline = Pipeline()
-pipeline.add_step(extractor)
-pipeline.add_step(analyzer)
-
-print('Initiating processing pipeline...')
-processed_collection = pipeline.run(building_data)
-
-# Clean up empty assets and export the AI-enriched dataset for GIS mapping
-final_collection = processed_collection.filter_empty()
-print(f'Final inventory size: {len(final_collection)} assets processed.')
-
-final_collection.to_geojson(
-    'eaton_footprints_CHS_with_gemma4.geojson', 
-    ignore_properties=['image_assets']
-)
+# 5. Run it and export the AI-enriched inventory for GIS mapping
+buildings = pipeline.run(buildings)
+print(buildings)   # one line: how many assets, of which types
+buildings.to_geojson('eaton_footprints_CHS_with_gemma4.geojson', include_images=False)
 ```
 
 ## Graphical Interface: Detect Assets and Run Inference Without Code
@@ -210,25 +182,26 @@ Bounding boxes can be drawn on a satellite map that also shows where the RAPID s
 
 Every wrapper exposes `list_known_models()` (the curated catalogue below, no network) and `list_available_models(api_key)` (live listing from the provider where one exists). Pass any listed ID as `model_id`; the default is marked in bold.
 
-| Provider / family | Wrapper · Analyzer | Key (env var) | Models |
+| Provider / family | `load()` name · wrapper | Key (env var) | Models |
 |---|---|---|---|
-| Google Gemini (API) | `GeminiInference` · `GeminiAssetAnalyzer` | `GOOGLE_API_KEY` | **gemini-3.8-flash**, gemini-3.7-flash, gemini-3.6-flash, gemini-3.5-flash, gemini-3.5-flash-lite (analyzer default), gemini-3.1-pro-preview, gemini-3.1-flash-lite, gemini-3.1-flash-image, gemini-3.1-flash-lite-image, gemini-3-flash-preview, gemini-3-pro-image, gemini-omni-1.1-flash |
-| Anthropic Claude (API) | `ClaudeInference` · `ClaudeAssetAnalyzer` | `ANTHROPIC_API_KEY` | claude-fable-5-1, claude-fable-5, **claude-opus-5**, claude-opus-4-8, claude-opus-4-7, claude-opus-4-6, claude-sonnet-5, claude-sonnet-4-6, claude-haiku-4-5 |
-| OpenAI (API) | `OpenAIInference` · `OpenAIAssetAnalyzer` | `OPENAI_API_KEY` | gpt-6-astra, gpt-6-sol, gpt-6-luna, gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, **gpt-5.5**, gpt-5.5-pro, gpt-5.4, gpt-5.4-pro, gpt-5.4-mini, gpt-5.4-nano, gpt-5.2, gpt-5.1, o3, o3-pro, gpt-4.1, gpt-4.1-mini, gpt-4o, gpt-4o-mini |
-| Meta Muse Spark (API) | `MuseSparkInference` · `MuseSparkAssetAnalyzer` | `MODEL_API_KEY` | **muse-spark-1.3**, muse-spark-1.3-contributor, muse-spark-1.2, muse-spark-1.2-contributor, muse-spark-1.1 |
-| Alibaba Qwen (API, Model Studio) | `QwenInference` · `QwenAssetAnalyzer` | `DASHSCOPE_API_KEY` | **qwen3.8-max**, qwen3.8-omni-flash, qwen3.7-plus, qwen3.6-plus, qwen3.5-plus, qwen3-vl-plus, qwen3-vl-flash, qwen-vl-max, qwen-vl-plus |
-| Google Gemma 4 (local) | `Gemma4Inference` · `Gemma4AssetAnalyzer` | — | google/gemma-4-31B-it, google/gemma-4-26B-A4B-it, google/gemma-4-12B-it, google/gemma-4-E4B-it, **google/gemma-4-E2B-it** |
-| Meta Llama (local) | `LlamaVisionInference` · `LlamaVisionAssetAnalyzer` | — (gated download) | meta-llama/Llama-4-Scout-17B-16E-Instruct, meta-llama/Llama-4-Maverick-17B-128E-Instruct, **meta-llama/Llama-3.2-11B-Vision-Instruct**, meta-llama/Llama-3.2-90B-Vision-Instruct |
-| Meta Muse Glimmer (local) | `MuseGlimmerInference` · `MuseGlimmerAssetAnalyzer` | — | **meta-models/Muse-Glimmer-30B** (4-bit fits a 24 GB GPU; needs `transformers>=5.15`) |
-| Alibaba Qwen (local) | `QwenVisionInference` · `QwenVisionAssetAnalyzer` | — | Qwen/Qwen3.8-27B, Qwen/Qwen3.6-27B, Qwen/Qwen3.6-35B-A3B, Qwen/Qwen3.5-{397B-A17B, 122B-A10B, 35B-A3B, 27B, 9B, **4B**, 2B, 0.8B}, Qwen/Qwen3-VL-{235B-A22B, 32B, 30B-A3B, 8B, 4B, 2B}-Instruct, Qwen/Qwen2.5-VL-{72B, 32B, 7B, 3B}-Instruct, Qwen/Qwen2-VL-{7B, 2B}-Instruct |
-| Any Hugging Face VLM (local) | `HFVisionInference` · `HFVisionAssetAnalyzer` | — | Curated list (`OPEN_VLM_CATALOG`) plus any repo with a chat template; default **Qwen/Qwen3.5-4B** |
-| Meta SAM 3 (local segmentation) | `SAM3Inference` · `SAM3ImageSegmenter`, `SAM3OrthoFeatureExtractor` | — | **facebook/sam3** |
+| Google Gemini (API) | `'gemini'` · `GeminiInference` | `GOOGLE_API_KEY` | **gemini-3.8-flash**, gemini-3.7-flash, gemini-3.6-flash, gemini-3.5-flash, gemini-3.5-flash-lite (analyzer default), gemini-3.1-pro-preview, gemini-3.1-flash-lite, gemini-3.1-flash-image, gemini-3.1-flash-lite-image, gemini-3-flash-preview, gemini-3-pro-image, gemini-omni-1.1-flash |
+| Anthropic Claude (API) | `'claude'` · `ClaudeInference` | `ANTHROPIC_API_KEY` | claude-fable-5-1, claude-fable-5, **claude-opus-5**, claude-opus-4-8, claude-opus-4-7, claude-opus-4-6, claude-sonnet-5, claude-sonnet-4-6, claude-haiku-4-5 |
+| OpenAI (API) | `'openai'` · `OpenAIInference` | `OPENAI_API_KEY` | gpt-6-astra, gpt-6-sol, gpt-6-luna, gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, **gpt-5.5**, gpt-5.5-pro, gpt-5.4, gpt-5.4-pro, gpt-5.4-mini, gpt-5.4-nano, gpt-5.2, gpt-5.1, o3, o3-pro, gpt-4.1, gpt-4.1-mini, gpt-4o, gpt-4o-mini |
+| Meta Muse Spark (API) | `'muse_spark'` · `MuseSparkInference` | `MODEL_API_KEY` | **muse-spark-1.3**, muse-spark-1.3-contributor, muse-spark-1.2, muse-spark-1.2-contributor, muse-spark-1.1 |
+| Alibaba Qwen (API, Model Studio) | `'qwen'` · `QwenInference` | `DASHSCOPE_API_KEY` | **qwen3.8-max**, qwen3.8-omni-flash, qwen3.7-plus, qwen3.6-plus, qwen3.5-plus, qwen3-vl-plus, qwen3-vl-flash, qwen-vl-max, qwen-vl-plus |
+| Google Gemma 4 (local) | `'gemma4'` · `Gemma4Inference` | — | google/gemma-4-31B-it, google/gemma-4-26B-A4B-it, google/gemma-4-12B-it, google/gemma-4-E4B-it, **google/gemma-4-E2B-it** |
+| Meta Llama (local) | `'llama'` · `LlamaVisionInference` | — (gated download) | meta-llama/Llama-4-Scout-17B-16E-Instruct, meta-llama/Llama-4-Maverick-17B-128E-Instruct, **meta-llama/Llama-3.2-11B-Vision-Instruct**, meta-llama/Llama-3.2-90B-Vision-Instruct |
+| Meta Muse Glimmer (local) | `'muse_glimmer'` · `MuseGlimmerInference` | — | **meta-models/Muse-Glimmer-30B** (4-bit fits a 24 GB GPU; needs `transformers>=5.15`) |
+| Alibaba Qwen (local) | `'qwen_vl'` · `QwenVisionInference` | — | Qwen/Qwen3.8-27B, Qwen/Qwen3.6-27B, Qwen/Qwen3.6-35B-A3B, Qwen/Qwen3.5-{397B-A17B, 122B-A10B, 35B-A3B, 27B, 9B, **4B**, 2B, 0.8B}, Qwen/Qwen3-VL-{235B-A22B, 32B, 30B-A3B, 8B, 4B, 2B}-Instruct, Qwen/Qwen2.5-VL-{72B, 32B, 7B, 3B}-Instruct, Qwen/Qwen2-VL-{7B, 2B}-Instruct |
+| Any Hugging Face VLM (local) | `'hf'` · `HFVisionInference` | — | Curated list (`OPEN_VLM_CATALOG`) plus any repo with a chat template; default **Qwen/Qwen3.5-4B** |
+| Meta SAM 3 (local segmentation) | `'sam3'` · `SAM3Inference` (used by `SAM3ImageSegmenter`, `SAM3OrthoFeatureExtractor`) | — | **facebook/sam3** |
 
 ```python
-from rapidtools import MuseSparkAssetAnalyzer, QwenVisionAssetAnalyzer
+import rapidtools as rt
 
-cloud = MuseSparkAssetAnalyzer(api_key='...', prompt='Return JSON with a damage_level key.')
-local = QwenVisionAssetAnalyzer(prompt='Rate the fire damage 0-5.', model_id='Qwen/Qwen3.5-9B', load_in_4bit=True)
+cloud = rt.AssetAnalyzer('muse_spark', prompt='Return JSON with a damage_level key.')   # key from MODEL_API_KEY
+local = rt.AssetAnalyzer('qwen_vl', prompt='Rate the fire damage 0-5.', model_id='Qwen/Qwen3.5-9B', load_in_4bit=True)
+model = rt.load('claude')            # the wrapper itself, for single images: model.run_inference('roof.jpg', '...')
 ```
 
 ## Contributing, Security and Accessibility
@@ -280,7 +253,7 @@ entries; each release is also archived on Zenodo with a DOI.
   author  = {Cetiner, Barbaros and {NSF NHERI RAPID Facility}},
   title   = {rAPIdtools: AI inference and localization for post-disaster geospatial datasets},
   year    = {2026},
-  version = {0.2.0},
+  version = {0.2.1},
   url     = {https://github.com/RAPID-Facility/rAPIdtools}
 }
 ```

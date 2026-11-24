@@ -70,9 +70,10 @@ Local models
 
 Local vision-language models (Gemma 4, Llama Vision, Muse Glimmer, Qwen and
 any Hugging Face checkpoint) and SAM 3 run on your own GPU. A 24 GB card
-handles every default checkpoint with the 4-bit loading that is on by
-default; the smallest, ``google/gemma-4-E2B-it``, also runs on consumer GPUs
-with far less memory.
+handles every default checkpoint, the larger ones with
+``load_in_4bit=True`` (off by default; Gemma 4 does not take it); the
+smallest, ``google/gemma-4-E2B-it``, also runs on consumer GPUs with far
+less memory.
 
 Gated repositories such as Gemma and Llama require a Hugging Face account.
 Log in once and the token is cached for future sessions:
