@@ -444,6 +444,7 @@ def _fuse_frame(
         frame.scans, key=lambda s: s.contact if math.isfinite(s.contact) else math.inf
     )
     for scan in ordered:
+        assert scan.lo is not None and scan.hi is not None  # range_bands
         seen = np.isfinite(scan.lo)
         blind[scan.cols[~seen]] = True
         layer = count[scan.cols]
@@ -491,6 +492,7 @@ def _fuse_frame(
 
 def _band_cells(grid: _Grid, frame: _Frame, scan: Scan) -> np.ndarray:
     """Flat indices of the grid cells inside a scan's occupied bands."""
+    assert scan.lo is not None and scan.hi is not None  # range_bands
     seen = np.isfinite(scan.lo)
     if not seen.any():
         return np.zeros(0, int)
@@ -540,7 +542,10 @@ def _split_instances(
         return [(cells, members)]
     position = {int(c): n for n, c in enumerate(cells)}
     votes = np.zeros((k, len(cells)), np.float32)
-    exact = sorted((iid for iid, v in per_frame.items() if len(v) == k), key=ranges.get)
+    exact = sorted(
+        (iid for iid, v in per_frame.items() if len(v) == k),
+        key=lambda iid: ranges[iid],
+    )
     for n_frame, iid in enumerate(exact):
         sets = [
             np.fromiter((position[int(c)] for c in m[2]), int, len(m[2]))
@@ -608,7 +613,7 @@ def _intersect(
     offset = (normal * cams).sum(axis=1)
     p = np.asarray(start, float)
     w = np.ones(len(az))
-    a = None
+    a = np.zeros((2, 2))
     for _ in range(8):
         sigma = np.maximum(1.0, np.hypot(*(p - cams).T)) * math.radians(sigma_deg)
         ww = w / sigma**2

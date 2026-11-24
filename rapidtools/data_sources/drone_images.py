@@ -350,6 +350,7 @@ class DroneCamera:
             >>> [round(float(v), 6) + 0.0 for v in camera.pixel_ray(100, 50)]
             [1.0, 0.0, 0.0]
         """
+        assert self.cx is not None and self.cy is not None  # __post_init__
         cam = np.array(
             [(column - self.cx) / self.focal_px, (row - self.cy) / self.focal_px, 1.0]
         )
@@ -963,8 +964,11 @@ def write_pose_metadata(
         -45.0
     """
     destination = Path(destination)
-    opened = not isinstance(image, Image.Image)
-    picture = Image.open(image) if opened else image
+    picture: Image.Image
+    if isinstance(image, Image.Image):
+        picture, opened = image, False
+    else:
+        picture, opened = Image.open(image), True
     try:
         absolute = camera.absolute_altitude_m
         if absolute is None:

@@ -983,6 +983,7 @@ class AssetAnalysisWorkflow:
             'outline_color': settings.outline_color,
         }
         if settings.imagery == 'aerial':
+            assert raster_path is not None  # checked by analyze()
             return AerialImageryExtractor(
                 dataset=raster_path,
                 save_directory=image_dir,

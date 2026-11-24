@@ -395,7 +395,7 @@ def surface_patches(
         share = polygon.area / int(inside.sum()) * roof_weight
         for x, y in zip(mx[inside], my[inside], strict=True):
             points.append([x, y, base + height])
-            normals.append([0.0, 0.0, 1.0])
+            normals.append(np.array([0.0, 0.0, 1.0]))
             weights.append(share)
             wall_ids.append(-1)
     return SurfacePatches(
@@ -553,7 +553,12 @@ def view_quality(
         distance, 1e-9
     )
     visible = in_frame & (cosine > math.cos(math.radians(max_incidence_deg)))
-    if occluder_edges is not None and len(occluder_edges) and visible.any():
+    if (
+        occluder_edges is not None
+        and occluder_tops is not None
+        and len(occluder_edges)
+        and visible.any()
+    ):
         cams, pts = np.nonzero(visible)
         hidden = blocked_rays(
             positions[cams], points[pts], occluder_edges, occluder_tops
@@ -864,7 +869,7 @@ class DroneViewSelector:
             centre = asset.geometry.centroid
             return float(source(centre.x, centre.y))
         if isinstance(source, str):
-            value = asset.attributes.get(source)
+            value: Any = asset.attributes.get(source)
             try:
                 return float(value)
             except (TypeError, ValueError):
@@ -1027,25 +1032,26 @@ class DroneViewSelector:
                 arrays['centres'][candidates] - arrays['sizes'][candidates] / 2
             )
             candidates = candidates[(cam[:, 2] > 0.1) & (offset <= half).all(axis=1)]
+
+        def rate(index, occluder_edges=None, occluder_tops=None):
+            return view_quality(
+                arrays['positions'][index],
+                arrays['rotations'][index],
+                arrays['focal'][index],
+                arrays['sizes'][index],
+                arrays['centres'][index],
+                patches,
+                occluder_edges,
+                occluder_tops,
+                target_px_per_m=self.target_px_per_m,
+                full_incidence_deg=self.full_incidence_deg,
+                max_incidence_deg=self.max_incidence_deg,
+            )
+
         if candidates.size and total > 0:
-            kwargs = {
-                'target_px_per_m': self.target_px_per_m,
-                'full_incidence_deg': self.full_incidence_deg,
-                'max_incidence_deg': self.max_incidence_deg,
-            }
-
-            def take(index):
-                return (
-                    arrays['positions'][index],
-                    arrays['rotations'][index],
-                    arrays['focal'][index],
-                    arrays['sizes'][index],
-                    arrays['centres'][index],
-                )
-
             # Cheap pass without occlusion, to find the photos worth the
             # ray casting: the best few from every viewing direction.
-            rough, in_frame = view_quality(*take(candidates), patches, **kwargs)
+            rough, in_frame = rate(candidates)
             score = rough @ patches.weights
             keep = score > 0
             candidates, rough, in_frame, score = (
@@ -1087,7 +1093,7 @@ class DroneViewSelector:
                 distance[rows],
                 directions[rows],
             )
-        quality, _ = view_quality(*take(candidates), patches, edges, tops, **kwargs)
+        quality, _ = rate(candidates, edges, tops)
         frame_fraction = (in_frame * patches.weights[None, :]).sum(axis=1) / total
         if self.clip_penalty > 0:
             quality = quality * (frame_fraction**self.clip_penalty)[:, None]
@@ -1099,6 +1105,8 @@ class DroneViewSelector:
             directions,
             self.diversity,
         )
+        project = self._project
+        assert project is not None  # set by select()
         covered = np.zeros(len(patches.weights))
         sides = patches.side_of_patch()
         for row, gain in zip(chosen, gains, strict=True):
@@ -1113,7 +1121,7 @@ class DroneViewSelector:
                 if weight > 0 and added[mask].sum() / weight >= 0.15:
                     shows.append(name)
             corners = self._prism_corners(patches)
-            pixels, depth = camera.project_points(corners, self._project)
+            pixels, depth = camera.project_points(corners, project)
             pixels = pixels[depth > 0.1]
             if len(pixels) >= 3:
                 hull = MultiPoint([tuple(p) for p in pixels]).convex_hull
@@ -1122,7 +1130,8 @@ class DroneViewSelector:
                     if hull.geom_type == 'Polygon'
                     else [(float(x), float(y)) for x, y in pixels]
                 )
-                bbox = tuple(float(v) for v in hull.bounds)
+                left, lower, right, upper = hull.bounds
+                bbox = (float(left), float(lower), float(right), float(upper))
             else:
                 outline, bbox = [], (0.0, 0.0, 0.0, 0.0)
             result.views.append(
@@ -1224,6 +1233,7 @@ class DroneViewSelector:
                     float(best[mask] @ weights[mask] / weight), 3
                 )
         unproject = self._unproject
+        assert unproject is not None  # set by select()
         for index, (x0, y0, x1, y1) in enumerate(patches.walls):
             mask = patches.wall == index
             weight = float(weights[mask].sum())
@@ -1599,6 +1609,7 @@ class DroneImageExtractor:
     ) -> dict[tuple[str, str], ImageAsset]:
         raise_if_cancelled(self.cancel_event, 'drone image extraction')
         crops: dict[tuple[str, str], ImageAsset] = {}
+        assert camera.path is not None  # __init__ drops cameras without a file
         with Image.open(camera.path) as image:
             image.load()
             for asset, view, rank in jobs:
@@ -1623,8 +1634,9 @@ class DroneImageExtractor:
             masks = output.masks[0] if output is not None and output.masks else None
             if masks is None or not len(masks):
                 continue
-            observed = np.asarray(masks).reshape(-1, *np.asarray(masks).shape[-2:])
-            observed = observed.any(axis=0)
+            stack = np.asarray(masks)
+            layers = stack.reshape(-1, *stack.shape[-2:])
+            observed = np.asarray(layers.any(axis=0))
             scale = max(1, int(round(max(observed.shape) / 512)))
             observed = observed[::scale, ::scale]
             factor = observed.shape[1] / camera.width

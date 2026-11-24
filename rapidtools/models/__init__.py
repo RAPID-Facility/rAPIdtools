@@ -154,6 +154,7 @@ def load(provider: str, **kwargs: Any) -> BaseInferenceModel:
         >>> qwen.run_inference('roof.jpg', 'Describe the roof.').text
     """
     model_class = get_model_class(provider)
+    parameters: Mapping[str, inspect.Parameter]
     try:
         parameters = inspect.signature(model_class.__init__).parameters
     except (TypeError, ValueError):  # pragma: no cover - builtin constructors
