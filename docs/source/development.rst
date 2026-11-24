@@ -121,8 +121,8 @@ that make this hold are worth knowing before writing a test:
   answer from the image file name or a script (``FakeModel`` in
   ``test_verification.py`` and ``test_image_analyzers.py``); a ``judge``
   callable does the same for the duplicate resolver.
-- Rasters, GeoJSON, shapefiles and crops are built in ``tmp_path``; the
-  only committed fixtures are the small files under ``tests/mapillary_images``.
+- Rasters, GeoJSON, shapefiles and crops are built in ``tmp_path``; no data
+  files are committed as fixtures.
 
 Coverage
 --------
