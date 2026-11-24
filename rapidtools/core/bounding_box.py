@@ -176,7 +176,7 @@ class BoundingBox(Region):
         The method uses a pre-computed top-level ``bbox`` member when one is
         present (the fastest path) and otherwise streams the bounds of every
         feature without building large in-memory geometry lists. Feature-level
-        ``bbox`` members are honoured before falling back to the geometry.
+        ``bbox`` members are honored before falling back to the geometry.
         Empty geometries are skipped. If the file declares a legacy ``crs``
         member that is not EPSG:4326, the resulting bounds are reprojected to
         WGS84.

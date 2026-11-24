@@ -60,7 +60,7 @@ Notes
 - ``keep_multiple_copies=True`` appends a counter when two assets share a
   centroid, which happens with stacked or duplicated footprints.
 - The prompt file asks for a JSON object with a ``chs_level`` key, so the
-  grade lands in ``gemma4_chs_level``. Open the GeoJSON in QGIS and colour
+  grade lands in ``gemma4_chs_level``. Open the GeoJSON in QGIS and color
   by that attribute to see the damage map.
 - Swap ``load('gemma4', ...)`` for ``load('gemini', api_key=...)`` to grade
   with a hosted model; nothing else changes. The script

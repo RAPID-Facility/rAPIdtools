@@ -118,7 +118,7 @@ stack name and try the GUI with a cloud model API key.
 ### 5. Optional things to have ready
 
 - A **Hugging Face token** (`hf_...`) of an account that accepted the
-  licences of the gated SAM 3 and Gemma weights. Without one the package
+  licenses of the gated SAM 3 and Gemma weights. Without one the package
   falls back to its shared token.
 - Your own **DNS name**, if you prefer `gui.example.edu` over the sslip.io
   name.
@@ -146,7 +146,7 @@ stack name and try the GUI with a cloud model API key.
    | Container image tag, Git branch | Leave as they are. |
    | Hugging Face token | Optional, see above. |
 
-6. Press **Next**. On the *Configure stack options* page scroll down, tick
+6. Press **Next**. On the *Configure stack options* page scroll down, check
    **I acknowledge that AWS CloudFormation might create IAM resources**, and
    press **Next**, then **Submit**.
 7. Wait until the stack status is **CREATE_COMPLETE**. The stack waits for
@@ -177,7 +177,7 @@ stack name and try the GUI with a cloud model API key.
 
 You need the [AWS CLI version 2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
 with working credentials (`aws configure`, or `aws sso login` in an
-organisation). AWS CloudShell in the console already has both.
+organization). AWS CloudShell in the console already has both.
 
 ```bash
 git clone https://github.com/RAPID-Facility/rAPIdtools.git

@@ -101,7 +101,7 @@ class MuseGlimmerInference(HFVisionInference):
     """
     Local inference with Meta's open-weight Muse Glimmer vision-language model.
 
-    A thin specialisation of :class:`~rapidtools.models.HFVisionInference`
+    A thin specialization of :class:`~rapidtools.models.HFVisionInference`
     that defaults to ``meta-models/Muse-Glimmer-30B`` and checks that the
     installed Transformers release knows the ``muse_glimmer`` architecture.
 

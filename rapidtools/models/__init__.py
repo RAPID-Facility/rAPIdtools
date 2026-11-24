@@ -50,7 +50,7 @@ and local Hugging Face checkpoints (:class:`Gemma4Inference`,
 
 The wrapper classes are imported lazily (they pull in PyTorch and
 Transformers); the provider registry :data:`PROVIDERS` and the model
-catalogues are always available. Use :func:`load` to build a model from its
+catalogs are always available. Use :func:`load` to build a model from its
 registry key.
 
 Example:
@@ -172,7 +172,7 @@ def load(provider: str, **kwargs: Any) -> BaseInferenceModel:
 
 def catalog(provider: str) -> list[dict[str, str]]:
     """
-    Return the curated model catalogue of a provider (no network).
+    Return the curated model catalog of a provider (no network).
 
     Example:
         >>> from rapidtools.models import catalog

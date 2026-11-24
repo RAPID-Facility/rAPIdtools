@@ -92,7 +92,7 @@ def login(token: str | None = None, dataset_id: str = 'hf_token') -> bool:
         dataset_id: Registry entry holding the fallback token file.
 
     Returns:
-        bool: ``True`` when a token is available afterwards, ``False`` when
+        bool: ``True`` when a token is available afterward, ``False`` when
         every source failed (the failure is logged, never raised).
 
     Example:

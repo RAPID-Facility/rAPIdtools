@@ -100,11 +100,11 @@ from rapidtools.core import (
     BoundingBox,
     ImageAsset,
     Observation,
-    OperationCancelled,
+    OperationCanceled,
     PhysicalAsset,
     PhysicalAssetCollection,
     PolygonRegion,
-    raise_if_cancelled,
+    raise_if_canceled,
 )
 from rapidtools.data_sources import MapillaryClient, MapillaryLabels
 from rapidtools.data_sources.mapillary_client import (
@@ -408,7 +408,7 @@ _OPTION_DEFAULTS: dict[str, Any] = {
     'track_gap_frames': 2,
     'min_path_distance_m': 1.5,
     'object_size_m': 4.5,
-    'merge_pieces_of_neighbours': True,
+    'merge_pieces_of_neighbors': True,
     'close_range_m': 20.0,
     'min_sighting_deg': 6.0,
     'report_single_views': False,
@@ -426,11 +426,11 @@ class MapillaryFeatureExtractor:
     detected object stands from the camera pose and the detection's position
     in the frame, and merges repeated sightings into one asset per object.
     Objects seen from two or more camera positions are triangulated;
-    single sightings fall back to the one-view estimate and are labelled as
+    single sightings fall back to the one-view estimate and are labeled as
     such.
 
     Detections of the collection vehicle itself recur at the same place in
-    every frame of a sequence and are removed before localisation.
+    every frame of a sequence and are removed before localization.
 
     Classes outside the Mapillary vocabulary can be detected with SAM 3 on
     downsampled thumbnails when ``detection_source`` allows it; the default
@@ -472,7 +472,7 @@ class MapillaryFeatureExtractor:
             streets they were seen (see
             :mod:`~rapidtools.processing.street_fusion`). ``'points'``
             labels the survey's own structure-from-motion point cloud with
-            the outlines and reads structures off the labelled points as
+            the outlines and reads structures off the labeled points as
             footprint polygons (see
             :mod:`~rapidtools.processing.street_structures`); it needs
             panoramas Mapillary has reconstructed and falls back to
@@ -488,14 +488,14 @@ class MapillaryFeatureExtractor:
             structures a footprint polygon and everything else a point;
             ``'footprint'`` gives every object found by ``'fusion'`` or
             ``'points'`` its footprint polygon; ``'point'`` gives every
-            object a point (a structure's is the footprint centre). The
+            object a point (a structure's is the footprint center). The
             footprint's size is always in the attributes.
         min_observations (int):
             Distinct frames an object must have been seen in; ``3`` is a
-            sound choice for a survey sampled every few metres. Defaults
+            sound choice for a survey sampled every few meters. Defaults
             to 1.
         frame_spacing_m (float):
-            Keep one frame per this many metres along each sequence before
+            Keep one frame per this many meters along each sequence before
             detecting; ``0`` keeps every frame. Defaults to 0.
         camera_height_m (float):
             Camera height above the road, used for single-view ranges.
@@ -510,7 +510,7 @@ class MapillaryFeatureExtractor:
             less of it; the ``depth_source`` attribute then reads
             ``'assumed'``. Defaults to 10.0.
         reid (bool):
-            After localisation, compare the appearance of objects from
+            After localization, compare the appearance of objects from
             different sequences that lie within ``reid_max_distance_m`` and
             merge look-alikes, removing double counts from repeated passes.
             Downloads one thumbnail per compared object and loads
@@ -538,7 +538,7 @@ class MapillaryFeatureExtractor:
     The arguments above cover a first run. The options below are passed as
     keywords in the same way (``MapillaryFeatureExtractor(...,
     occupancy_threshold=0.7)``); none of them is needed to get started, and a
-    misspelt name raises a ``TypeError`` that suggests the closest match.
+    misspelled name raises a ``TypeError`` that suggests the closest match.
 
     **Occupancy fusion** (``'fusion'``, the default method for objects):
 
@@ -581,7 +581,7 @@ class MapillaryFeatureExtractor:
       have been read from it, so memory use is bounded by one batch rather than
       by the size of the survey. Defaults to 200.
     - ``simplify_tolerance`` (*float*): Douglas-Peucker tolerance, in
-      normalised image units, applied to every detection outline before it is
+      normalized image units, applied to every detection outline before it is
       stored (``0.002`` is about four pixels of a 2048-wide image), capped at 1
       % of the outline's longest side so small, distant objects keep their
       detail. Mapillary outlines trace every pixel step of a mask, so this cuts
@@ -597,13 +597,13 @@ class MapillaryFeatureExtractor:
       Defaults to ``'facebook/sam3'``.
     - ``sam3_threshold`` (*float*): SAM 3 detection confidence threshold.
       Defaults to 0.5.
-    - ``sam3_mask_threshold`` (*float*): SAM 3 mask binarisation threshold.
+    - ``sam3_mask_threshold`` (*float*): SAM 3 mask binarization threshold.
       Defaults to 0.5.
     - ``sam3_image_size`` (*str*): Thumbnail size SAM 3 runs on: ``'1024'``
       (default) or ``'2048'``.
     - ``sam3_batch_size`` (*int*): Thumbnails per SAM 3 inference call.
       Defaults to 4.
-    - ``load_in_4bit`` (*bool*): Load SAM 3 with 4-bit quantisation. Defaults
+    - ``load_in_4bit`` (*bool*): Load SAM 3 with 4-bit quantization. Defaults
       to ``True``.
     - ``device`` (*str*): Compute device for SAM 3 (``'auto'``, ``'cuda'``,
       ``'cpu'``).
@@ -637,7 +637,7 @@ class MapillaryFeatureExtractor:
       the farthest single-view range kept as a prior. Defaults to 60.0.
     - ``max_single_view_range_m`` (*float*): A single-view object whose nearest
       sighting is farther than this is not reported; beyond it the ground-
-      contact range is a guess and the track tends to hop between neighbouring
+      contact range is a guess and the track tends to hop between neighboring
       objects. ``0`` keeps them. Defaults to 30.0.
     - ``witness_radius_m`` (*float*): Negative-evidence check: a weak object (a
       single view, or a triangulation never seen closer than 25 m) that same-
@@ -665,9 +665,9 @@ class MapillaryFeatureExtractor:
       spot. Defaults to 1.5.
     - ``object_size_m`` (*float*): Object footprint used by the voting method.
       Defaults to 4.5.
-    - ``merge_pieces_of_neighbours`` (*bool*): After localisation, fold an
-      object whose closest sightings show a better-located neighbour into that
-      neighbour: the second track left by a split outline (a car cut in two by
+    - ``merge_pieces_of_neighbors`` (*bool*): After localization, fold an
+      object whose closest sightings show a better-located neighbor into that
+      neighbor: the second track left by a split outline (a car cut in two by
       a pole, or into a front and a rear) or by the tracker sliding between
       vehicles lined up along the line of sight. Such pairs share frames, which
       the position merge takes as proof of two objects, so they are judged on
@@ -680,7 +680,7 @@ class MapillaryFeatureExtractor:
       so an object never seen this close whose closest rays point at a vehicle
       within 15 m already placed from the close pass is a far sighting of that
       vehicle, and is dropped unless it is well triangulated regardless
-      (parallax of 45 degrees or more and uncertainty of half a metre or less).
+      (parallax of 45 degrees or more and uncertainty of half a meter or less).
       One whose rays point elsewhere, a car set back in a driveway or down a
       side street, stays. The piece merge judges sightings by the same range.
       ``0`` keeps every object. Defaults to 20.
@@ -699,7 +699,7 @@ class MapillaryFeatureExtractor:
       counting, and the passing frames carry the widest parallax and the
       largest outlines; the frames looking ahead or behind down the road cannot
       place anything and are where tracks slide between vehicles that line up.
-      Those sightings are attached afterwards to the objects their rays point
+      Those sightings are attached afterward to the objects their rays point
       at, so records and crops stay complete, but never create an object. Off
       (``0``) by default: the track classification is tuned on tracks that
       include the approach and a pass alone trips it, losing real vehicles on
@@ -806,7 +806,7 @@ class MapillaryFeatureExtractor:
         if o['min_area_fraction'] is not None:
             warnings.warn(
                 'min_area_fraction is deprecated: object size is now judged in '
-                'metres once the distance is known (min_object_width_m). The '
+                'meters once the distance is known (min_object_width_m). The '
                 'value is still applied as a pixel floor.',
                 DeprecationWarning,
                 stacklevel=2,
@@ -839,7 +839,7 @@ class MapillaryFeatureExtractor:
         self.track_gap_frames = o['track_gap_frames']
         self.min_path_distance_m = o['min_path_distance_m']
         self.object_size_m = o['object_size_m']
-        self.merge_pieces_of_neighbours = o['merge_pieces_of_neighbours']
+        self.merge_pieces_of_neighbors = o['merge_pieces_of_neighbors']
         self.close_range_m = float(o['close_range_m'])
         self.min_sighting_deg = float(o['min_sighting_deg'])
         self.report_single_views = o['report_single_views']
@@ -929,7 +929,7 @@ class MapillaryFeatureExtractor:
         )
 
     def _method_for(self, obs_list: list[Observation]) -> str:
-        """The localisation method one class's sightings are placed with."""
+        """The localization method one class's sightings are placed with."""
         if self.localization_method != 'auto':
             return self.localization_method
         labels = {o.label for o in obs_list}
@@ -1005,7 +1005,7 @@ class MapillaryFeatureExtractor:
             filter_rapid_only=self.filter_rapid_only,
             max_workers=self.max_workers,
         )
-        raise_if_cancelled(self.cancel_event, 'street-level detection')
+        raise_if_canceled(self.cancel_event, 'street-level detection')
         inside = []
         for image in listed:
             pose = _camera_pose(image.properties)
@@ -1066,7 +1066,7 @@ class MapillaryFeatureExtractor:
         n_frames = 0
         batches = range(0, len(ids), self.frame_batch_size)
         for start in tqdm(batches, desc='Frame batches', disable=len(batches) < 2):
-            raise_if_cancelled(self.cancel_event, 'street-level detection')
+            raise_if_canceled(self.cancel_event, 'street-level detection')
             rich = self.client.fetch_images_by_ids(
                 ids[start : start + self.frame_batch_size],
                 fields=fields,
@@ -1154,7 +1154,7 @@ class MapillaryFeatureExtractor:
     ) -> Observation:
         if source == 'mapillary' and self.simplify_tolerance > 0:
             # Cap the tolerance at a share of the outline's size so small,
-            # distant objects keep the detail their localisation needs:
+            # distant objects keep the detail their localization needs:
             xs = [x for x, _ in polygon]
             ys = [y for _, y in polygon]
             extent = max(max(xs) - min(xs), max(ys) - min(ys))
@@ -1212,7 +1212,7 @@ class MapillaryFeatureExtractor:
                 desc='Mapillary detections',
                 disable=len(frames) <= self.frame_batch_size,
             ):
-                raise_if_cancelled(self.cancel_event, 'street-level detection')
+                raise_if_canceled(self.cancel_event, 'street-level detection')
                 frame, data = future.result()
                 for item in data:
                     label = item.get('value')
@@ -1270,7 +1270,7 @@ class MapillaryFeatureExtractor:
         result: dict[str, list[Observation]] = defaultdict(list)
         for cls in classes:
             for start in range(0, len(ready), self.sam3_batch_size):
-                raise_if_cancelled(self.cancel_event, 'SAM 3 street-level detection')
+                raise_if_canceled(self.cancel_event, 'SAM 3 street-level detection')
                 batch = ready[start : start + self.sam3_batch_size]
                 output = model.run_inference(
                     [str(p) for _, p in batch],
@@ -1289,7 +1289,7 @@ class MapillaryFeatureExtractor:
 
     @staticmethod
     def _masks_to_polygons(masks) -> list[list[tuple[float, float]]]:
-        """Normalised bounding polygons of an ``(n, H, W)`` mask stack."""
+        """Normalized bounding polygons of an ``(n, H, W)`` mask stack."""
         if masks is None:
             return []
         arr = np.asarray(masks)
@@ -1313,7 +1313,7 @@ class MapillaryFeatureExtractor:
         """Point assets from Mapillary's pre-triangulated map features."""
         assets: list[PhysicalAsset] = []
         for cls, values in classes.items():
-            raise_if_cancelled(self.cancel_event, 'street-level detection')
+            raise_if_canceled(self.cancel_event, 'street-level detection')
             features = self.client.fetch_map_features(
                 bbox, values, start_date=self.start_date, end_date=self.end_date
             )
@@ -1361,7 +1361,7 @@ class MapillaryFeatureExtractor:
         counter: int,
         camera_frames: Sequence[CameraFrame] | None = None,
     ) -> tuple[list[PhysicalAsset], int]:
-        """Filter, localise and group one class's sightings into assets."""
+        """Filter, localize and group one class's sightings into assets."""
         if self.ego_filter:
             ego = estimate_ego_mask(obs_list, min_recurrence=self.ego_min_recurrence)
             if ego:
@@ -1406,7 +1406,7 @@ class MapillaryFeatureExtractor:
     def _describe(
         self, cls: str, members: list[Observation], index: int
     ) -> tuple[str, dict[str, Any]]:
-        """Asset ID and the attributes every localisation method writes."""
+        """Asset ID and the attributes every localization method writes."""
         confidences = [o.confidence for o in members if o.confidence is not None]
         dates = sorted(o.captured_at for o in members if o.captured_at)
         ranges = [o.range_m for o in members if o.range_m is not None]
@@ -1562,7 +1562,7 @@ class MapillaryFeatureExtractor:
             min_object_width_m=self.min_object_width_m,
             object_height_m=self.object_height_m,
             object_size_m=self.object_size_m,
-            merge_pieces_of_neighbours=self.merge_pieces_of_neighbours,
+            merge_pieces_of_neighbors=self.merge_pieces_of_neighbors,
             close_range_m=self.close_range_m,
             min_sighting_deg=self.min_sighting_deg,
             report_single_views=self.report_single_views,
@@ -1572,10 +1572,10 @@ class MapillaryFeatureExtractor:
             f"'{cls}': {counts['with_bearing']} sightings with a bearing, "
             f'{counts.get("duplicates", 0)} duplicate outlines dropped, '
             f'{counts.get("approach", 0)} looking down the road set aside '
-            f'({counts.get("attached", 0)} attached afterwards), '
+            f'({counts.get("attached", 0)} attached afterward), '
             f'{counts["tracks"]} tracks, {counts["moving"]} moving dropped, '
             f'{counts["fragment"]} too small dropped, {counts["on_path"]} on the '
-            f'driven path dropped, {counts.get("pieces", 0)} pieces of a neighbour '
+            f'driven path dropped, {counts.get("pieces", 0)} pieces of a neighbor '
             f'folded in, {counts.get("far_only", 0)} never seen up close dropped, '
             f'{counts.get("far_single_view", 0) + counts.get("single_view", 0)} '
             f'single views dropped, {counts.get("indiscernible", 0)} never seen '
@@ -1818,7 +1818,7 @@ class MapillaryObjectImageExtractor:
             angular width) or ``'closest'`` (by ground range). The widest
             views show the most of the object and are what a verifying
             model should judge; the closest can be an end-on sliver or a
-            bumper at 3 m, and on a labelled block they let a bush through
+            bumper at 3 m, and on a labeled block they let a bush through
             the verifier as a car where the widest views let nothing
             through.
         image_size (str):
@@ -1845,7 +1845,7 @@ class MapillaryObjectImageExtractor:
             Stroke width in pixels or percent of the shorter crop side.
             Defaults to ``6``.
         outline_color (str | tuple[int, int, int]):
-            PIL colour of the outline. Defaults to ``'red'``.
+            PIL color of the outline. Defaults to ``'red'``.
         image_prefix (str):
             Prefix of the crop filenames and image IDs. Defaults to
             ``'street'``.
@@ -1995,7 +1995,7 @@ class MapillaryObjectImageExtractor:
 
         Returns the crop, the detection polygon in crop pixel coordinates,
         the crop box in source pixels (after any seam roll) and the
-        approximate metres per pixel at the object's range.
+        approximate meters per pixel at the object's range.
         """
         width, height = image.size
         polygon = list(obs.polygon)
@@ -2018,7 +2018,7 @@ class MapillaryObjectImageExtractor:
         )
         left, right = left - margin, right + margin
         top, bottom = top - margin, bottom + margin
-        # Grow to the minimum size, centred on the detection:
+        # Grow to the minimum size, centered on the detection:
         for lo, hi, size, setter in (
             (left, right, width, 'x'),
             (top, bottom, height, 'y'),
@@ -2054,7 +2054,7 @@ class MapillaryObjectImageExtractor:
         Returns the crops keyed by ``(asset id, image id)``; the image is
         released when this returns.
         """
-        raise_if_cancelled(self.cancel_event, 'street-level image extraction')
+        raise_if_canceled(self.cancel_event, 'street-level image extraction')
         image = self._source_image(image_id)
         if image is None:
             return {}
@@ -2171,10 +2171,10 @@ class MapillaryObjectImageExtractor:
                     try:
                         crops.update(future.result())
                     except Exception as exc:
-                        if isinstance(exc, OperationCancelled):
+                        if isinstance(exc, OperationCanceled):
                             raise
                         logger.error(f'Failed to crop image {image_id}: {exc}')
-            except OperationCancelled:
+            except OperationCanceled:
                 for future in futures:
                     future.cancel()
                 raise

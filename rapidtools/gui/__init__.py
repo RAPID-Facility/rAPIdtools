@@ -73,10 +73,19 @@ from .workflow import (
     RegionImagerySettings,
     StreetDetectionResult,
     StreetDetectionSettings,
-    WorkflowCancelled,
+    WorkflowCanceled,
     list_available_models,
     parse_asset_list,
 )
+
+
+def __getattr__(attr: str):
+    """Keep ``WorkflowCancelled``, the pre-0.3.0 spelling, importable."""
+    from rapidtools.core.cancellation import renamed_attribute
+
+    from .workflow import RENAMED
+
+    return renamed_attribute(__name__, attr, RENAMED, globals())
 
 
 def launch_asset_analysis_app(**kwargs) -> None:
@@ -126,7 +135,7 @@ __all__ = [
     'RubricEntry',
     'StreetDetectionResult',
     'StreetDetectionSettings',
-    'WorkflowCancelled',
+    'WorkflowCanceled',
     'assemble_prompt',
     'launch_asset_analysis_app',
     'list_available_models',

@@ -23,9 +23,9 @@ Core objects
    BoundingBox
    PolygonRegion
    Observation
-   OperationCancelled
-   is_cancelled
-   raise_if_cancelled
+   OperationCanceled
+   is_canceled
+   raise_if_canceled
 
 Pipeline and analysis
 ---------------------
@@ -75,7 +75,7 @@ Detection, segmentation and regularization
    RoadwayRegularizer
    vectorize.mask_to_wgs84_polygons
 
-Street-level localisation
+Street-level localization
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 How sightings in street-level images become positioned objects: the camera

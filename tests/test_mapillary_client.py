@@ -658,7 +658,7 @@ def test_parse_segmentation_multipolygon(pano_asset):
     mask, _ = MapillaryClient._parse_mapillary_segmentation(pano_asset)
     assert mask[28, 4] == 1  # bottom-left part (after y flip)
     assert mask[2, 60] == 1  # top-right part
-    assert mask[16, 32] == 0  # centre untouched
+    assert mask[16, 32] == 0  # center untouched
 
 
 def test_parse_segmentation_skips_missing_and_bad_geometry(pano_asset, caplog):
@@ -1104,8 +1104,8 @@ def test_fetch_detections_handles_failures(client, requests_mock, no_sleep):
     assert client.fetch_detections('2') == []
 
 
-def test_decode_detection_polygons_normalises_and_flips():
-    """Tile coordinates map to [0, 1] with y growing downwards."""
+def test_decode_detection_polygons_normalizes_and_flips():
+    """Tile coordinates map to [0, 1] with y growing downward."""
     b64 = _b64_polygon('POLYGON((0 0, 4096 0, 4096 2048, 0 2048, 0 0))')
     rings = MapillaryClient.decode_detection_polygons(b64)
     assert len(rings) == 1
@@ -1167,7 +1167,7 @@ def test_fetch_sequence_lines_filters_and_flips(client, requests_mock):
     )
     data = client.fetch_sequence_lines(10, 178, 365)
     assert data['extent'] == 4096 and data['count'] == 4
-    assert data['lines'][0] == [0, 0, 100, 96, 200, 196]  # y flipped to grow downwards
+    assert data['lines'][0] == [0, 0, 100, 96, 200, 196]  # y flipped to grow downward
     assert data['lines'][1] == [0, 4096, 1, 4095]
     assert (data['first'], data['last']) == ('2025-10-09', '2025-10-10')
     everyone = client.fetch_sequence_lines(10, 178, 365, filter_rapid_only=False)
@@ -1491,4 +1491,4 @@ def test_parse_segmentation_skips_undecodable_tiles(pano_asset, monkeypatch):
     }
     monkeypatch.setattr(module.mapbox_vector_tile, 'decode', lambda raw: {})
     mask, seg_map = MapillaryClient._parse_mapillary_segmentation(pano_asset)
-    assert not mask.any()  # the label is registered, nothing is rasterised
+    assert not mask.any()  # the label is registered, nothing is rasterized

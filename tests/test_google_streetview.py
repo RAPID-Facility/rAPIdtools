@@ -332,9 +332,9 @@ def test_view_angles_and_crop_geometry():
 
     crop, (start, end) = client.crop_to_geometry(image, pano, square)
     assert start < 90 < end and end - start >= 30
-    # Column at the crop centre must correspond to ~90 degrees -> x = 540:
-    centre_red = crop.getpixel((crop.size[0] // 2, 0))[0]
-    assert abs(centre_red - 540 // 3) <= 3
+    # Column at the crop center must correspond to ~90 degrees -> x = 540:
+    center_red = crop.getpixel((crop.size[0] // 2, 0))[0]
+    assert abs(center_red - 540 // 3) <= 3
     assert crop.size[1] == 360
 
     # Minimum FOV kicks in for tiny geometries:

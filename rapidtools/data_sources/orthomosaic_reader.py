@@ -314,7 +314,7 @@ class OrthomosaicReader:
         # otherwise dominate the percentiles and leave every patch dark.
         thumbnail = self._dataset.read(out_shape=out_shape)[:3]
 
-        # Validity comes from the dataset mask, which honours nodata values
+        # Validity comes from the dataset mask, which honors nodata values
         # (including NaN, which never compares equal to itself), alpha bands
         # and internal masks alike:
         valid_mask = (
@@ -564,7 +564,7 @@ class OrthomosaicReader:
         )
         if image_array.size == 0:
             return None
-        # Validity comes from the dataset mask, which honours nodata values,
+        # Validity comes from the dataset mask, which honors nodata values,
         # alpha bands and internal masks alike (rotated orthomosaics often mark
         # their empty corners only through an alpha band):
         valid_mask = (

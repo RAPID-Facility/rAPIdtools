@@ -11,7 +11,7 @@ from rapidtools.gui.workflow import (
     AssetAnalysisWorkflow,
     DetectionSettings,
     InferenceSettings,
-    WorkflowCancelled,
+    WorkflowCanceled,
     parse_asset_list,
     slugify,
 )
@@ -232,7 +232,7 @@ def test_inference_settings_outline_options(tmp_path):
         {'outline_width': '3 m'},
         {'outline_width': 0},
         {'outline_color': ''},
-        {'outline_color': 'no-such-colour'},
+        {'outline_color': 'no-such-color'},
     ):
         with pytest.raises(ValueError):
             InferenceSettings(**base, **bad)
@@ -332,13 +332,13 @@ def test_cancel_between_stages(patched, raster, tmp_path):
     wf = AssetAnalysisWorkflow()
     original_call = FakeSAM3.__call__
 
-    def cancelling_call(self, raster_path):
+    def canceling_call(self, raster_path):
         wf.cancel()
         return original_call(self, raster_path)
 
-    FakeSAM3.__call__ = cancelling_call
+    FakeSAM3.__call__ = canceling_call
     try:
-        with pytest.raises(WorkflowCancelled):
+        with pytest.raises(WorkflowCanceled):
             wf.detect(
                 DetectionSettings(
                     raster_path=raster,
@@ -558,24 +558,22 @@ def test_hf_model_listing_merges_hub(monkeypatch):
     assert listed[-1] == 'org/new-vlm'
 
 
-def test_analyze_cancelled_keeps_partial_results(
-    patched, raster, tmp_path, monkeypatch
-):
-    from rapidtools.core import OperationCancelled
+def test_analyze_canceled_keeps_partial_results(patched, raster, tmp_path, monkeypatch):
+    from rapidtools.core import OperationCanceled
 
     wf = AssetAnalysisWorkflow()
 
-    class CancellingAnalyzer(FakeAnalyzer):
+    class CancelingAnalyzer(FakeAnalyzer):
         def __call__(self, collection):
             first = next(iter(collection))
             first.add_attributes({'damage_level': 'Major'})
-            raise OperationCancelled('stop')
+            raise OperationCanceled('stop')
 
     import rapidtools.processing as processing_module
 
-    monkeypatch.setattr(processing_module, 'AssetAnalyzer', CancellingAnalyzer)
+    monkeypatch.setattr(processing_module, 'AssetAnalyzer', CancelingAnalyzer)
     collection = _collection('building', 3)
-    with pytest.raises(WorkflowCancelled):
+    with pytest.raises(WorkflowCanceled):
         wf.analyze(
             collection,
             InferenceSettings(
@@ -591,17 +589,17 @@ def test_analyze_cancelled_keeps_partial_results(
     assert sum('damage_level' in f['properties'] for f in features) == 1
 
 
-def test_detect_cancelled_inside_component(patched, raster, tmp_path):
-    from rapidtools.core import OperationCancelled
+def test_detect_canceled_inside_component(patched, raster, tmp_path):
+    from rapidtools.core import OperationCanceled
 
-    class CancellingSAM(FakeSAM3):
+    class CancelingSAM(FakeSAM3):
         def __call__(self, raster_path):
-            raise OperationCancelled('tile loop stopped')
+            raise OperationCanceled('tile loop stopped')
 
     import rapidtools
 
-    rapidtools.SAM3OrthoFeatureExtractor = CancellingSAM
-    with pytest.raises(WorkflowCancelled):
+    rapidtools.SAM3OrthoFeatureExtractor = CancelingSAM
+    with pytest.raises(WorkflowCanceled):
         AssetAnalysisWorkflow().detect(
             DetectionSettings(
                 raster_path=raster,
@@ -1160,7 +1158,7 @@ def test_discover_street_uses_raster_extent(patched_sources, raster, tmp_path):
         )
 
 
-def test_discover_street_empty_and_cancelled(patched_sources, raster, tmp_path):
+def test_discover_street_empty_and_canceled(patched_sources, raster, tmp_path):
     from rapidtools.gui.workflow import StreetDetectionSettings
 
     messages = []
@@ -1177,14 +1175,14 @@ def test_discover_street_empty_and_cancelled(patched_sources, raster, tmp_path):
     assert len(result.collection) == 0 and result.geojson_path is None
     assert messages[-1].endswith('no objects were found.')
 
-    class Cancelling(FakeStreetDetector):
+    class Canceling(FakeStreetDetector):
         def __call__(self, source=None):
-            raise rapidtools.OperationCancelled('stop')
+            raise rapidtools.OperationCanceled('stop')
 
     import rapidtools as rt
 
-    rt.MapillaryFeatureExtractor = Cancelling
-    with pytest.raises(WorkflowCancelled):
+    rt.MapillaryFeatureExtractor = Canceling
+    with pytest.raises(WorkflowCanceled):
         wf.discover_street(
             StreetDetectionSettings(
                 output_dir=tmp_path / 'out',

@@ -25,7 +25,7 @@ work for you.
 
 Output is plain text, GeoJSON, Shapefile and other standard formats that can
 be read by screen readers and consumed by any downstream tool. If you find a
-message or progress display that relies on colour or layout alone, please
+message or progress display that relies on color or layout alone, please
 report it.
 
 ### Documentation
@@ -33,7 +33,7 @@ report it.
 The documentation site supports the following:
 
 - Keyboard navigation of the sidebar, page contents and search box.
-- Light and dark colour themes, selectable from the toolbar.
+- Light and dark color themes, selectable from the toolbar.
 - Text that reflows and can be resized with the browser's zoom controls.
 - Headings in a logical order and a skip-to-content link, provided by the
   theme.
@@ -41,7 +41,7 @@ The documentation site supports the following:
 Known limitations:
 
 - Some figures in the examples are screenshots or rendered maps whose
-  alternative text summarises rather than fully describes the image.
+  alternative text summarizes rather than fully describes the image.
 - Code samples are presented in a scrolling block; long lines may require
   horizontal scrolling.
 
@@ -58,11 +58,11 @@ Web Content Accessibility Guidelines (WCAG) 2.2. What we know today:
   content is not exposed to screen readers, and the detections they display
   are only available visually. The same information is available as a
   downloadable GeoJSON file.
-- Several controls use fixed, small font sizes, and not every colour pairing
+- Several controls use fixed, small font sizes, and not every color pairing
   has been checked for sufficient contrast.
 - Not every control has an explicit accessible name or role for assistive
   technology, and keyboard focus is not always clearly visible.
-- Animations do not yet honour the operating system's "reduce motion" setting.
+- Animations do not yet honor the operating system's "reduce motion" setting.
 
 We consider the GUI the part of the project most in need of improvement and
 plan to address the items above in future releases.
@@ -99,5 +99,5 @@ alternative text for figures, accessible names and keyboard handling for GUI
 controls, contrast fixes, and a text or table alternative to the canvas-based
 map view.
 
-This statement was last reviewed on 3 October 2026 and will be updated as the
+This statement was last reviewed on October 3, 2026 and will be updated as the
 project changes.

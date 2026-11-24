@@ -43,7 +43,7 @@ import threading
 import pytest
 from shapely.geometry import Point
 
-from rapidtools.core import OperationCancelled, PhysicalAsset, PhysicalAssetCollection
+from rapidtools.core import OperationCanceled, PhysicalAsset, PhysicalAssetCollection
 from rapidtools.processing import Pipeline
 
 # ==========================================
@@ -112,7 +112,7 @@ class CustomThing:
         return collection
 
 
-class CancellingExtractor:
+class CancelingExtractor:
     """Step that sets the shared cancel event while it runs."""
 
     def __init__(self, event):
@@ -207,7 +207,7 @@ def test_sort_steps_direct():
 
 
 def test_plain_function_step_runs_last(collection):
-    """A bare function (no recognisable class name) is treated as a custom step."""
+    """A bare function (no recognizable class name) is treated as a custom step."""
     rec = _Recorder()
 
     def my_func(col):
@@ -271,25 +271,25 @@ def test_run_logs_step_names(collection, caplog):
 # ==========================================
 
 
-def test_run_cancelled_before_start(collection):
+def test_run_canceled_before_start(collection):
     """A pre-set cancel event aborts before the first step runs."""
     rec = _Recorder()
     event = threading.Event()
     event.set()
     pipeline = Pipeline([DummyExtractor(rec)], cancel_event=event)
-    with pytest.raises(OperationCancelled, match='DummyExtractor'):
+    with pytest.raises(OperationCanceled, match='DummyExtractor'):
         pipeline.run(collection)
     assert rec.calls == []
 
 
-def test_run_cancelled_between_steps(collection):
-    """Cancellation raised by a step is honoured before the next step."""
+def test_run_canceled_between_steps(collection):
+    """Cancellation raised by a step is honored before the next step."""
     rec = _Recorder()
     event = threading.Event()
     pipeline = Pipeline(
-        [DummyPredictor(rec), CancellingExtractor(event)], cancel_event=event
+        [DummyPredictor(rec), CancelingExtractor(event)], cancel_event=event
     )
-    with pytest.raises(OperationCancelled):
+    with pytest.raises(OperationCanceled):
         pipeline.run(collection)
     # The extractor ran (and set the event); the predictor never did.
     assert rec.calls == []

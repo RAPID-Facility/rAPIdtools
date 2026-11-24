@@ -41,7 +41,7 @@ import rapidtools as rt
 from rapidtools.models import GenerationConfig, load
 
 # --------------------------------------------------------------- Configuration
-# A neighbourhood of Spokane, WA, inside the UW RAPID street-level survey:
+# A neighborhood of Spokane, WA, inside the UW RAPID street-level survey:
 # about 1 km across. Expect roughly 20 minutes end to end and 1.5 GB of RAM:
 # a few minutes to read the detections, then about ten to download the two
 # thousand images the vehicle crops are cut from. Around 1,300 vehicles
@@ -49,7 +49,7 @@ from rapidtools.models import GenerationConfig, load
 REGION = rt.BoundingBox(min_x=-117.72, min_y=47.47, max_x=-117.02, max_y=47.90)
 # The whole survey is the box below: 116,000 frames after thinning, which
 # takes about 75 minutes just to read the detections (one Graph API request
-# per frame). Use it once the neighbourhood run looks right.
+# per frame). Use it once the neighborhood run looks right.
 #   REGION = rt.BoundingBox(
 #       min_x=-117.535812, min_y=47.688456, max_x=-117.442589, max_y=47.737830
 #   )
@@ -117,7 +117,7 @@ cropper = rt.MapillaryObjectImageExtractor(
     max_images_per_asset=2,
     # The two widest views (the default), not the two closest: a close view
     # can be an end-on sliver or a bumper, and the verifier judged a bush a
-    # car from one. On a labelled block the widest views let it reject every
+    # car from one. On a labeled block the widest views let it reject every
     # piece of junk and keep every vehicle.
     view_selection='widest',
     image_size='2048',  # each panorama is downloaded once, cropped and released
@@ -146,7 +146,7 @@ if VERIFY_DETECTIONS and api_key:
             max_images_per_asset=2,  # the two widest crops
             min_confidence=0.5,
             # Objects the model says are mostly hidden are discarded. A car
-            # in a garage shows only its nose and is reported as about 40 %
+            # in a garage shows only its nose and is reported as about 40%
             # visible, so the cut sits below that; a car behind a hedge with
             # a quarter showing still goes.
             min_visible_fraction=0.3,

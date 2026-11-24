@@ -2004,7 +2004,7 @@ class PhysicalAssetCollection:
 
         if missing:
             # One line however many assets lack the key: a collection that
-            # was only partly analysed is the normal case, not a problem.
+            # was only partly analyzed is the normal case, not a problem.
             preview = ', '.join(missing[:3]) + (', ...' if len(missing) > 3 else '')
             logger.warning(
                 f'Missing attribute: {len(missing)} of {len(self._data)} assets have '

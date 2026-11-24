@@ -63,7 +63,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from rapidtools.core import OperationCancelled
+from rapidtools.core import OperationCanceled
 
 from .schema import Job, JobError, Secrets, StepSpec, is_secret_ref, is_step_ref
 
@@ -357,7 +357,7 @@ class StepContext:
         summary (dict[str, Any]): Small JSON facts about the run (counts).
         data (Any): A JSON result that is not a file.
         objects (dict[str, Any]): In-memory results for callers in the same
-            process (collections, workflow result objects). Never serialised.
+            process (collections, workflow result objects). Never serialized.
     """
 
     job: Job
@@ -940,8 +940,7 @@ register_step(
             Param(
                 'overlap_ratio',
                 'number',
-                'Overlap between neighbouring patches, as a fraction of the '
-                'patch size.',
+                'Overlap between neighboring patches, as a fraction of the patch size.',
                 default=0.25,
                 minimum=0,
             ),
@@ -1171,11 +1170,11 @@ def _run_analyze(ctx: StepContext) -> None:
             raise ValueError(f'{source.empty_hint}; skipping inference.')
         raise ValueError('The asset collection is empty; nothing to analyze.')
     # Attributes are written in place, so this is also the partial result
-    # when the run is cancelled.
+    # when the run is canceled.
     ctx.objects['assets'] = collection
     try:
         result = ctx.workflow.analyze(collection, ctx.settings)
-    except OperationCancelled:
+    except OperationCanceled:
         partial = ctx.output_dir / 'assets_inferred_partial.geojson'
         if partial.is_file():
             ctx.outputs['partial_assets'] = partial
@@ -1313,7 +1312,7 @@ register_step(
             Param(
                 'outline_color',
                 'string',
-                'Outline colour: a name or a hex code ("#00ffff").',
+                'Outline color: a name or a hex code ("#00ffff").',
                 default='red',
             ),
             Param(
@@ -1436,7 +1435,7 @@ register_step(
             Output(
                 'partial_assets',
                 'geojson',
-                'Written only when the step is cancelled: the assets analyzed '
+                'Written only when the step is canceled: the assets analyzed '
                 'so far (assets_inferred_partial.geojson).',
             ),
         ),

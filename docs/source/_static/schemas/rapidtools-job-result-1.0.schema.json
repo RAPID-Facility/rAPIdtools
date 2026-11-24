@@ -40,7 +40,7 @@
         "running",
         "done",
         "error",
-        "cancelled"
+        "canceled"
       ]
     },
     "message": {
@@ -94,7 +94,7 @@
               "running",
               "done",
               "error",
-              "cancelled",
+              "canceled",
               "skipped"
             ]
           },

@@ -2,7 +2,7 @@ Drone imagery
 =============
 
 A drone flight photographs every building dozens of times: from above, from
-each side, half out of frame, behind a neighbour. An orthomosaic keeps only
+each side, half out of frame, behind a neighbor. An orthomosaic keeps only
 the roofs. The perspective photos themselves keep the walls, the windows and
 the debris against them, and rAPIdtools turns them into a compact multi-view
 record of every asset: the few photos that *together* show the most of it.
@@ -66,17 +66,17 @@ Each footprint is extruded to a box and its surface is sampled into patches:
 rows of wall patches along every edge, and a grid of roof patches. For every
 photo, each patch gets a quality between 0 and 1: zero when it is outside the
 frame, faces away from the camera, or is hidden behind the building itself or
-a neighbour (rays are cast against the extruded footprints around it);
+a neighbor (rays are cast against the extruded footprints around it);
 otherwise how squarely and how sharply the photo shows it.
 
-The view set is the one that maximises the sum, over all patches, of the best
+The view set is the one that maximizes the sum, over all patches, of the best
 quality any chosen photo gives each patch. The first photo picked is the one
 that shows the most on its own, usually an oblique over a corner with the
 roof and two walls. Every further photo is the one that adds the most to
 what is already covered, so a second frame from nearly the same spot gains
 nothing and is never chosen, while the photo from the far side is. Selection
 stops at ``max_views`` or when the best remaining photo would add less than
-``min_gain`` (3 %) of the surface. This greedy rule is provably within 63 %
+``min_gain`` (3%) of the surface. This greedy rule is provably within 63%
 of the best possible set and in practice within a few percent.
 
 The knobs that matter:
@@ -91,23 +91,23 @@ The knobs that matter:
      - Size of the view set.
    * - ``roof_weight``
      - Importance of roof area against wall area: ``0`` selects for
-       facades only, values above ``1`` favour views of the roof.
+       facades only, values above ``1`` favor views of the roof.
    * - ``default_height_m``, ``height_attribute``
-     - Height of the boxes. A ``height`` or storey-count attribute on the
+     - Height of the boxes. A ``height`` or story-count attribute on the
        asset is used when present.
    * - ``ground_elevation``
      - Ground level under the assets: a number, the name of an asset
        attribute, or a function ``(lon, lat) -> elevation`` such as a DEM
-       lookup. On sloping terrain this matters: ten metres of height error
-       moves a building ten metres in a 45-degree view.
+       lookup. On sloping terrain this matters: ten meters of height error
+       moves a building ten meters in a 45-degree view.
    * - ``target_px_per_m``
      - Resolution at which a surface counts as fully resolved.
    * - ``obstacles``
-     - Footprints of things that block the view without being analysed,
+     - Footprints of things that block the view without being analyzed,
        such as large trees or buildings outside the collection.
    * - ``position_error_m``, ``angle_error_deg``
      - Expected pose error. Crops grow by the shift such an error causes,
-       so a pose a few metres off still frames the asset.
+       so a pose a few meters off still frames the asset.
    * - ``max_crop_px``
      - Scale large crops down before saving. A model spends time and
        memory per pixel; 640 is plenty for one building.
@@ -143,7 +143,7 @@ call :class:`~rapidtools.processing.DroneViewSelector` directly:
 Imperfect poses
 ---------------
 
-Consumer GPS is good to a few metres and a compass to a degree or two. In a
+Consumer GPS is good to a few meters and a compass to a degree or two. In a
 45-degree view from 70 m that moves a house by about a third of its own size
 in the photo: the choice of photos barely changes, but the crop and the mark
 drift off the building. Two things deal with it.
@@ -157,8 +157,8 @@ is weak (few standing structures in view) or the gain is small keep the
 recorded pose; the shift applied is stored on each crop as
 ``pose_shift_px``. On the simulated Altadena flight with 3 m and 2 degrees
 of noise added to the poses, the default margin kept the whole building in
-88 % of the crops (98 % with the margin set to the true error), and
-refinement cut the median offset of the mark from 28 % to 15 % of the
+88% of the crops (98% with the margin set to the true error), and
+refinement cut the median offset of the mark from 28% to 15% of the
 building's size. With exact poses it leaves nearly every photo alone, so it
 is safe to keep on, but it is not needed with RTK positioning.
 
@@ -174,9 +174,9 @@ Limits
 ------
 
 - Buildings are boxes with flat roofs. Pitched roofs, overhangs and
-  courtyards are not modelled, so qualities are estimates, not measurements.
+  courtyards are not modeled, so qualities are estimates, not measurements.
 - Trees hide walls and are only accounted for when passed as ``obstacles``.
-- Poses are taken as recorded. The crop margin absorbs a few metres and a
+- Poses are taken as recorded. The crop margin absorbs a few meters and a
   degree or two; a compass that is tens of degrees off (it happens near
   steel structures) needs ``yaw_offset_deg`` or refined poses through the
   sidecar route.

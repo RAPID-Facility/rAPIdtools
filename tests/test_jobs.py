@@ -13,7 +13,7 @@ from shapely.geometry import box
 
 import rapidtools
 from rapidtools import jobs
-from rapidtools.core import OperationCancelled, PhysicalAsset, PhysicalAssetCollection
+from rapidtools.core import OperationCanceled, PhysicalAsset, PhysicalAssetCollection
 from rapidtools.gui import workflow as workflow_module
 from rapidtools.gui.workflow import (
     DetectionResult,
@@ -65,11 +65,11 @@ class FakeWorkflow:
     def __init__(self, progress_callback=None):
         self.progress_callback = progress_callback
         self.calls = []
-        self.cancelled = False
+        self.canceled = False
         self.n_detected = 2
 
     def cancel(self):
-        self.cancelled = True
+        self.canceled = True
 
     def download_basemap(self, settings):
         self.calls.append(('basemap', settings))
@@ -238,7 +238,7 @@ def test_invalid_job_documents(change, message):
     assert message in str(error.value)
 
 
-def test_job_must_be_an_object_and_refs_point_backwards():
+def test_job_must_be_an_object_and_refs_point_backward():
     with pytest.raises(JobError, match='must be a JSON object'):
         Job.from_dict([])  # type: ignore[arg-type]
     with pytest.raises(JobError, match='Two steps share the id'):
@@ -635,25 +635,25 @@ def test_a_failing_step_skips_the_rest(tmp_path):
 def test_cancellation_keeps_partial_results(tmp_path):
     workflow = FakeWorkflow()
 
-    def cancelled(collection, settings):
+    def canceled(collection, settings):
         next(iter(collection)).add_attributes({'damage': 'major'})
         settings.output_dir.mkdir(parents=True, exist_ok=True)
         (settings.output_dir / 'assets_inferred_partial.geojson').write_text('{}')
-        raise OperationCancelled('stop')
+        raise OperationCanceled('stop')
 
-    workflow.analyze = cancelled
+    workflow.analyze = canceled
     job = _job(tmp_path, [DETECT, ANALYZE])
     result = JobRunner(workflow=workflow).run(job, secrets={'api_key': 'k'})
-    assert result.status == 'cancelled' and result.message == 'Demo cancelled.'
+    assert result.status == 'canceled' and result.message == 'Demo canceled.'
     grade = result.step('grade')
-    assert grade.status == 'cancelled' and grade.error['type'] == 'OperationCancelled'
+    assert grade.status == 'canceled' and grade.error['type'] == 'OperationCanceled'
     assert grade.outputs['partial_assets'].name == 'assets_inferred_partial.geojson'
     assert 'damage' in next(iter(grade.objects['assets'])).attributes
-    with pytest.raises(OperationCancelled):
+    with pytest.raises(OperationCanceled):
         result.raise_for_status()
 
     # Without a partial file there is simply no such output:
-    workflow.analyze = lambda c, s: (_ for _ in ()).throw(OperationCancelled('x'))
+    workflow.analyze = lambda c, s: (_ for _ in ()).throw(OperationCanceled('x'))
     (tmp_path / 'jobs' / 'out' / 'assets_inferred_partial.geojson').unlink()
     result = JobRunner(workflow=workflow).run(job, secrets={'api_key': 'k'})
     assert result.step('grade').outputs == {}
@@ -664,8 +664,8 @@ def test_cancel_between_steps_and_failing_hook(tmp_path):
     runner = JobRunner(workflow=workflow)
     job = _job(tmp_path, [DETECT, ANALYZE])
     result = runner.run(job, {'api_key': 'k'}, on_step=lambda step: runner.cancel())
-    assert workflow.cancelled is True
-    assert [s.status for s in result.steps] == ['done', 'cancelled']
+    assert workflow.canceled is True
+    assert [s.status for s in result.steps] == ['done', 'canceled']
     assert [c[0] for c in workflow.calls] == ['detect']
     # The request does not leak into the next run:
     assert runner.run(job, {'api_key': 'k'}).ok
@@ -853,22 +853,22 @@ def test_result_files_follow_the_result_schema(tmp_path):
     validator.validate(json.loads(job.result_path.read_text()))
 
 
-def test_step_catalogue():
-    catalogue = {entry['type']: entry for entry in jobs.describe_steps()}
-    assert list(catalogue) == list(jobs.STEP_TYPES)
-    analyze = {p['name']: p for p in catalogue['analyze.vlm']['params']}
+def test_step_catalog():
+    catalog = {entry['type']: entry for entry in jobs.describe_steps()}
+    assert list(catalog) == list(jobs.STEP_TYPES)
+    analyze = {p['name']: p for p in catalog['analyze.vlm']['params']}
     assert analyze['prompt']['required'] is True and 'default' not in analyze['prompt']
     assert analyze['api_key']['secret'] is True
     assert analyze['street_vertical_crop']['default'] == [0.0, 1.0]
     assert 'gemini' in analyze['backend']['choices']
     assert analyze['min_footprint_coverage']['maximum'] == 1
-    assert catalogue['detect.aerial']['inputs'][0] == {
+    assert catalog['detect.aerial']['inputs'][0] == {
         'name': 'raster',
         'kind': 'raster',
         'required': True,
         'description': 'The georeferenced orthomosaic that defines the area.',
     }
-    json.dumps(catalogue)  # plain JSON all the way down
+    json.dumps(catalog)  # plain JSON all the way down
 
 
 def test_published_reference_files_are_current():
@@ -949,9 +949,9 @@ def test_cli_run_exit_codes(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(
         Recording,
         'detect',
-        lambda self, s: (_ for _ in ()).throw(OperationCancelled('stop')),
+        lambda self, s: (_ for _ in ()).throw(OperationCanceled('stop')),
     )
-    assert cli.main(['run', str(job.source)]) == cli.EXIT_CANCELLED
+    assert cli.main(['run', str(job.source)]) == cli.EXIT_CANCELED
 
     invalid = _job(tmp_path, [{**DETECT, 'params': {}}])
     assert cli.main(['run', str(invalid.source)]) == cli.EXIT_INVALID
@@ -961,7 +961,7 @@ def test_cli_run_exit_codes(tmp_path, monkeypatch, capsys):
 
 @pytest.mark.skipif(
     sys.platform == 'win32',
-    reason='os.kill(SIGTERM) terminates a Windows process instead of signalling it',
+    reason='os.kill(SIGTERM) terminates a Windows process instead of signaling it',
 )
 def test_cli_cancels_on_signal(tmp_path, monkeypatch, capsys):
     import signal
@@ -969,18 +969,18 @@ def test_cli_cancels_on_signal(tmp_path, monkeypatch, capsys):
     class Interrupted(FakeWorkflow):
         def detect(self, settings):
             os.kill(os.getpid(), signal.SIGTERM)  # the scheduler stops the job
-            if self.cancelled:
-                raise OperationCancelled('stop')
+            if self.canceled:
+                raise OperationCanceled('stop')
             return super().detect(settings)
 
     monkeypatch.setattr(workflow_module, 'AssetAnalysisWorkflow', Interrupted)
     monkeypatch.setattr('rapidtools.config.configure_logging', lambda level: None)
     job = _job(tmp_path, [DETECT])
     before = signal.getsignal(signal.SIGTERM)
-    assert cli.main(['run', str(job.source)]) == cli.EXIT_CANCELLED
+    assert cli.main(['run', str(job.source)]) == cli.EXIT_CANCELED
     assert signal.getsignal(signal.SIGTERM) is before  # handlers are restored
-    assert 'Cancelling' in capsys.readouterr().err
-    assert json.loads(job.result_path.read_text())['status'] == 'cancelled'
+    assert 'Canceling' in capsys.readouterr().err
+    assert json.loads(job.result_path.read_text())['status'] == 'canceled'
 
 
 def test_cli_runs_off_the_main_thread(tmp_path, monkeypatch):

@@ -41,7 +41,7 @@
 Appearance re-identification of street-level object candidates.
 
 When a survey drives the same street twice, one parked car is discovered as
-two candidates a few metres apart, each backed by sightings from a different
+two candidates a few meters apart, each backed by sightings from a different
 capture sequence. Position alone cannot tell such a pair from two cars parked
 nose to tail, but their image crops can: this module embeds the best crop of
 each candidate with a vision backbone (CLIP ViT-B/16 by default) and merges
@@ -51,7 +51,7 @@ Three rules keep the merge conservative. Candidates that share a frame were
 seen at the same instant and are therefore different objects, so they are
 never merged, directly or through a chain. By default candidates from the
 same sequence are not compared either: duplicates within one pass are handled
-upstream by the localisation clustering, and two objects visible to one camera
+upstream by the localization clustering, and two objects visible to one camera
 at once are distinct. And a candidate whose every sighting is narrower than
 :data:`DEFAULT_MIN_WIDTH_PX` on a 2048-pixel thumbnail is not compared at
 all: small crops of different vehicles look alike to the embedder and small
@@ -97,7 +97,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_REID_MODEL = 'openai/clip-vit-base-patch16'
 
 #: Merge threshold that gives about one false merge per hundred comparisons of
-#: neighbouring parked vehicles, per backbone, from a survey of Spokane
+#: neighboring parked vehicles, per backbone, from a survey of Spokane
 #: driveways. Unknown backbones fall back to the CLIP value.
 RECOMMENDED_MIN_SIMILARITY: dict[str, float] = {
     'openai/clip-vit-base-patch16': 0.89,
@@ -120,7 +120,7 @@ def recommended_min_similarity(model_id: str) -> float:
     Backbones place their scores on different scales: CLIP packs both
     matching and non-matching vehicles into a narrow band near 1, DINOv2
     spreads them out. The values are the 99th percentile of the similarity
-    between neighbouring, different, parked vehicles in a street survey.
+    between neighboring, different, parked vehicles in a street survey.
 
     Args:
         model_id: Hugging Face model identifier.
@@ -140,7 +140,7 @@ def recommended_min_similarity(model_id: str) -> float:
 
 
 # ------------------------------------------------------------- embedding
-def normalise_rows(vectors: np.ndarray) -> np.ndarray:
+def normalize_rows(vectors: np.ndarray) -> np.ndarray:
     """
     Scale every row of a 2-D array to unit L2 norm.
 
@@ -154,7 +154,7 @@ def normalise_rows(vectors: np.ndarray) -> np.ndarray:
 
     Example:
         >>> import numpy as np
-        >>> normalise_rows(np.array([[3.0, 4.0], [0.0, 0.0]]))  # doctest: +SKIP
+        >>> normalize_rows(np.array([[3.0, 4.0], [0.0, 0.0]]))  # doctest: +SKIP
         array([[0.6, 0.8],
                [0. , 0. ]], dtype=float32)
     """
@@ -170,7 +170,7 @@ def normalise_rows(vectors: np.ndarray) -> np.ndarray:
 
 class AppearanceEmbedder:
     """
-    L2-normalised image embeddings from a Hugging Face vision backbone.
+    L2-normalized image embeddings from a Hugging Face vision backbone.
 
     The default checkpoint is the image tower of CLIP ViT-B/16, whose
     projected embedding separates "same parked vehicle, second pass" from
@@ -334,7 +334,7 @@ class AppearanceEmbedder:
                 f'Embedding backend returned {vectors.shape[0]} rows for '
                 f'{len(images)} images.'
             )
-        return normalise_rows(vectors)
+        return normalize_rows(vectors)
 
 
 # ------------------------------------------------------------ candidates
@@ -417,7 +417,7 @@ def polygon_width_px(
     Width of a detection outline in pixels of the image it was drawn on.
 
     Args:
-        polygon: Detection outline in normalised image coordinates.
+        polygon: Detection outline in normalized image coordinates.
         image_width: Width in pixels of the image the width is wanted for.
         panorama: Treat a span wider than half the image as an object that
             straddles the seam of an equirectangular panorama.
@@ -500,7 +500,7 @@ def crop_observation(
 
     Args:
         image: Source image (thumbnail or full frame).
-        polygon: Detection outline in normalised image coordinates, ``x``
+        polygon: Detection outline in normalized image coordinates, ``x``
             right and ``y`` down in ``[0, 1]``.
         buffer: Context margin as a fraction of the box size.
 
@@ -606,11 +606,11 @@ def pairs_to_compare(
     pairs: list[tuple[str, str]] = []
     for i, a in enumerate(candidates):
         gx, gy = cells[i]
-        neighbours: list[int] = []
+        neighbors: list[int] = []
         for dx in (-1, 0, 1):
             for dy in (-1, 0, 1):
-                neighbours.extend(j for j in grid.get((gx + dx, gy + dy), ()) if j > i)
-        for j in sorted(neighbours):
+                neighbors.extend(j for j in grid.get((gx + dx, gy + dy), ()) if j > i)
+        for j in sorted(neighbors):
             b = candidates[j]
             if not _comparable(a, b, require_different_sequence):
                 continue
@@ -734,7 +734,7 @@ def merged_position(
     group_positions: Sequence[tuple[float, float]],
 ) -> tuple[float, float]:
     """
-    Mean position of a merged group, averaged in a local metre frame.
+    Mean position of a merged group, averaged in a local meter frame.
 
     Args:
         group_positions: ``(lon, lat)`` pairs of the group members.

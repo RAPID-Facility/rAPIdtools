@@ -438,7 +438,7 @@
             "overlap_ratio": {
               "type": "number",
               "minimum": 0,
-              "description": "Overlap between neighbouring patches, as a fraction of the patch size.",
+              "description": "Overlap between neighboring patches, as a fraction of the patch size.",
               "default": 0.25
             },
             "batch_size": {
@@ -774,7 +774,7 @@
             },
             "outline_color": {
               "type": "string",
-              "description": "Outline colour: a name or a hex code (\"#00ffff\").",
+              "description": "Outline color: a name or a hex code (\"#00ffff\").",
               "default": "red"
             },
             "image_prefix": {

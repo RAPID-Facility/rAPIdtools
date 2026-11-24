@@ -60,7 +60,7 @@ the one every multi-view system uses:
 a ground grid and objects are the peaks. It needs no association at all and
 is useful to check the tracking result against.
 
-All geometry runs in a local metre frame from
+All geometry runs in a local meter frame from
 :func:`~rapidtools.processing.street_localization.local_projection`.
 
 Example:
@@ -99,7 +99,7 @@ logger = logging.getLogger(__name__)
 
 #: One-sigma bearing error of a sighting (camera heading plus mask edge).
 BEARING_SIGMA_DEG = 0.75
-#: Chi-square threshold (2 degrees of freedom, 99 %) for the merge gate.
+#: Chi-square threshold (2 degrees of freedom, 99%) for the merge gate.
 CHI2_2D_99 = 9.21
 #: Fraction of a track's rays that must agree for it to count as static.
 STATIC_INLIER_FRACTION = 0.6
@@ -121,9 +121,9 @@ class ObjectEstimate:
     One candidate object: a position with uncertainty and its sightings.
 
     Attributes:
-        x: East coordinate in the local metre frame.
-        y: North coordinate in the local metre frame.
-        cov: 2 x 2 position covariance in square metres.
+        x: East coordinate in the local meter frame.
+        y: North coordinate in the local meter frame.
+        cov: 2 x 2 position covariance in square meters.
         members: The sightings that produced the estimate.
         localization: ``'triangulated'`` (rays intersected) or
             ``'single_view'`` (ground-contact ranges only).
@@ -163,7 +163,7 @@ class ObjectEstimate:
 
     @property
     def sigma_m(self) -> float:
-        """Largest one-sigma extent of the position uncertainty in metres."""
+        """Largest one-sigma extent of the position uncertainty in meters."""
         return float(math.sqrt(max(np.linalg.eigvalsh(self.cov).max(), 0.0)))
 
 
@@ -230,7 +230,7 @@ def _solve_intersection(
     cams: np.ndarray, normals: np.ndarray, weights: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray] | None:
     """Solve the weighted normal equations of a ray intersection."""
-    # sum_i w_i n_i n_i^T  and  sum_i w_i n_i n_i^T c_i, vectorised:
+    # sum_i w_i n_i n_i^T  and  sum_i w_i n_i n_i^T c_i, vectorized:
     wn = normals * weights[:, None]
     a = wn.T @ normals
     b = np.einsum('ij,ik,ik->j', wn, normals, cams)
@@ -388,7 +388,7 @@ def track_sequence(
     the object should have from the new camera position is predicted (from
     the track's current position estimate, or its last bearing when it has
     none yet) and detections are assigned to tracks by the Hungarian
-    algorithm on the normalised bearing difference plus a mild size term.
+    algorithm on the normalized bearing difference plus a mild size term.
     Two detections in one frame can never join the same track, and a track
     not seen for ``max_gap_frames`` frames is closed.
 
@@ -396,7 +396,7 @@ def track_sequence(
         observations: Sightings of one class in one sequence with ``bearing``
             set (see :func:`~rapidtools.processing.street_localization.localize`).
             Those with a ``range_m`` seed the position estimate.
-        project: Local metre projection shared by the caller.
+        project: Local meter projection shared by the caller.
         max_gap_frames: Frames a track may miss before it is closed.
         base_gate_deg: Minimum angular gate for a track with a position.
         gate_m: Ground-distance tolerance behind the angular gate.
@@ -469,7 +469,7 @@ def track_sequence(
                         math.degrees(math.atan2(tolerance, max(dist, 0.5))),
                     )
                     if not track.triangulated:
-                        # A single-view position can be metres off along the
+                        # A single-view position can be meters off along the
                         # ray, so do not trust its predicted bearing too much:
                         gate = max(gate, motion_gate)
                 else:
@@ -587,7 +587,7 @@ def classify_track(
 
     Args:
         members: The track's sightings (``bearing`` set on each).
-        project: Local metre projection.
+        project: Local meter projection.
         max_range_m: Reject solutions farther than this from any camera.
         bearing_sigma_deg: One-sigma bearing error used for weights and the
             inlier tolerance.
@@ -611,7 +611,7 @@ def classify_track(
         camera_height_m: Camera height above the ground.
         frame_sightings: Every sighting of the class per image id. When
             another detection sits directly below the track's outline in a
-            frame (a car at the kerb in front of one in a driveway), the
+            frame (a car at the curb in front of one in a driveway), the
             raised ground contact is explained by occlusion and the track is
             kept.
 
@@ -832,14 +832,14 @@ def merge_by_rays(
     """
     Merge estimates whose lines of sight point at the same object.
 
-    Positions of single-view fragments can be metres off along the ray, so
+    Positions of single-view fragments can be meters off along the ray, so
     they are not compared by position at all: a fragment joins a
     triangulated object when its bearings all pass within tolerance of that
     object's position and in front of its cameras. The same back-check is
     applied to *weak* triangulations (see :func:`is_weak_estimate`: never
     seen closer than ``weak_range_m``, large uncertainty or little
     parallax): a car triangulated from 40 m down the street, with a tree
-    hiding half of it, lands metres along its line of sight from where the
+    hiding half of it, lands meters along its line of sight from where the
     close pass put it, so instead of comparing positions its rays are
     checked against the well-located objects they point at, and it joins
     the nearest such object within ``weak_along_fraction`` of its range
@@ -899,9 +899,9 @@ def merge_by_rays(
         est_weak = weak[i]
         gx, gy = int(math.floor(est.x / cell)), int(math.floor(est.y / cell))
         # Every candidate is scored and the closest match wins. Taking the
-        # first rule that fires would let a car join its neighbour 3 m away
+        # first rule that fires would let a car join its neighbor 3 m away
         # before reaching its own twin from another pass 0.7 m away, after
-        # which the shared-frame rule can no longer keep the neighbours apart.
+        # which the shared-frame rule can no longer keep the neighbors apart.
         target = None
         attached = False  # joined by its rays: keep the target's position
         best = (math.inf, math.inf)  # (rule rank, distance)
@@ -931,7 +931,7 @@ def merge_by_rays(
                         # Two solid estimates (or two weak ones from two far
                         # passes): each must look at the other's position and
                         # they must be within half an object length. Rays pass
-                        # within metres of a neighbour parked alongside, so
+                        # within meters of a neighbor parked alongside, so
                         # the distance, not the rays, keeps those apart.
                         if d > max(MIN_SEPARATION_M, 0.5 * size):
                             continue
@@ -943,7 +943,7 @@ def merge_by_rays(
                             target, attached, best = k, False, (1, d)
                     elif passes(est.rays, other, size):
                         if est.localization == 'triangulated':
-                            # A weak triangulation may sit metres along its
+                            # A weak triangulation may sit meters along its
                             # line of sight from the object; bound that, and
                             # prefer the nearest candidate (nose-to-tail cars).
                             nearest = nearest_range_m(est) or 0.0
@@ -995,11 +995,11 @@ def merge_by_rays(
 #: two vehicles cannot occupy the same spot.
 MIN_SEPARATION_M = 1.5
 #: A weak object never seen up close, this near one that was, is a far
-#: sighting of it or of its neighbour rather than a vehicle of its own.
-FAR_NEIGHBOUR_M = 15.0
+#: sighting of it or of its neighbor rather than a vehicle of its own.
+FAR_NEIGHBOR_M = 15.0
 
 
-def _points_at_a_neighbour(
+def _points_at_a_neighbor(
     est: ObjectEstimate,
     close_xy: Sequence[tuple[float, float]],
     project: Project,
@@ -1011,7 +1011,7 @@ def _points_at_a_neighbour(
     near = [
         (x, y)
         for x, y in close_xy
-        if math.hypot(est.x - x, est.y - y) <= FAR_NEIGHBOUR_M
+        if math.hypot(est.x - x, est.y - y) <= FAR_NEIGHBOR_M
     ]
     if not near:
         return False
@@ -1076,12 +1076,12 @@ def sighting_shows(
     deliberately tighter than :func:`merge_by_rays` uses: a car parked
     alongside is 2.5 m across and must fail this test, while a piece of
     the object itself (half a car past a pole, its rear or front) is within
-    about 1 m of the centre.
+    about 1 m of the center.
 
     Args:
         obs: The sighting (``bearing`` set).
-        target: ``(x, y)`` in the local metre frame.
-        project: Local metre projection.
+        target: ``(x, y)`` in the local meter frame.
+        project: Local meter projection.
         bearing_sigma_deg: One-sigma bearing error.
         size_m: Object size the lateral tolerance scales with.
         range_ratio_bounds: Accepted band for range over distance.
@@ -1131,12 +1131,12 @@ def merge_pieces(
     far_distance_m: float = 4.0,
 ) -> list[ObjectEstimate]:
     """
-    Fold objects that are really pieces of a neighbour into that neighbour.
+    Fold objects that are really pieces of a neighbor into that neighbor.
 
     Where several vehicles line up along the camera's line of sight (a
     driveway seen end-on, cars down the street) the tracker can slide from
     one to the next, and a detector can cut one car in two past a pole or
-    into a front and a rear. The result is a second object a few metres
+    into a front and a rear. The result is a second object a few meters
     from a well-located one, made of sightings that show the same vehicle.
     The two share frames, which the other merge stages take as proof of two
     objects, so they are judged here on what their sightings show instead.
@@ -1148,9 +1148,9 @@ def merge_pieces(
     * ``B``'s ``closest_k`` sightings within ``judge_range_m``, the ones that
       define what ``B`` is, mostly (``on_fraction``) show ``A``: the ray
       passes within a quarter object size of ``A`` and the ground-contact
-      range lands within ``max(2.5 m, 35 %)`` of ``A``'s position. This is
+      range lands within ``max(2.5 m, 35%)`` of ``A``'s position. This is
       decisive on its own, whatever ``B``'s own triangulation says: a
-      low-parallax track lands metres from where its sightings point,
+      low-parallax track lands meters from where its sightings point,
     * no more than ``evidence_fraction`` of those frames contradict it,
       where a contradiction is a frame in which ``A``'s own sighting shows
       ``A`` while ``B``'s does not (both sightings showing ``A`` are two
@@ -1167,7 +1167,7 @@ def merge_pieces(
 
     A ``B`` never seen within ``judge_range_m`` that is not solid has no
     dependable position of its own: ground-contact ranges read from far
-    away are off by a third, so a low-parallax triangulation lands metres
+    away are off by a third, so a low-parallax triangulation lands meters
     along the line of sight from the vehicle. (A solid ``B`` is judged by
     the close rules above whatever its range: a car in a deep driveway is
     placed by its parallax, not its ranges.) Its closest sightings, wherever
@@ -1184,7 +1184,7 @@ def merge_pieces(
 
     Args:
         estimates: Merged candidates with ``members`` set.
-        project: Local metre projection.
+        project: Local meter projection.
         bearing_sigma_deg: One-sigma bearing error.
         object_length_m: Typical size of the class.
         search_radius_m: Only pairs this close are examined.
@@ -1290,7 +1290,7 @@ def merge_pieces(
                         continue  # neither was seen up close: nothing to trust
                     # The measured size bounds how much larger B may be; the
                     # lateral tolerances use the class size, since outlines
-                    # that merged with a neighbour inflate the measurement.
+                    # that merged with a neighbor inflate the measurement.
                     size = max(object_length_m, other.size_m or 0.0)
                     if b_size is not None and b_size > size_ratio * size + 0.5:
                         continue
@@ -1312,9 +1312,9 @@ def merge_pieces(
                             hits += 1
                     if hits < 0.7 * len(pointing):
                         continue
-                    # A piece may sit a quarter of the object from its centre;
+                    # A piece may sit a quarter of the object from its center;
                     # the end of a long vehicle cut by a tree, seen only from
-                    # afar, half of it (a neighbour parked alongside would have
+                    # afar, half of it (a neighbor parked alongside would have
                     # close sightings of its own and not be far-only).
                     lateral = (0.5 if far_only else 0.25) * object_length_m
                     b_size_tol = object_length_m * (2.0 if far_only else 1.0)
@@ -1413,16 +1413,16 @@ def travel_headings(
     """
     Direction of travel of the camera at each frame, per sequence.
 
-    The heading is taken from the camera positions of the neighbouring
+    The heading is taken from the camera positions of the neighboring
     frames in capture order (the previous and the next, or whichever
     exists), which is the direction the survey vehicle drove, independent
-    of where the camera happened to point. Frames whose neighbours are
+    of where the camera happened to point. Frames whose neighbors are
     closer than ``min_step_m`` (the vehicle was stopped) fall back to the
     camera's compass angle.
 
     Args:
         observations: Sightings with camera positions and sequence ids.
-        project: Local metre projection.
+        project: Local meter projection.
         min_step_m: Shortest camera displacement that defines a direction.
 
     Returns:
@@ -1533,7 +1533,7 @@ def attach_approach_sightings(
     Args:
         estimates: Placed objects; their ``members`` lists are extended.
         approach: Sightings from the cones ahead and behind.
-        project: Local metre projection.
+        project: Local meter projection.
         bearing_sigma_deg: One-sigma bearing error.
         object_length_m: Typical size of the class.
         range_ratio_bounds: Accepted band for range over distance.
@@ -1662,7 +1662,7 @@ def is_weak_estimate(
     Single views are weak by definition. A triangulation is weak when it
     was never seen closer than ``weak_range_m`` (the rays are then nearly
     parallel and a bearing bias from partial occlusion moves the
-    intersection metres along the line of sight, far more than its
+    intersection meters along the line of sight, far more than its
     covariance admits), when its reported uncertainty exceeds
     ``weak_sigma_m``, or when its parallax is below ``weak_parallax_deg``.
     """
@@ -1695,7 +1695,7 @@ def prune_unwitnessed(
     position on the same survey day, with that position in its field of
     view, and that frame holds no detection of the class anywhere near the
     predicted bearing, the object is not there. A far single-view estimate
-    is typically metres off along its ray, and this is what catches it when
+    is typically meters off along its ray, and this is what catches it when
     the survey happened to drive past the spot it was placed on.
 
     A frame counts as a positive witness when any detection of the class
@@ -1716,7 +1716,7 @@ def prune_unwitnessed(
         estimates: Candidates after merging.
         frames: Every frame of the survey, including those with no sighting.
         frame_sightings: Sightings of the class per image ID.
-        project: Local metre projection shared by the caller.
+        project: Local meter projection shared by the caller.
         witness_radius_m: Farthest a camera can be and still count; at this
             distance a vehicle is unmissable for the detector.
         min_witnesses: Negative frames required.
@@ -1805,7 +1805,7 @@ def merge_estimates(
     frame with it (two detections in one frame are two objects). Positions
     are fused by information weighting, so a precise triangulation is not
     dragged around by a vague single view. ``floor_m`` is added to both
-    covariances for the gate only: an object's apparent centre wanders by
+    covariances for the gate only: an object's apparent center wanders by
     that much with the viewpoint, which a triangulation covariance does not
     know about. Two solid triangulations (see :func:`is_weak_estimate`) are
     never fused when more than ``max_solid_separation_m`` apart: a precise
@@ -1848,7 +1848,7 @@ def merge_estimates(
                     if est_solid and solid[k] and separation > max_solid_separation_m:
                         continue
                     delta = np.array([est.x - other.x, est.y - other.y])
-                    # A long vehicle's apparent centre wanders along its body
+                    # A long vehicle's apparent center wanders along its body
                     # with the viewpoint, so the floor grows with its size:
                     floor = max(
                         floor_m, 0.2 * max(est.size_m or 0.0, other.size_m or 0.0)
@@ -1923,7 +1923,7 @@ def vote_rays(
 
     Args:
         observations: Sightings with ``bearing`` set.
-        project: Local metre projection.
+        project: Local meter projection.
         min_range_m: Nearest range a vote can land at.
         max_range_m: Farthest range a vote can land at.
         cell_m: Grid resolution.
@@ -1986,13 +1986,13 @@ def vote_rays(
         ] = True
     estimates: list[ObjectEstimate] = []
     members: list[list[Observation]] = [[] for _ in peaks]
-    centres = [
+    centers = [
         (x0 + (ix + 0.5) * cell_m, y0 + (iy + 0.5) * cell_m) for _, iy, ix in peaks
     ]
     for (cx, cy), bearing, obs in rays:
         d = _unit(bearing)
         best, best_score = None, None
-        for k, (px, py) in enumerate(centres):
+        for k, (px, py) in enumerate(centers):
             rel = np.array([px - cx, py - cy])
             along = float(rel @ d)
             if along < min_range_m or along > max_range_m:
@@ -2007,7 +2007,7 @@ def vote_rays(
                 best, best_score = k, penalty
         if best is not None:
             members[best].append(obs)
-    for k, (px, py) in enumerate(centres):
+    for k, (px, py) in enumerate(centers):
         if not members[k]:
             continue
         estimates.append(
@@ -2039,7 +2039,7 @@ def discover_objects(
     max_merge_m: float = 6.0,
     merge_floor_m: float = 0.5,
     track_gap_frames: int = 2,
-    merge_pieces_of_neighbours: bool = True,
+    merge_pieces_of_neighbors: bool = True,
     close_range_m: float = 20.0,
     far_min_parallax_deg: float = 45.0,
     far_max_sigma_m: float = 0.5,
@@ -2074,12 +2074,12 @@ def discover_objects(
         min_parallax_deg: Smallest bearing separation that counts as
             parallax.
         max_merge_m: Farthest two estimates can be and still be one object.
-        merge_floor_m: Viewpoint-dependent centre wander added to the merge
+        merge_floor_m: Viewpoint-dependent center wander added to the merge
             gate.
         track_gap_frames: Frames a track may miss before it is closed.
-        merge_pieces_of_neighbours: After the position merge, fold objects
-            whose closest sightings show a better-located neighbour into
-            that neighbour (see :func:`merge_pieces`): the second track a
+        merge_pieces_of_neighbors: After the position merge, fold objects
+            whose closest sightings show a better-located neighbor into
+            that neighbor (see :func:`merge_pieces`): the second track a
             detector's split outline or a tracker sliding between vehicles
             lined up along the line of sight leaves behind.
         close_range_m: Range within which an object must have been seen to
@@ -2091,7 +2091,7 @@ def discover_objects(
             it is well triangulated regardless: parallax of at least
             ``far_min_parallax_deg`` and uncertainty of at most
             ``far_max_sigma_m``. One whose rays point elsewhere, a car in a
-            driveway behind the kerb, stays. Also the range the piece
+            driveway behind the curb, stays. Also the range the piece
             merge judges sightings by. ``0`` keeps every object.
         far_min_parallax_deg: Parallax that lets a far-only object through.
         far_max_sigma_m: Uncertainty that lets a far-only object through.
@@ -2114,7 +2114,7 @@ def discover_objects(
             outlines; the frames looking ahead or behind down the road
             have rays nearly parallel to it, cannot place anything, and are
             where tracks slide between vehicles that line up. Those
-            sightings are attached afterwards to the objects their rays
+            sightings are attached afterward to the objects their rays
             point at (:func:`attach_approach_sightings`), so records stay
             complete, but they never create an object. Off (``0``) by
             default: on the Spokane survey a 75-degree window lost 17 of
@@ -2159,7 +2159,7 @@ def discover_objects(
         outlines resolved within a frame), ``'tracks'``, ``'moving'``,
         ``'fragment'``, ``'on_path'``, ``'far_single_view'``,
         ``'unwitnessed'`` and ``'objects'``, and ``unproject`` converts
-        local metres back to ``(lon, lat)``.
+        local meters back to ``(lon, lat)``.
     """
     if method not in ('tracks', 'voting'):
         raise ValueError(f"method must be 'tracks' or 'voting', got {method!r}.")
@@ -2257,7 +2257,7 @@ def discover_objects(
     merged = merge_estimates(
         estimates, max_distance_m=max_merge_m, floor_m=merge_floor_m
     )
-    if merge_pieces_of_neighbours:
+    if merge_pieces_of_neighbors:
         before = len(merged)
         merged = merge_pieces(
             merged,
@@ -2269,9 +2269,9 @@ def discover_objects(
         counts['pieces'] = before - len(merged)
     if close_range_m > 0:
         # A weak object never seen within close_range_m whose closest rays
-        # point at an object within FAR_NEIGHBOUR_M that was, is a far
+        # point at an object within FAR_NEIGHBOR_M that was, is a far
         # sighting of that object: the close pass already counted it. One
-        # pointing elsewhere, a car in a driveway behind the kerb, stays.
+        # pointing elsewhere, a car in a driveway behind the curb, stays.
         close_xy = [
             (e.x, e.y)
             for e in merged
@@ -2285,7 +2285,7 @@ def discover_objects(
                 and est.parallax_deg >= far_min_parallax_deg
                 and est.sigma_m <= far_max_sigma_m
             )
-            if far_weak and _points_at_a_neighbour(
+            if far_weak and _points_at_a_neighbor(
                 est, close_xy, project, math.radians(bearing_sigma_deg), object_size_m
             ):
                 counts['far_only'] += 1
@@ -2356,7 +2356,7 @@ def camera_paths(
     max_gap_m: float = 15.0,
 ) -> list[list[tuple[float, float]]]:
     """
-    The lines the cameras drove, per sequence, in local metres.
+    The lines the cameras drove, per sequence, in local meters.
 
     Consecutive frames of a sequence are joined only while they lie within
     ``max_gap_m`` of each other. A sequence with a hole (the survey paused,
@@ -2369,7 +2369,7 @@ def camera_paths(
 
     Args:
         observations: Sightings whose cameras mark the path.
-        project: Local metre projection.
+        project: Local meter projection.
         frames: Every frame of the survey, when known.
         max_gap_m: Farthest apart two consecutive frames may be and still be
             joined; ``0`` joins everything.

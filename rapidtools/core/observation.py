@@ -45,7 +45,7 @@ detected in.
 Street-level discovery (for example
 :class:`~rapidtools.processing.MapillaryFeatureExtractor`) sees the same object
 from several camera positions. Each sighting is an :class:`Observation`: which
-image, where the camera stood and looked, the object's outline in normalised
+image, where the camera stood and looked, the object's outline in normalized
 image coordinates, and the ground position estimated from that single view.
 The observations of one asset are stored as plain dictionaries under
 ``asset.attributes['observations']`` so they survive GeoJSON round trips, and
@@ -84,14 +84,14 @@ class Observation:
             Mapillary detections (``'object--vehicle--car'``) or the text
             prompt for model-based detections.
         polygon (list[tuple[float, float]]):
-            Exterior ring of the detection in normalised image coordinates:
-            ``x`` grows to the right and ``y`` downwards, both in ``[0, 1]``.
+            Exterior ring of the detection in normalized image coordinates:
+            ``x`` grows to the right and ``y`` downward, both in ``[0, 1]``.
         camera_lon (float):
             Longitude of the camera in WGS84 degrees.
         camera_lat (float):
             Latitude of the camera in WGS84 degrees.
         compass_angle (float):
-            Heading of the image centre column in degrees clockwise from
+            Heading of the image center column in degrees clockwise from
             north.
         is_pano (bool):
             ``True`` for equirectangular panoramas (360 degrees across the
@@ -107,12 +107,12 @@ class Observation:
             Where the detection came from: ``'mapillary'`` or ``'sam3'``.
         bearing (float | None):
             Absolute bearing from the camera to the object, degrees clockwise
-            from north. Filled in by the localisation step.
+            from north. Filled in by the localization step.
         elevation (float | None):
             Elevation angle of the object's ground contact (its lowest pixel)
             in degrees; negative below the horizon.
         range_m (float | None):
-            Estimated horizontal distance from camera to object in metres.
+            Estimated horizontal distance from camera to object in meters.
         lon (float | None):
             Single-view estimate of the object's longitude.
         lat (float | None):
@@ -146,7 +146,7 @@ class Observation:
     extra: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """Normalise the polygon to a list of float tuples."""
+        """Normalize the polygon to a list of float tuples."""
         self.polygon = [(float(x), float(y)) for x, y in self.polygon]
         if len(self.polygon) < 3:
             raise ValueError('An observation polygon needs at least three vertices.')
@@ -188,7 +188,7 @@ class Observation:
 
     def to_dict(self) -> dict[str, Any]:
         """
-        Return a JSON-serialisable dictionary of the observation.
+        Return a JSON-serializable dictionary of the observation.
 
         Example:
             >>> obs = Observation('i', 'car', [(0, 0), (1, 0), (1, 1)], 1.0, 2.0, 3.0)

@@ -55,8 +55,8 @@ What to look at in the output
 - ``height_m`` is the height of the highest points above the road, and
   ``facade_bearing`` the compass direction the front faces.
 - A house is occasionally reported as two structures (a tree hiding the
-  middle of the facade) or joined with its neighbour (side yards under a
-  metre). ``min_gap_m`` moves that balance.
+  middle of the facade) or joined with its neighbor (side yards under a
+  meter). ``min_gap_m`` moves that balance.
 - Each building's three crops come from the left, the front and the right,
   marked with corner brackets. The outline in each image is where the
   building's points project, which the per-image segmentation alone could

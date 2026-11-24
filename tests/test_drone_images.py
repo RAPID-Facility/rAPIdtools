@@ -68,13 +68,13 @@ def test_nadir_projection_puts_north_up():
     assert pixels[2][1] < 240 and np.isclose(pixels[2][0], 320)  # north is up
 
 
-def test_oblique_view_centre_hits_the_ground_ahead():
+def test_oblique_view_center_hits_the_ground_ahead():
     camera = make_camera(yaw_deg=90.0, pitch_deg=-45.0, lon=0.0, lat=0.0)
     lon, lat = camera.pixel_to_ground(320, 240)
     project, _ = local_projection(0.0, 0.0)
     x, y = project(lon, lat)
     assert x == pytest.approx(80.0, abs=0.01) and y == pytest.approx(0.0, abs=0.01)
-    # ... and that ground point projects back to the image centre.
+    # ... and that ground point projects back to the image center.
     pixels, depth = camera.project_lonlat([(lon, lat, 0.0)])
     assert np.allclose(pixels[0], [320, 240], atol=1e-6)
     assert depth[0] == pytest.approx(80.0 * math.sqrt(2), rel=1e-6)
@@ -242,7 +242,7 @@ def test_xmp_element_spelling_and_flipped_gimbal(tmp_path):
     assert tags['GpsLongtitude'] == '-118.5'  # DJI's historical misspelling
     camera = read_drone_image(path)
     assert (camera.lon, camera.lat, camera.elevation_m) == (-118.5, 34.5, 50.0)
-    # A gimbal 10 degrees past nadir looks backwards at -80 degrees.
+    # A gimbal 10 degrees past nadir looks backward at -80 degrees.
     assert camera.pitch_deg == pytest.approx(-80.0)
     assert camera.yaw_deg == pytest.approx(190.0)
 
@@ -362,7 +362,7 @@ def test_pose_table_geojson(tmp_path):
 def test_focal_plane_resolution_and_below_sea_level(tmp_path):
     from rapidtools.data_sources.drone_images import _dms_to_degrees, _focal_px
 
-    # 8.8 mm lens on a sensor with 240 pixels per millimetre (unit 4 = mm).
+    # 8.8 mm lens on a sensor with 240 pixels per millimeter (unit 4 = mm).
     focal, source = _focal_px(
         {0x920A: 8.8, 0xA20E: 240.0, 0xA210: 4}, {}, 4000, 3000, 70
     )

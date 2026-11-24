@@ -62,7 +62,7 @@ from rapidtools.core import (
     BoundingBox,
     ImageAsset,
     ImageCollection,
-    OperationCancelled,
+    OperationCanceled,
     PhysicalAsset,
     PhysicalAssetCollection,
     PolygonRegion,
@@ -338,7 +338,7 @@ def _l_shape(cx, cy, h=0.0001):
     )
 
 
-def test_aerial_outline_defaults_match_legacy_behaviour(tmp_path):
+def test_aerial_outline_defaults_match_legacy_behavior(tmp_path):
     ext = AerialImageryExtractor('x.tif', tmp_path)
     assert ext.outline_shape == 'geometry'
     assert ext.outline_buffer == 0
@@ -362,7 +362,7 @@ def test_aerial_outline_defaults_match_legacy_behaviour(tmp_path):
         {'outline_buffer': '5 lightyears'},
         {'outline_width': 0},
         {'outline_width': '2 m'},
-        {'outline_color': 'not-a-colour'},
+        {'outline_color': 'not-a-color'},
     ],
 )
 def test_aerial_outline_options_are_validated_at_construction(tmp_path, kwargs):
@@ -379,7 +379,7 @@ def test_aerial_outline_options_are_validated_at_construction(tmp_path, kwargs):
         ('12 px', (12.0, 'px')),
         ('10%', (10.0, '%')),
         ('2 m', (2.0, 'm')),
-        ('2 metres', (2.0, 'm')),
+        ('2 meters', (2.0, 'm')),
         ('5 ft', (1.524, 'm')),
     ],
 )
@@ -712,12 +712,12 @@ def test_aerial_bad_raster_is_logged_and_skipped(raster, tmp_path, caplog):
     assert len(col['poly'].image_assets) == 1
 
 
-def test_aerial_cancelled_raises(raster, collection, tmp_path):
-    """A set cancel event raises OperationCancelled instead of being swallowed."""
+def test_aerial_canceled_raises(raster, collection, tmp_path):
+    """A set cancel event raises OperationCanceled instead of being swallowed."""
     event = threading.Event()
     event.set()
     ext = AerialImageryExtractor(raster, tmp_path / 'o', cancel_event=event)
-    with pytest.raises(OperationCancelled, match='aerial image extraction'):
+    with pytest.raises(OperationCanceled, match='aerial image extraction'):
         ext(collection)
     assert all(len(a.image_assets) == 0 for a in collection)
 
@@ -736,7 +736,7 @@ def test_bing_init_defaults():
 
 
 def test_bing_lat_lon_to_pixel_known_values():
-    """The origin maps to the map centre; extremes are clamped."""
+    """The origin maps to the map center; extremes are clamped."""
     assert BingOrthomosaicExtractor.lat_lon_to_pixel(0.0, 0.0, 1) == (256, 256)
     assert BingOrthomosaicExtractor.lat_lon_to_pixel(0.0, -180.0, 1) == (0, 256)
     px, py = BingOrthomosaicExtractor.lat_lon_to_pixel(80.0, 179.9, 3)
@@ -837,7 +837,7 @@ def test_bing_degenerate_region_raises(tmp_path):
         BingOrthomosaicExtractor(zoom_level=1)(region, tmp_path / 'x.tiff')
 
 
-def test_bing_cancelled_raises(tmp_path):
+def test_bing_canceled_raises(tmp_path):
     """A set cancel event aborts the download and no GeoTIFF is written."""
     region = BoundingBox(min_x=-118.5, min_y=34.0, max_x=-117.5, max_y=34.5)
     event = threading.Event()
@@ -845,9 +845,9 @@ def test_bing_cancelled_raises(tmp_path):
     ext = BingOrthomosaicExtractor(zoom_level=8, cancel_event=event)
     with requests_mock.Mocker() as m:
         m.get(TILE_URL, content=_jpeg_bytes())
-        with pytest.raises(OperationCancelled, match='Bing tile download'):
-            ext(region, tmp_path / 'cancelled.tiff')
-    assert not (tmp_path / 'cancelled.tiff').exists()
+        with pytest.raises(OperationCanceled, match='Bing tile download'):
+            ext(region, tmp_path / 'canceled.tiff')
+    assert not (tmp_path / 'canceled.tiff').exists()
 
 
 # ==========================================
@@ -1190,12 +1190,12 @@ def test_mapillary_skips_empty_geometry(fake_mapillary, tmp_path):
     assert len(col['ok'].image_assets) == 2
 
 
-def test_mapillary_cancelled_raises(fake_mapillary, street_collection, tmp_path):
-    """A set cancel event propagates OperationCancelled from the worker threads."""
+def test_mapillary_canceled_raises(fake_mapillary, street_collection, tmp_path):
+    """A set cancel event propagates OperationCanceled from the worker threads."""
     event = threading.Event()
     event.set()
     ext = MapillaryImageExtractor('tok', tmp_path / 'sv', cancel_event=event)
-    with pytest.raises(OperationCancelled, match='Mapillary image extraction'):
+    with pytest.raises(OperationCanceled, match='Mapillary image extraction'):
         ext(street_collection)
     assert all(len(a.image_assets) == 0 for a in street_collection)
 
@@ -1239,7 +1239,7 @@ def test_aerial_extractor_min_footprint_coverage(tmp_path, caplog):
         col.add(PhysicalAsset(id='outside', geometry=box(0.10, 0.10, 0.11, 0.11)))
         return col
 
-    # Default behaviour: the edge asset is dropped by the patch nodata test.
+    # Default behavior: the edge asset is dropped by the patch nodata test.
     with caplog.at_level(logging.INFO):
         default = AerialImageryExtractor(raster, save_directory=tmp_path / 'a')(
             collection()

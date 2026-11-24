@@ -163,7 +163,7 @@ def write_json_atomic(path: str | Path, document: Any, private: bool = False) ->
 
     Args:
         path (str | Path): Destination; parent folders are created.
-        document (Any): A JSON-serialisable value.
+        document (Any): A JSON-serializable value.
         private (bool): Create the file readable by its owner only (``0600``).
             Used for secrets files. Defaults to ``False``. Windows has no
             such mode bits; callers keep private files in a private folder.
@@ -386,7 +386,7 @@ class StepSpec:
         return cls(id=step_id, type=step_type.strip(), **parts)
 
     def to_dict(self) -> dict[str, Any]:
-        """Return the step as a JSON-serialisable object."""
+        """Return the step as a JSON-serializable object."""
         document: dict[str, Any] = {
             'id': self.id,
             'type': self.type,
@@ -543,7 +543,7 @@ class Job:
 
     # ------------------------------------------------------------- writing
     def to_dict(self) -> dict[str, Any]:
-        """Return the job as a JSON-serialisable job document."""
+        """Return the job as a JSON-serializable job document."""
         document: dict[str, Any] = {
             'schema': JOB_SCHEMA,
             'schema_version': self.schema_version,

@@ -55,7 +55,7 @@ How it works:
   module from the ``websocket-client`` package; nothing else is needed).
 - Google Earth takes its camera from the address bar:
   ``@lat,lon,<a>a,<d>d,<fov>y,<heading>h,<tilt>t,0r`` where ``lat, lon, a``
-  is the point looked at (``a`` in metres above sea level), ``d`` the
+  is the point looked at (``a`` in meters above sea level), ``d`` the
   distance from the camera to it, ``fov`` the VERTICAL field of view of the
   whole window, ``heading`` the compass direction of the view and ``tilt``
   the angle from straight down (0 = nadir, 90 = horizon). Verified by
@@ -65,7 +65,7 @@ How it works:
   cursor through its accessibility tree, which is how the script knows a
   view has finished loading.
 - Each screenshot is cropped to remove the toolbar and the status bar. The
-  crop is symmetric, so the principal point stays at the image centre.
+  crop is symmetric, so the principal point stays at the image center.
 
 The imagery belongs to Google and its data providers: use the renders to
 test software, not to redistribute.
@@ -182,7 +182,7 @@ class EarthBrowser:
                 "(()=>{const p=document.querySelector('flt-semantics-placeholder');"
                 'if(p)p.click()})()'
             )
-            if any(text.startswith('Progress towards') for text in self.labels()):
+            if any(text.startswith('Progress toward') for text in self.labels()):
                 break
         else:
             raise RuntimeError('Google Earth did not finish loading.')
@@ -207,10 +207,10 @@ class EarthBrowser:
         )
 
     def status(self) -> tuple[int | None, int | None]:
-        """Streaming progress in percent and the camera altitude in metres."""
+        """Streaming progress in percent and the camera altitude in meters."""
         progress = altitude = None
         for text in self.labels():
-            if text.startswith('Progress towards'):
+            if text.startswith('Progress toward'):
                 digits = ''.join(c for c in text.split('imagery')[-1] if c.isdigit())
                 progress = int(digits[:3]) if digits else None
                 if progress and progress > 100:  # "70% 70" while loading
@@ -264,7 +264,7 @@ class EarthBrowser:
 def offset(
     lat: float, lon: float, east_m: float, north_m: float
 ) -> tuple[float, float]:
-    """Latitude and longitude ``east_m``/``north_m`` metres from a point."""
+    """Latitude and longitude ``east_m``/``north_m`` meters from a point."""
     return (
         lat + math.degrees(north_m / EARTH_RADIUS_M),
         lon + math.degrees(east_m / (EARTH_RADIUS_M * math.cos(math.radians(lat)))),
@@ -272,7 +272,7 @@ def offset(
 
 
 def ground_elevation(lon: float, lat: float) -> float:
-    """Ground elevation in metres from the USGS point query service (US only)."""
+    """Ground elevation in meters from the USGS point query service (US only)."""
     reply = requests.get(
         'https://epqs.nationalmap.gov/v1/json',
         params={'x': lon, 'y': lat, 'units': 'Meters', 'wkid': 4326},
@@ -286,7 +286,7 @@ def plan_flight(bounds, altitude_agl, pitch, headings, spacing, nadir_spacing, p
     Camera poses of an oblique grid flight.
 
     For every heading the camera looks at a grid of ground points covering
-    the area, from ``altitude_agl / tan(-pitch)`` metres behind each point.
+    the area, from ``altitude_agl / tan(-pitch)`` meters behind each point.
     Returns ``(lat, lon, yaw, pitch)`` tuples in flying order.
     """
     min_lon, min_lat, max_lon, max_lat = bounds
@@ -341,7 +341,7 @@ def main() -> None:
         '--altitude-agl',
         type=float,
         default=70.0,
-        help='flight height above the take-off point, metres',
+        help='flight height above the take-off point, meters',
     )
     parser.add_argument(
         '--pitch', type=float, default=-45.0, help='gimbal pitch of the oblique shots'
@@ -351,13 +351,13 @@ def main() -> None:
         '--spacing',
         type=float,
         default=50.0,
-        help='distance between oblique shots, metres',
+        help='distance between oblique shots, meters',
     )
     parser.add_argument(
         '--nadir-spacing', type=float, default=70.0, help='0 skips the nadir grid'
     )
     parser.add_argument(
-        '--pad', type=float, default=15.0, help='margin flown around the area, metres'
+        '--pad', type=float, default=15.0, help='margin flown around the area, meters'
     )
     parser.add_argument(
         '--fov',
@@ -368,7 +368,7 @@ def main() -> None:
     parser.add_argument(
         '--takeoff-elevation',
         type=float,
-        help='metres above sea level; looked up from USGS when omitted',
+        help='meters above sea level; looked up from USGS when omitted',
     )
     parser.add_argument(
         '--port', type=int, default=9444, help='Chrome remote debugging port'

@@ -41,7 +41,7 @@
 Choosing the drone photos that show the most of each asset.
 
 A drone flight photographs every building dozens of times, mostly badly:
-clipped by the frame, hidden behind a neighbour, seen end-on, or the same
+clipped by the frame, hidden behind a neighbor, seen end-on, or the same
 side over and over. Sending all of them to a vision-language model is slow
 and dilutes the evidence; sending the nearest one misses the sides it does
 not show. This module picks, for every asset, the few photos that together
@@ -55,14 +55,14 @@ The method:
 2. **Visibility.** For every photo and every patch, a quality between 0 and
    1 says how well the photo shows the patch: 0 when the patch is outside
    the frame, faces away, or is hidden behind the asset itself or a
-   neighbouring prism (rays are cast against the extruded footprints around
+   neighboring prism (rays are cast against the extruded footprints around
    it); otherwise the product of an incidence term (how squarely the patch
-   is seen) and a resolution term (pixels per metre against a target)
+   is seen) and a resolution term (pixels per meter against a target)
    (:func:`view_quality`).
-3. **Selection.** The view set maximises ``sum over patches of the best
+3. **Selection.** The view set maximizes ``sum over patches of the best
    quality any chosen photo gives it``. That objective is monotone
    submodular, so adding photos greedily is guaranteed to reach at least
-   63 % of the best possible set of the same size, and in practice lands
+   63% of the best possible set of the same size, and in practice lands
    within a few percent. A photo that repeats what is already covered gains
    nothing and is never picked, so near-duplicate frames drop out without a
    separate rule (:func:`select_views`).
@@ -109,7 +109,7 @@ from shapely.strtree import STRtree
 from tqdm import tqdm
 
 from rapidtools.core import ImageAsset, PhysicalAsset, PhysicalAssetCollection
-from rapidtools.core.cancellation import raise_if_cancelled
+from rapidtools.core.cancellation import raise_if_canceled
 from rapidtools.data_sources.drone_images import DroneCamera, read_drone_images
 
 from . import outlines
@@ -120,12 +120,12 @@ logger = logging.getLogger(__name__)
 
 #: Compass names of the four wall-facing sectors, clockwise from north.
 SIDES = ('north', 'east', 'south', 'west')
-#: Attribute keys tried, in order, for an asset's height in metres.
+#: Attribute keys tried, in order, for an asset's height in meters.
 HEIGHT_KEYS = ('height_m', 'height', 'building_height', 'building:height')
-#: Attribute keys tried for a storey count when no height is recorded.
+#: Attribute keys tried for a story count when no height is recorded.
 LEVEL_KEYS = ('building:levels', 'levels', 'num_stories', 'stories')
-#: Height of one storey, used with :data:`LEVEL_KEYS`.
-STOREY_HEIGHT_M = 3.0
+#: Height of one story, used with :data:`LEVEL_KEYS`.
+STORY_HEIGHT_M = 3.0
 #: Patch points sit this far off the surface so a ray to a patch does not
 #: graze the wall or roof the patch lies on.
 SURFACE_OFFSET_M = 0.03
@@ -140,15 +140,15 @@ class SurfacePatches:
     Sample points on the surface of an extruded footprint.
 
     Attributes:
-        points: ``P x 3`` patch centres in local east/north/up metres.
+        points: ``P x 3`` patch centers in local east/north/up meters.
         normals: ``P x 3`` outward unit normals.
-        weights: Importance of each patch: its area in square metres, times
+        weights: Importance of each patch: its area in square meters, times
             the roof weight for roof patches.
         wall: Index of the wall (footprint edge) each patch lies on, ``-1``
             for roof patches.
         walls: ``W x 4`` wall end points ``(x0, y0, x1, y1)``.
         wall_azimuth: Compass direction each wall faces, in degrees.
-        polygon: The footprint in local metres.
+        polygon: The footprint in local meters.
         base: Elevation of the wall bases.
         top: Elevation of the roof.
 
@@ -260,7 +260,7 @@ def footprint_polygon(
     simplify_m: float = 0.3,
 ) -> Polygon | None:
     """
-    Footprint of an asset as one polygon in local metres.
+    Footprint of an asset as one polygon in local meters.
 
     Polygons keep their outer ring (courtyards are ignored), multi-part
     geometries use the convex hull of their parts, and points and lines are
@@ -306,8 +306,8 @@ def footprint_polygon(
     else:
         hull = geometry.convex_hull
         if hull.geom_type != 'Polygon':
-            centre = hull.centroid
-            return Point(*project(centre.x, centre.y)).buffer(point_radius_m, 8)
+            center = hull.centroid
+            return Point(*project(center.x, center.y)).buffer(point_radius_m, 8)
         local = Polygon(to_local(hull.exterior))
     if not local.is_valid:
         local = local.buffer(0)
@@ -335,7 +335,7 @@ def surface_patches(
     Sample the walls and roof of an extruded footprint.
 
     Args:
-        polygon: Footprint in local metres.
+        polygon: Footprint in local meters.
         base: Ground elevation at the asset.
         height: Height of the prism.
         wall_spacing_m: Distance between wall patches along an edge.
@@ -343,10 +343,10 @@ def surface_patches(
         roof_spacing_m: Grid spacing of the roof patches.
         roof_weight: Importance of roof area relative to wall area. ``0``
             leaves the roof out of the objective (facades only); values
-            above ``1`` favour views of the roof.
+            above ``1`` favor views of the roof.
 
     Returns:
-        SurfacePatches: Patch centres, normals and weights.
+        SurfacePatches: Patch centers, normals and weights.
 
     Example:
         >>> from shapely.geometry import box
@@ -386,10 +386,10 @@ def surface_patches(
         mx, my = (m.ravel() for m in np.meshgrid(gx, gy))
         inside = contains_xy(polygon, mx, my)
         if not inside.any():
-            centre = polygon.representative_point()
+            center = polygon.representative_point()
             mx, my, inside = (
-                np.array([centre.x]),
-                np.array([centre.y]),
+                np.array([center.x]),
+                np.array([center.y]),
                 np.array([True]),
             )
         share = polygon.area / int(inside.sum()) * roof_weight
@@ -481,7 +481,7 @@ def view_quality(
     rotations: np.ndarray,
     focal_px: np.ndarray,
     sizes: np.ndarray,
-    centres: np.ndarray,
+    centers: np.ndarray,
     patches: SurfacePatches,
     occluder_edges: np.ndarray | None = None,
     occluder_tops: np.ndarray | None = None,
@@ -494,11 +494,11 @@ def view_quality(
     How well each camera shows each surface patch.
 
     Args:
-        positions: ``C x 3`` camera centres in local metres.
+        positions: ``C x 3`` camera centers in local meters.
         rotations: ``C x 3 x 3`` world-to-camera rotations.
         focal_px: ``C`` focal lengths in pixels.
         sizes: ``C x 2`` image sizes ``(width, height)``.
-        centres: ``C x 2`` principal points.
+        centers: ``C x 2`` principal points.
         patches: Surface samples of one asset.
         occluder_edges: ``E x 4`` footprint edges of everything that can
             hide the asset, its own included.
@@ -539,8 +539,8 @@ def view_quality(
     cam = np.einsum('cij,cpj->cpi', rotations, rays)
     depth = cam[:, :, 2]
     safe = np.where(depth > 1e-6, depth, 1.0)
-    px = centres[:, None, 0] + focal_px[:, None] * cam[:, :, 0] / safe
-    py = centres[:, None, 1] + focal_px[:, None] * cam[:, :, 1] / safe
+    px = centers[:, None, 0] + focal_px[:, None] * cam[:, :, 0] / safe
+    py = centers[:, None, 1] + focal_px[:, None] * cam[:, :, 1] / safe
     margin = edge_margin * sizes.min(axis=1)[:, None]
     in_frame = (
         (depth > 0.1)
@@ -581,7 +581,7 @@ def select_views(
     """
     Greedily pick the views that together show the most.
 
-    Maximises ``sum_p weights[p] * max_i quality[i, p]`` over the chosen
+    Maximizes ``sum_p weights[p] * max_i quality[i, p]`` over the chosen
     views ``i``. Each round adds the view with the largest gain over what
     is already covered and stops when ``max_views`` are chosen or the best
     remaining gain is under ``min_gain`` of the whole surface.
@@ -594,7 +594,7 @@ def select_views(
         directions: Optional ``C x 3`` unit vectors from the asset to each
             camera. When given, a candidate's gain is scaled by up to
             ``1 + diversity`` according to its angular distance from the
-            views already chosen, which breaks near-ties in favour of a new
+            views already chosen, which breaks near-ties in favor of a new
             vantage point.
         diversity: Strength of that preference; ``0`` disables it.
 
@@ -727,10 +727,10 @@ class DroneViewSelector:
             the asset's surface. Defaults to 0.03.
         default_height_m (float):
             Prism height for assets without a height attribute. Defaults to
-            6.0 (a two-storey house).
+            6.0 (a two-story house).
         height_attribute (str | None):
-            Attribute holding the asset height in metres; when ``None`` the
-            usual keys (``height_m``, ``height``, storey counts) are tried.
+            Attribute holding the asset height in meters; when ``None`` the
+            usual keys (``height_m``, ``height``, story counts) are tried.
         ground_elevation (float | str | Callable):
             Elevation of the ground under the assets, in the datum of the
             camera elevations: one number for flat terrain (default ``0``,
@@ -767,10 +767,10 @@ class DroneViewSelector:
             unoccluded quality within each viewing direction. Defaults to
             160.
         occluder_radius_m (float):
-            Neighbours within this distance of an asset can hide it.
+            Neighbors within this distance of an asset can hide it.
             Defaults to 80.
         obstacles (PhysicalAssetCollection | None):
-            Further things that block the view but are not analysed (tree
+            Further things that block the view but are not analyzed (tree
             canopies, buildings outside the collection), as footprints with
             a height attribute.
         wall_spacing_m (float):
@@ -848,7 +848,7 @@ class DroneViewSelector:
 
     # ------------------------------------------------------------- inputs
     def asset_height(self, asset: PhysicalAsset) -> float:
-        """Prism height of an asset in metres (attribute or default)."""
+        """Prism height of an asset in meters (attribute or default)."""
         attributes = asset.attributes
         keys = (self.height_attribute,) if self.height_attribute else HEIGHT_KEYS
         for key in keys:
@@ -859,15 +859,15 @@ class DroneViewSelector:
             for key in LEVEL_KEYS:
                 value = _numeric(attributes.get(key))
                 if value is not None:
-                    return value * STOREY_HEIGHT_M
+                    return value * STORY_HEIGHT_M
         return self.default_height_m
 
     def asset_ground(self, asset: PhysicalAsset) -> float:
         """Ground elevation under an asset."""
         source = self.ground_elevation
         if callable(source):
-            centre = asset.geometry.centroid
-            return float(source(centre.x, centre.y))
+            center = asset.geometry.centroid
+            return float(source(center.x, center.y))
         if isinstance(source, str):
             value: Any = asset.attributes.get(source)
             try:
@@ -888,7 +888,7 @@ class DroneViewSelector:
             'sizes': np.array([[c.width, c.height] for c in cams], dtype=float).reshape(
                 -1, 2
             ),
-            'centres': np.array([[c.cx, c.cy] for c in cams], dtype=float).reshape(
+            'centers': np.array([[c.cx, c.cy] for c in cams], dtype=float).reshape(
                 -1, 2
             ),
         }
@@ -928,8 +928,8 @@ class DroneViewSelector:
         located = [a.geometry.centroid for a in assets if not a.geometry.is_empty]
         if not located:
             return results
-        centre = MultiPoint(located).centroid
-        project, unproject = local_projection(centre.x, centre.y)
+        center = MultiPoint(located).centroid
+        project, unproject = local_projection(center.x, center.y)
         self._project, self._unproject = project, unproject
         prisms: list[tuple[PhysicalAsset, Polygon, float, float]] = []
         for asset in assets:
@@ -965,7 +965,7 @@ class DroneViewSelector:
         arrays = self._camera_arrays(project)
         camera_tree = cKDTree(arrays['positions'][:, :2])
         for asset, polygon, base, height in tqdm(prisms, desc='Selecting drone views'):
-            raise_if_cancelled(self.cancel_event, 'drone view selection')
+            raise_if_canceled(self.cancel_event, 'drone view selection')
             near = tree.query(polygon.buffer(self.occluder_radius_m))
             edges = np.concatenate([edge_lists[i] for i in near])
             tops = np.concatenate(
@@ -1029,7 +1029,7 @@ class DroneViewSelector:
             half = arrays['sizes'][candidates] / 2 + reach[:, None]
             offset = np.abs(focal[:, None] * cam[:, :2] / depth[:, None])
             offset += np.abs(
-                arrays['centres'][candidates] - arrays['sizes'][candidates] / 2
+                arrays['centers'][candidates] - arrays['sizes'][candidates] / 2
             )
             candidates = candidates[(cam[:, 2] > 0.1) & (offset <= half).all(axis=1)]
 
@@ -1039,7 +1039,7 @@ class DroneViewSelector:
                 arrays['rotations'][index],
                 arrays['focal'][index],
                 arrays['sizes'][index],
-                arrays['centres'][index],
+                arrays['centers'][index],
                 patches,
                 occluder_edges,
                 occluder_tops,
@@ -1383,7 +1383,7 @@ class DroneImageExtractor:
             Stroke width in pixels or percent of the shorter crop side.
             Defaults to ``'0.8%'``.
         outline_color (str | tuple[int, int, int]):
-            PIL colour of the mark. Defaults to ``'red'``.
+            PIL color of the mark. Defaults to ``'red'``.
         image_prefix (str):
             Prefix of crop file names and image IDs. Defaults to
             ``'drone'``.
@@ -1400,7 +1400,7 @@ class DroneImageExtractor:
             from, and the projected footprints are shifted to where they
             overlap those buildings best (see :func:`estimate_image_shift`).
             The crop and the mark then sit on the building even when the
-            GPS or the compass was a few metres or degrees off. Needs a GPU
+            GPS or the compass was a few meters or degrees off. Needs a GPU
             for reasonable speed and enough standing structures in view to
             lock on to; photos where the match is weak keep the recorded
             pose. Defaults to ``False``.
@@ -1607,7 +1607,7 @@ class DroneImageExtractor:
     def _process_image(
         self, camera: DroneCamera, jobs: list[tuple[PhysicalAsset, SelectedView, int]]
     ) -> dict[tuple[str, str], ImageAsset]:
-        raise_if_cancelled(self.cancel_event, 'drone image extraction')
+        raise_if_canceled(self.cancel_event, 'drone image extraction')
         crops: dict[tuple[str, str], ImageAsset] = {}
         assert camera.path is not None  # __init__ drops cameras without a file
         with Image.open(camera.path) as image:
@@ -1626,7 +1626,7 @@ class DroneImageExtractor:
             self.refine_model = SAM3Inference()
         self.pose_shifts = {}
         for image_id in tqdm(sorted(jobs), desc='Refining poses'):
-            raise_if_cancelled(self.cancel_event, 'drone pose refinement')
+            raise_if_canceled(self.cancel_event, 'drone pose refinement')
             camera = cameras[image_id]
             output = self.refine_model.run_inference(
                 [str(camera.path)], prompt=self.refine_prompt

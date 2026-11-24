@@ -73,7 +73,7 @@ from .core import (
     ImageAsset,
     ImageCollection,
     Observation,
-    OperationCancelled,
+    OperationCanceled,
     PhysicalAsset,
     PhysicalAssetCollection,
     PolygonRegion,
@@ -199,7 +199,7 @@ __all__ = [
     'MuseSparkInference',
     'Observation',
     'OpenAIInference',
-    'OperationCancelled',
+    'OperationCanceled',
     'OrthomosaicReader',
     'PhysicalAsset',
     'PhysicalAssetCollection',
@@ -235,6 +235,10 @@ def __getattr__(attr: str) -> Any:
     This keeps ``import rapidtools`` fast for geometry-only work: PyTorch and
     Transformers are loaded only when a model or pipeline component is used.
     """
+    if attr == 'OperationCancelled':  # spelling used before 0.3.0
+        from .core.cancellation import RENAMED, renamed_attribute
+
+        return renamed_attribute(__name__, attr, RENAMED, globals())
     module_name = _LAZY_ATTRIBUTES.get(attr)
     if module_name is None:
         if attr in _LAZY_SUBMODULES:

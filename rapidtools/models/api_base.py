@@ -186,13 +186,13 @@ def resolve_api_key(
 
 def catalog_ids(catalog: list[dict[str, str]]) -> list[str]:
     """
-    Return the ``model_id`` of every entry in a model catalogue.
+    Return the ``model_id`` of every entry in a model catalog.
 
     Args:
         catalog: A list of ``{'model_id': ..., 'family': ..., ...}`` records.
 
     Returns:
-        list[str]: The model IDs in catalogue order.
+        list[str]: The model IDs in catalog order.
 
     Example:
         >>> from rapidtools.models.api_base import catalog_ids
@@ -278,12 +278,12 @@ class BaseAPIInferenceModel(BaseInferenceModel):
     @classmethod
     def list_known_models(cls) -> list[str]:
         """
-        Return the curated catalogue of model IDs for this provider.
+        Return the curated catalog of model IDs for this provider.
 
         Unlike :meth:`list_available_models` this never touches the network.
 
         Returns:
-            list[str]: Model IDs in catalogue order (newest first).
+            list[str]: Model IDs in catalog order (newest first).
 
         Example:
             >>> from rapidtools.models import OpenAIInference

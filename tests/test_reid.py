@@ -17,7 +17,7 @@ from rapidtools.processing.reid import (
     crop_observation,
     merge_by_appearance,
     merged_position,
-    normalise_rows,
+    normalize_rows,
     pairs_to_compare,
     polygon_width_px,
     recommended_min_similarity,
@@ -32,12 +32,12 @@ RED_ISH = (255, 40, 0)
 BLUE = (0, 0, 255)
 
 
-def _solid(colour, size=(32, 24)):
-    return Image.new('RGB', size, colour)
+def _solid(color, size=(32, 24)):
+    return Image.new('RGB', size, color)
 
 
-def _mean_colour_backend(images):
-    """Embedding = mean RGB of the crop, so colour decides similarity."""
+def _mean_color_backend(images):
+    """Embedding = mean RGB of the crop, so color decides similarity."""
     return np.array(
         [
             np.asarray(im.convert('RGB'), dtype=float).reshape(-1, 3).mean(0)
@@ -144,9 +144,9 @@ def test_embedder_empty_input_and_row_count_check():
         embedder.embed([_solid(RED), _solid(BLUE)])
 
 
-def test_normalise_rows_rejects_non_2d():
+def test_normalize_rows_rejects_non_2d():
     with pytest.raises(ValueError, match='2-D'):
-        normalise_rows(np.ones(3))
+        normalize_rows(np.ones(3))
 
 
 # ------------------------------------------------------------- candidates
@@ -174,7 +174,7 @@ def test_crop_observation_bbox_buffer_and_clamp():
     image = Image.new('RGB', (200, 100))
     box = [(0.4, 0.5), (0.5, 0.5), (0.5, 0.7), (0.4, 0.7)]  # 20 x 20 px
     assert crop_observation(image, box, buffer=0.0).size == (20, 20)
-    # 15 % of 20 px = 3 px on each side:
+    # 15% of 20 px = 3 px on each side:
     assert crop_observation(image, box, buffer=0.15).size == (26, 26)
     # A box touching the image corner is clamped, not padded:
     corner = [(0.0, 0.0), (0.1, 0.0), (0.1, 0.2), (0.0, 0.2)]
@@ -193,8 +193,8 @@ def test_crop_observation_handles_panorama_seam():
     seam_box = [(0.95, 0.4), (0.05, 0.4), (0.05, 0.6), (0.95, 0.6)]
     crop = crop_observation(pano, seam_box, buffer=0.0)
     assert crop.size == (20, 20)  # not the 180 px wide naive bbox
-    colours = {px for px in crop.getdata()}
-    assert RED in colours and BLUE in colours
+    colors = {px for px in crop.getdata()}
+    assert RED in colors and BLUE in colors
     # The same polygon on a non-panoramic image is treated literally:
     flat = Image.new('RGB', (200, 120))
     assert crop_observation(flat, seam_box, buffer=0.0).size == (180, 24)
@@ -250,7 +250,7 @@ def test_pairs_to_compare_grid_matches_brute_force():
         if not (a.sequence_ids & b.sequence_ids)
         and haversine_m(a.lon, a.lat, b.lon, b.lat) <= 6.0
     }
-    assert expected  # the fixture does produce neighbours
+    assert expected  # the fixture does produce neighbors
     assert set(pairs_to_compare(candidates, max_distance_m=6.0)) == expected
 
 
@@ -262,7 +262,7 @@ def test_pairs_to_compare_rejects_duplicate_keys():
 # ---------------------------------------------------------------- merging
 @pytest.fixture
 def embedder():
-    return AppearanceEmbedder(backend=_mean_colour_backend)
+    return AppearanceEmbedder(backend=_mean_color_backend)
 
 
 def test_merge_by_appearance_merges_similar_pair(embedder):
@@ -277,7 +277,7 @@ def test_merge_by_appearance_keeps_dissimilar_pair_apart(embedder):
     b = _candidate('b', east_m=3.0, sequences=('s2',))
     crops = {'a': _solid(RED), 'b': _solid(BLUE)}
     assert merge_by_appearance([a, b], crops, embedder) == [['a'], ['b']]
-    # The threshold is honoured: RED vs RED_ISH is ~0.988 cosine.
+    # The threshold is honored: RED vs RED_ISH is ~0.988 cosine.
     crops = {'a': _solid(RED), 'b': _solid(RED_ISH)}
     assert merge_by_appearance([a, b], crops, embedder, min_similarity=0.999) == [
         ['a'],
@@ -299,7 +299,7 @@ def test_merge_by_appearance_leaves_candidates_without_crops_alone(embedder):
 
     def backend(images):
         seen.append(len(images))
-        return _mean_colour_backend(images)
+        return _mean_color_backend(images)
 
     emb = AppearanceEmbedder(backend=backend)
     assert merge_by_appearance([a, b], {'a': _solid(RED)}, emb) == [['a'], ['b']]
@@ -316,7 +316,7 @@ def test_merge_by_appearance_embeds_each_crop_once(embedder):
 
     def backend(images):
         seen.append(len(images))
-        return _mean_colour_backend(images)
+        return _mean_color_backend(images)
 
     emb = AppearanceEmbedder(backend=backend)
     crops = {'a': _solid(RED), 'b': _solid(RED), 'c': _solid(RED)}
@@ -344,7 +344,7 @@ def test_merge_by_appearance_shared_frame_rule_holds_through_chains(embedder):
     assert merge_by_appearance([a, b, c], crops, embedder) == [['a', 'b'], ['c']]
 
 
-def test_merged_position_is_metre_frame_mean():
+def test_merged_position_is_meter_frame_mean():
     p1 = (LON0, LAT0)
     p2 = destination_point(LON0, LAT0, 90.0, 4.0)
     lon, lat = merged_position([p1, p2])

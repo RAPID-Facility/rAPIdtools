@@ -61,7 +61,7 @@ What to look at in the output
 
 - ``localization`` is ``'triangulated'`` for vehicles placed by
   intersecting the bearings of their sightings, typically within half a
-  metre, and ``'fused'`` for the few placed at the centre of their occupied
+  meter, and ``'fused'`` for the few placed at the center of their occupied
   ground cells.
 - ``position_sigma_m``, ``parallax_deg``, ``n_images`` and
   ``position_rms_m`` tell you how well constrained each position is, and
@@ -70,7 +70,7 @@ What to look at in the output
   car is). ``survey_days`` lists the days it was seen on.
 - Vehicles that were driving never collect agreeing votes and the ground
   the survey vehicle drove over is free by construction, so neither needs a
-  rule; a few detections of an empty kerb are cleared by the frames that
+  rule; a few detections of an empty curb are cleared by the frames that
   pass it and see nothing. The log reports how many occupied blobs were
   found, split and dropped.
 - One vehicle, one object. All frames of a survey day vote on the same
@@ -84,7 +84,7 @@ What to look at in the output
   motor vehicle, or are less than half visible, and writes
   ``verify_accepted``, ``verify_label``, ``verify_confidence`` and
   ``verify_visible_fraction``. On the August 2026 survey of this
-  neighbourhood it keeps roughly 450 of 650 objects, most of the rest being
+  neighborhood it keeps roughly 450 of 650 objects, most of the rest being
   far or partial views.
 - ``observations`` lists every sighting with its image ID, so the crops can be
   regenerated later without re-running detection.
@@ -97,7 +97,7 @@ What to look at in the output
   car.
 
 The detection stage downloads no images, only detection metadata, so the
-1 km neighbourhood above runs in about six minutes, most of it reading
+1 km neighborhood above runs in about six minutes, most of it reading
 detections; a whole city takes about an hour and a quarter. The crop stage
 fetches each 2048 pixel source image once and cuts every vehicle seen in it;
 the appearance step fetches one more per compared vehicle.

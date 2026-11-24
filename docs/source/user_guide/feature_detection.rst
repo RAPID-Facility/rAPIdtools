@@ -4,7 +4,7 @@ Feature detection and regularization
 When you have imagery but no inventory, rAPIdtools can discover assets
 itself. SAM 3 scans a raster for a text concept and returns polygons, and the
 regularizers turn those raw masks into clean building footprints or road
-centrelines.
+centerlines.
 
 Finding assets in a raster
 --------------------------
@@ -29,7 +29,7 @@ prompt, and maps the resulting masks back to WGS84 polygons.
    buildings.to_geojson('buildings_preliminary.geojson')
 
 Smaller patches keep texture visible for small objects; larger ones are
-faster and suit roads and vegetation. Because neighbouring tiles overlap,
+faster and suit roads and vegetation. Because neighboring tiles overlap,
 the same object is often detected more than once. By default touching
 detections dissolve into one polygon, which is right for roofs, roads and
 vegetation. For countable objects such as vehicles, pass
@@ -47,7 +47,7 @@ and ``sam3_bounding_boxes``.
 Regularizing building footprints
 --------------------------------
 
-Raw masks from a basemap are jagged, sometimes merged with a neighbour, and
+Raw masks from a basemap are jagged, sometimes merged with a neighbor, and
 occasionally hallucinated. :class:`~rapidtools.processing.BuildingRegularizer`
 crops high-resolution imagery around each preliminary footprint, runs SAM 3
 again at the higher resolution, and keeps a mask only when it agrees with
@@ -79,7 +79,7 @@ Regularizing roads
 :class:`~rapidtools.processing.RoadwayRegularizer` extracts a Voronoi
 skeleton from raw road polygons, heals the graph, merges collinear segments,
 samples widths statistically and drops disconnected stubs shorter than
-``min_network_length_ft``. It returns both centrelines and rebuilt polygons.
+``min_network_length_ft``. It returns both centerlines and rebuilt polygons.
 
 .. code-block:: python
 

@@ -44,7 +44,7 @@ This module provides :class:`SAM3OrthoFeatureExtractor`, which scans an
 entire GeoTIFF in overlapping tiles, prompts a local SAM 3 model for a given
 feature (e.g., ``'building'``, ``'road'``, ``'solar panel'``), and converts
 the returned pixel masks into georeferenced Shapely polygons. Overlapping
-detections from neighbouring tiles are dissolved into single assets, or, with
+detections from neighboring tiles are dissolved into single assets, or, with
 ``merge_overlaps=False``, kept as one asset per detected instance (for
 countable objects such as vehicles) with cross-tile duplicates removed.
 
@@ -82,7 +82,7 @@ from shapely.ops import unary_union
 from shapely.strtree import STRtree
 from tqdm import tqdm
 
-from rapidtools.core import PhysicalAsset, PhysicalAssetCollection, raise_if_cancelled
+from rapidtools.core import PhysicalAsset, PhysicalAssetCollection, raise_if_canceled
 from rapidtools.data_sources import OrthomosaicReader
 
 from .step import Stage
@@ -130,7 +130,7 @@ class SAM3OrthoFeatureExtractor:
     The extractor tiles a high-resolution orthomosaic raster into square
     patches of ``patch_size`` (in real-world units), runs SAM 3 on each batch
     of patches with the given text prompt, and maps the resulting pixel masks
-    back to WGS84 polygons. Because neighbouring tiles overlap, the same
+    back to WGS84 polygons. Because neighboring tiles overlap, the same
     object is frequently detected more than once; by default a final
     ``unary_union`` melts those duplicates into a single geometry per
     physical feature. That suits area features (roofs, roads, vegetation)
@@ -153,7 +153,7 @@ class SAM3OrthoFeatureExtractor:
             Defaults to ``'feet'``.
         overlap_ratio (float, optional):
             Fractional overlap between adjacent tiles (0.0 <= r < 1.0). Higher
-            values reduce edge artefacts at the cost of more inference.
+            values reduce edge artifacts at the cost of more inference.
             Defaults to 0.15.
         model_id (str, optional):
             Hugging Face repository ID of the SAM 3 model. Defaults to
@@ -182,7 +182,7 @@ class SAM3OrthoFeatureExtractor:
             ``True``.
         cancel_event (threading.Event | None, optional):
             Cooperative cancellation flag checked before every tile. When set,
-            :class:`~rapidtools.core.OperationCancelled` is raised. Defaults
+            :class:`~rapidtools.core.OperationCanceled` is raised. Defaults
             to ``None``.
 
     Example:
@@ -338,7 +338,7 @@ class SAM3OrthoFeatureExtractor:
                 if nothing was detected.
 
         Raises:
-            OperationCancelled:
+            OperationCanceled:
                 If ``cancel_event`` is set between two tiles.
             FileNotFoundError:
                 If ``raster_path`` does not exist.
@@ -370,7 +370,7 @@ class SAM3OrthoFeatureExtractor:
             for pil_image, wgs84_bounds, georef in tqdm(
                 tile_generator, desc=f"Scanning for '{self.prompt}'"
             ):
-                raise_if_cancelled(self.cancel_event, f"scan for '{self.prompt}'")
+                raise_if_canceled(self.cancel_event, f"scan for '{self.prompt}'")
                 batch_images.append(pil_image)
                 batch_bounds.append(wgs84_bounds)
                 batch_georefs.append(georef)
@@ -576,7 +576,7 @@ class SAM3OrthoFeatureExtractor:
         polygon is discarded when an already kept polygon covers more than
         :data:`DUPLICATE_OVERLAP_RATIO` of the smaller of the two areas.
         Using the smaller area rather than IoU also removes the partial view
-        of an object cut by a tile edge when a neighbouring tile saw it
+        of an object cut by a tile edge when a neighboring tile saw it
         whole. Polygons that merely touch are both kept.
 
         Args:

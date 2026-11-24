@@ -41,7 +41,7 @@
 Pipeline step that confirms detections with a model and drops false positives.
 
 Street-level detectors such as :class:`~rapidtools.processing.MapillaryFeatureExtractor`
-return every object Mapillary labelled as, say, a vehicle, and some of those
+return every object Mapillary labeled as, say, a vehicle, and some of those
 are not vehicles at all. :class:`DetectionVerifier` sends each object's
 nearest crops to a model of your choice, asks whether the image really shows
 what the asset claims to be, and removes the objects that fail. It sits in the
@@ -71,7 +71,7 @@ from rapidtools.core import (
     ImageCollection,
     PhysicalAsset,
     PhysicalAssetCollection,
-    raise_if_cancelled,
+    raise_if_canceled,
 )
 from rapidtools.models.base import BaseInferenceModel, GenerationConfig
 
@@ -126,7 +126,7 @@ DEFAULT_PROMPT = (
     'detection to judge. Judge only the object inside the outline, not the '
     'rest of the crop.\n\n'
     'Question: is the outlined object {description}?\n\n'
-    'Be strict. Answer true only if you can clearly recognise the outlined '
+    'Be strict. Answer true only if you can clearly recognize the outlined '
     'object as {description}. Answer false if the outline contains something '
     'else, only a small part of such an object, or an object so hidden, '
     'distant or blurred that you cannot tell what it is. Also answer false '
@@ -245,7 +245,7 @@ class _VerificationAnalyzer(AssetAnalyzer):
     :class:`AssetAnalyzer` that only records the verification verdict.
 
     The parent writes every key of the model's JSON plus ``ai_model_used``;
-    here only ``match``, ``confidence`` and ``label`` are kept (normalised),
+    here only ``match``, ``confidence`` and ``label`` are kept (normalized),
     so the verifier never clobbers attributes written by a later analysis.
     """
 
@@ -337,7 +337,7 @@ class DetectionVerifier:
             Back-off and retry policy for hosted models.
         cancel_event (threading.Event | None):
             Cooperative cancellation flag; raises
-            :class:`~rapidtools.core.OperationCancelled` when set.
+            :class:`~rapidtools.core.OperationCanceled` when set.
 
     Raises:
         ValueError: If neither or both of ``model`` and ``classifier`` are
@@ -345,7 +345,7 @@ class DetectionVerifier:
 
     Example:
         Detect vehicles from Mapillary, attach their crops, discard the
-        detections a model does not recognise as vehicles, and only then pay
+        detections a model does not recognize as vehicles, and only then pay
         for the detailed analysis:
 
         >>> import rapidtools as rt
@@ -514,7 +514,7 @@ class DetectionVerifier:
         """Run one analyzer per asset type so each group gets its own prompt."""
         assert self.model is not None
         for asset_type, assets in groups.items():
-            raise_if_cancelled(self.cancel_event, 'detection verification')
+            raise_if_canceled(self.cancel_event, 'detection verification')
             for asset in assets:
                 self._sort_images_by_range(asset)
             analyzer = _VerificationAnalyzer(
@@ -544,7 +544,7 @@ class DetectionVerifier:
         for asset_type, assets in groups.items():
             description = self.description_for(asset_type)
             for asset in assets:
-                raise_if_cancelled(self.cancel_event, 'detection verification')
+                raise_if_canceled(self.cancel_event, 'detection verification')
                 paths = self._selected_paths(asset)
                 if not paths:
                     continue
@@ -585,9 +585,9 @@ class DetectionVerifier:
             assets (or with them flagged when ``keep_rejected`` is set).
 
         Raises:
-            OperationCancelled: If ``cancel_event`` is set during the run.
+            OperationCanceled: If ``cancel_event`` is set during the run.
         """
-        raise_if_cancelled(self.cancel_event, 'detection verification')
+        raise_if_canceled(self.cancel_event, 'detection verification')
         prefix = self.attribute_prefix
         assets = list(collection)
         if not assets:
@@ -612,7 +612,7 @@ class DetectionVerifier:
             self._verify_with_classifier(groups)
         else:
             self._verify_with_model(groups)
-        raise_if_cancelled(self.cancel_event, 'detection verification')
+        raise_if_canceled(self.cancel_event, 'detection verification')
 
         accepted = rejected = failed = 0
         rejected_ids: list[str] = []

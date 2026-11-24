@@ -45,7 +45,7 @@ Shared by the aerial and street-level imagery extractors so that the
 ``outline_shape`` / ``outline_buffer`` / ``outline_width`` / ``outline_color``
 options mean the same thing everywhere. All geometry is handled in the crop's
 pixel space with shapely; real-world buffer distances are converted with a
-metres-per-pixel figure supplied by the caller.
+meters-per-pixel figure supplied by the caller.
 
 Example:
     >>> from PIL import Image
@@ -89,7 +89,7 @@ def parse_outline_buffer(buffer: float | str) -> tuple[float, str]:
     Returns:
         tuple[float, str]:
             The non-negative magnitude and its kind: ``'px'``, ``'%'`` or
-            ``'m'`` (the magnitude is then in metres).
+            ``'m'`` (the magnitude is then in meters).
 
     Raises:
         ValueError: If the value cannot be parsed, uses an unsupported unit,
@@ -173,14 +173,14 @@ def parse_outline_width(width: int | float | str) -> tuple[float, str]:
 
 def validate_outline_color(color: str | tuple[int, int, int]) -> None:
     """
-    Raise ``ValueError`` for a colour PIL cannot interpret.
+    Raise ``ValueError`` for a color PIL cannot interpret.
 
     Example:
         >>> validate_outline_color('#00ffff')
-        >>> validate_outline_color('not-a-colour')
+        >>> validate_outline_color('not-a-color')
         Traceback (most recent call last):
         ...
-        ValueError: unknown color specifier: 'not-a-colour'
+        ValueError: unknown color specifier: 'not-a-color'
     """
     if isinstance(color, str):
         ImageColor.getrgb(color)
@@ -291,7 +291,7 @@ def draw_outline(
             :func:`parse_outline_buffer` or already parsed.
         width: Stroke width, as accepted by :func:`parse_outline_width` or
             already parsed.
-        color: PIL colour of the stroke.
+        color: PIL color of the stroke.
         meters_per_pixel: Ground sampling distance for real-world buffers.
     """
     if not pixel_coords:
@@ -328,7 +328,7 @@ def draw_geometry(draw, geom, width: int, color, brackets: bool) -> None:
         geom: The geometry to trace; multi-part geometries are drawn part by
             part.
         width: Stroke width in pixels.
-        color: PIL colour of the stroke.
+        color: PIL color of the stroke.
         brackets: Draw four-cornered polygons as corner brackets instead of a
             closed ring.
     """
@@ -355,14 +355,14 @@ def draw_corner_brackets(draw, corners, width: int, color) -> None:
     Draw an L-shaped bracket at each corner of a quadrilateral.
 
     Each arm runs a quarter of the shorter side (at least twice the stroke
-    width) towards the neighbouring corner, leaving the asset's edges
+    width) toward the neighboring corner, leaving the asset's edges
     uncovered.
 
     Args:
         draw: A :class:`PIL.ImageDraw.ImageDraw` bound to the crop.
         corners: The four corner points in ring order.
         width: Stroke width in pixels.
-        color: PIL colour of the stroke.
+        color: PIL color of the stroke.
     """
     n = len(corners)
     sides = [math.dist(corners[i], corners[(i + 1) % n]) for i in range(n)]

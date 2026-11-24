@@ -187,7 +187,7 @@ class SAM3Inference(BaseLocalInferenceModel):
             prompt: Concept to segment (e.g. ``'building'``) or a prompt file.
                 ``None`` runs the model without a text prompt.
             threshold: Detection confidence threshold (default 0.5).
-            mask_threshold: Threshold for binarising mask logits (default 0.5).
+            mask_threshold: Threshold for binarizing mask logits (default 0.5).
             config: A :class:`~rapidtools.models.base.SegmentationConfig`;
                 explicit keyword arguments take precedence over it.
             **kwargs: Ignored; accepted for interface compatibility.

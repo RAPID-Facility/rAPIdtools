@@ -89,7 +89,7 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from rapidtools.config import configure_logging
-from rapidtools.core import OperationCancelled, PhysicalAssetCollection
+from rapidtools.core import OperationCanceled, PhysicalAssetCollection
 from rapidtools.gui.logging_utils import CallbackLogHandler, LogBuffer, ProgressStream
 from rapidtools.gui.notify import JobSummary, NotificationConfig, Notifier
 from rapidtools.gui.preview import (
@@ -597,7 +597,7 @@ class AppState:
         While the job runs, ``sys.stderr`` is swapped for a
         :class:`~rapidtools.gui.logging_utils.ProgressStream` so ``tqdm`` bars
         appear live in the GUI log. The job record is updated to ``done``,
-        ``cancelled`` (on :class:`~rapidtools.core.OperationCancelled`) or
+        ``canceled`` (on :class:`~rapidtools.core.OperationCanceled`) or
         ``error`` when the target returns or raises.
 
         Args:
@@ -648,8 +648,8 @@ class AppState:
             )
             try:
                 target()
-            except OperationCancelled:
-                self._finish_job('cancelled', f'{name} cancelled.')
+            except OperationCanceled:
+                self._finish_job('canceled', f'{name} canceled.')
             except Exception as exc:  # noqa: BLE001 - surfaced to the browser
                 logger.exception(f'{name} failed')
                 self._finish_job('error', f'{name} failed: {exc}')
@@ -677,11 +677,11 @@ class AppState:
                 results=[dict(r) for r in self.results],
                 url=self.notifier.config.public_url or self.public_url,
             )
-            if target and status != 'cancelled':
+            if target and status != 'canceled':
                 # One notification per request: the address is kept in the
                 # browser, so the next run asks again.
                 self.notify = {'target': '', 'kind': ''}
-        if target and status != 'cancelled':
+        if target and status != 'canceled':
             self.notifier.send_in_background(target, summary, self._on_notified)
 
     def _on_notified(self, ok: bool, message: str) -> None:
@@ -724,9 +724,7 @@ class AppState:
         """Ask the running workflow to stop at the next safe point (if any)."""
         if self.busy():
             self.workflow.cancel()
-            self.set_status(
-                'Cancelling... the current batch or tile will finish first.'
-            )
+            self.set_status('Canceling... the current batch or tile will finish first.')
             self.log.add_line('Cancellation requested by user.')
 
     # -------------------------------------------------------- serialization
@@ -805,7 +803,7 @@ class Api:
     Implements each JSON endpoint against an :class:`AppState`.
 
     Every public method takes the decoded JSON body (``POST``) or the query
-    dictionary (``GET``) and returns a JSON-serialisable dict, raising
+    dictionary (``GET``) and returns a JSON-serializable dict, raising
     :class:`ApiError` for expected failures. Long-running work is handed to
     :meth:`AppState.start_job` so the HTTP response returns immediately.
 
@@ -940,7 +938,7 @@ class Api:
                 written to a private temporary file that is deleted when
                 the job ends.
             on_failure (Callable[[BaseException], None] | None): Called with
-                the exception when the job fails or is cancelled.
+                the exception when the job fails or is canceled.
 
         Returns:
             Path: The job file.
@@ -1292,12 +1290,12 @@ class Api:
         """
         Show the result of an ``analyze.vlm`` step.
 
-        A cancelled step keeps what was analyzed before the user pressed
+        A canceled step keeps what was analyzed before the user pressed
         cancel: attributes are written in place, so the collection the step
         was working on is shown as partially analyzed.
         """
         state = self.state
-        if step.status == 'cancelled':
+        if step.status == 'canceled':
             collection = step.objects.get('assets')
             if collection is not None:
                 # The file the collection came from is still the complete
@@ -1860,7 +1858,7 @@ class Api:
                     entry.update(status='ready', lines=lines, done=1, total=1)
                 if age_s < OVERVIEW_MAX_AGE_S:
                     return
-                # Older than a week: the map gets the old index straight away
+                # Older than a week: the map gets the old index right away
                 # and the fresh one replaces it when the rebuild finishes.
                 stale_lines = lines
                 with state.lock:
@@ -2214,7 +2212,7 @@ class Api:
         Returns:
             dict[str, Any]: ``text`` (the prompt), ``marking``, ``attributes``
             (the asset attribute names the analyzer will write) and the
-            normalised ``spec``.
+            normalized ``spec``.
 
         Raises:
             ApiError: If the specification is invalid.
@@ -2437,7 +2435,7 @@ class Api:
                 'collection_version': version,
             }
         # A running analyzer mutates asset attributes in place; retry if a
-        # dictionary changes size while we are serialising it.
+        # dictionary changes size while we are serializing it.
         for attempt in range(3):
             try:
                 data = project_collection(collection, preview)

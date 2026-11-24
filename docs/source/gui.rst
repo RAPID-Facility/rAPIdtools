@@ -45,7 +45,7 @@ The three steps
    key), Mapillary panoramas of each footprint, or the closest Mapillary
    views of each discovered object. Where an outline can be drawn, choose
    its shape (geometry, bounding box, corner brackets, ...), buffer, width
-   and colour.
+   and color.
 
    *Analysis model and prompt.* Every analysis model in rAPIdtools is
    available: the Gemini, Claude, OpenAI, Muse Spark and Qwen APIs; Gemma 4,
@@ -56,7 +56,7 @@ The three steps
    the sample library (aerial CHS, street-level CHS, street-level recovery)
    or from the prompt builder described below.
 3. **Results.** Hover over an asset to see its attributes, click one to view
-   the exact crops the model analyzed, colour the overlay by any inferred
+   the exact crops the model analyzed, color the overlay by any inferred
    attribute, browse the attribute table and download the GeoJSON outputs.
 
 Progress and log output stream into the page while the work runs on a
@@ -145,7 +145,7 @@ bottom right.
   ``GET /api/street/routes.json`` serves it.
 - With *RAPID surveys only* off, routes of all contributors are read per
   view from the coverage tiles (``GET /api/street/sequences/<z>/<x>/<y>``
-  from zoom 6 upwards, ``GET /api/street/overview`` below), which is
+  from zoom 6 upward, ``GET /api/street/overview`` below), which is
   slower and limited to the current view.
 - *Search an address or place* uses OpenStreetMap's Nominatim
   (``GET /api/geocode?q=``) and jumps to the match; ``lat, lon`` works too.
@@ -158,7 +158,7 @@ the box into a GeoTIFF, and **Discover street-level objects here** goes
 straight to step 2 with the box as the survey area, so no aerial image is
 needed. The tile zoom level is chosen automatically from the size of the
 box (the finest level, up to 19, that stays under the 2,500-tile limit)
-and reported as a resolution in metres per pixel; *Adjust resolution*
+and reported as a resolution in meters per pixel; *Adjust resolution*
 overrides it. The box and the coordinate fields stay in sync, so typing
 numbers moves the box.
 

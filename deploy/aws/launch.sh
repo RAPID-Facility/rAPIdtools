@@ -120,7 +120,7 @@ if [ -n "$INSTANCE_TYPE" ]; then
         [ "$ASSUME_YES" = 1 ] || { read -r -p "Try anyway? [y/N] " a; [ "$a" = y ] || [ "$a" = Y ] || exit 1; }
       fi ;;
   esac
-  # Pick an Availability Zone that offers the machine type (new stacks only: the zone is fixed afterwards).
+  # Pick an Availability Zone that offers the machine type (new stacks only: the zone is fixed afterward).
   if [ "$exists" = 0 ] && [ -z "$AZ" ]; then
     zones=$(aws_r ec2 describe-instance-type-offerings --location-type availability-zone \
       --filters "Name=instance-type,Values=$INSTANCE_TYPE" --query 'InstanceTypeOfferings[].Location' --output text 2>/dev/null || true)

@@ -118,7 +118,7 @@ pipeline = rt.Pipeline([
     # 3. Crop the orthomosaic around each building and draw a reference
     #    outline. The outline can trace the footprint itself (default), its
     #    bounding box, rotated bounding box, convex hull or corner brackets,
-    #    optionally pushed away from the asset, in any width and colour.
+    #    optionally pushed away from the asset, in any width and color.
     rt.AerialImageryExtractor(
         raster_path,
         save_directory='eaton_fire_aerial_feb25/overlaid_imagery',
@@ -164,9 +164,9 @@ The app walks through three steps while the aerial image stays on screen and is 
    - *Imagery for analysis*: aerial crops from the loaded image (with edge handling), Google Street View panoramas cropped to each footprint (no key), Mapillary panoramas of each footprint, or the closest Mapillary views of each discovered object. The asset can be marked on every crop with an outline, bounding box or corner brackets.
    - *Model*: every analysis model in `rapidtools` is available: Google Gemini, Anthropic Claude, OpenAI, Meta Muse Spark, and Qwen through their APIs; Gemma-4, Llama Vision, Muse Glimmer, and Qwen locally; and, under *Other open models*, any Hugging Face vision-language checkpoint with optional 4-bit loading. *Fetch models* lists the model IDs your API key can access. Temperature, output length and JSON mode live under *Advanced options*.
    - *Prompt*: load one of the sample prompts (aerial CHS, street-level CHS, street-level recovery), a file, or open the **prompt builder**. The builder walks through task and role, output fields (which become the asset attributes), visual indicators for every class, analysis steps and edge cases, and assembles a prompt in the layout of the sample prompts. Its **assistant** uses any of the same model backends (the analysis model, or a local Gemma-4 / Qwen) to draft the whole specification from a one-line description, refine it on request, suggest indicators for a class, review the finished prompt, or import an existing prompt into the builder.
-3. **Results**: hover over assets to inspect their attributes, click one to see the exact image crops the model analyzed, colour the overlay by any inferred attribute, browse the attribute table, and download the GeoJSON outputs.
+3. **Results**: hover over assets to inspect their attributes, click one to see the exact image crops the model analyzed, color the overlay by any inferred attribute, browse the attribute table, and download the GeoJSON outputs.
 
-### Sharing the app with colleagues
+### Sharing the app
 
 Run the server on the machine that has the GPU and the imagery, bind it to the network, and protect it with an access token:
 
@@ -229,11 +229,11 @@ from rapidtools.jobs import run_job
 run_job('job.json').raise_for_status()
 ```
 
-Every step is checked before the first one runs, and a result file (`job.result.json`, next to the job file) is rewritten at every change of state with each step's status, output files and summary. `run` exits with 0 when the job finished, 1 when a step failed, 2 when the job file is invalid and 3 when it was cancelled. API keys stay out of job files: write `{"$env": "VARIABLE"}`, or `{"$secret": "name"}` with a separate `--secrets` file. The [JSON job interface](https://rapid-facility.github.io/rAPIdtools/json_interface.html) page is the full specification, with JSON Schemas for the three file types, and `examples/jobs` has jobs ready to run.
+Every step is checked before the first one runs, and a result file (`job.result.json`, next to the job file) is rewritten at every change of state with each step's status, output files and summary. `run` exits with 0 when the job finished, 1 when a step failed, 2 when the job file is invalid and 3 when it was canceled. API keys stay out of job files: write `{"$env": "VARIABLE"}`, or `{"$secret": "name"}` with a separate `--secrets` file. The [JSON job interface](https://rapid-facility.github.io/rAPIdtools/json_interface.html) page is the full specification, with JSON Schemas for the three file types, and `examples/jobs` has jobs ready to run.
 
 ## Supported Models
 
-Every wrapper exposes `list_known_models()` (the curated catalogue below, no network) and `list_available_models(api_key)` (live listing from the provider where one exists). Pass any listed ID as `model_id`; the default is marked in bold.
+Every wrapper exposes `list_known_models()` (the curated catalog below, no network) and `list_available_models(api_key)` (live listing from the provider where one exists). Pass any listed ID as `model_id`; the default is marked in bold.
 
 | Provider / family | `load()` name · wrapper | Key (env var) | Models |
 |---|---|---|---|

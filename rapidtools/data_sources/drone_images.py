@@ -57,7 +57,7 @@ Conventions:
   ground elevations the caller works with. By default it is the height above
   the take-off point, which makes the take-off point the zero of a flat
   world; pass ``takeoff_elevation_m`` to place the flight in a real datum.
-- Local coordinates are east/north/up metres from
+- Local coordinates are east/north/up meters from
   :func:`~rapidtools.processing.street_localization.local_projection`.
 
 Example:
@@ -188,8 +188,8 @@ class DroneCamera:
         width: Image width in pixels.
         height: Image height in pixels.
         focal_px: Focal length in pixels.
-        cx: Principal point column; the image centre when ``None``.
-        cy: Principal point row; the image centre when ``None``.
+        cx: Principal point column; the image center when ``None``.
+        cy: Principal point row; the image center when ``None``.
         path: Image file, when the photo is on disk.
         captured_at: Capture time as written by the camera, if known.
         relative_altitude_m: Height above the take-off point, if recorded.
@@ -256,14 +256,14 @@ class DroneCamera:
 
     def position(self, project: Callable[[float, float], tuple[float, float]]):
         """
-        Camera centre in a local east/north/up frame.
+        Camera center in a local east/north/up frame.
 
         Args:
             project: ``(lon, lat) -> (x, y)`` from
                 :func:`~rapidtools.processing.street_localization.local_projection`.
 
         Returns:
-            numpy.ndarray: ``[x, y, elevation]`` in metres.
+            numpy.ndarray: ``[x, y, elevation]`` in meters.
 
         Example:
             >>> from rapidtools.processing.street_localization import (
@@ -286,7 +286,7 @@ class DroneCamera:
         Project local east/north/up points into the photo.
 
         Args:
-            points: ``N x 3`` array of local coordinates in metres.
+            points: ``N x 3`` array of local coordinates in meters.
             project: The local projection the points were made with.
 
         Returns:
@@ -420,7 +420,7 @@ class DroneCamera:
         return corners
 
     def _own_projection(self):
-        """Local projection centred on the camera."""
+        """Local projection centered on the camera."""
         cos_lat = math.cos(math.radians(self.lat))
 
         def project(lon: float, lat: float) -> tuple[float, float]:
@@ -437,7 +437,7 @@ class DroneCamera:
 
         return project, unproject
 
-    # -------------------------------------------------------- serialisation
+    # -------------------------------------------------------- serialization
     def to_dict(self) -> dict[str, Any]:
         """
         JSON-friendly record of the pose (round-trips through ``from_dict``).
@@ -572,7 +572,7 @@ def read_drone_image(
         path: Image file.
         altitude_source: ``'relative'`` uses the height above take-off plus
             ``takeoff_elevation_m``; ``'absolute'`` uses the GPS altitude,
-            which on consumer aircraft can be tens of metres off;
+            which on consumer aircraft can be tens of meters off;
             ``'auto'`` (default) prefers the relative height.
         takeoff_elevation_m: Elevation of the take-off point in the datum
             of the ground elevations used downstream. The default of ``0``
@@ -652,7 +652,7 @@ def read_drone_image(
     if pitch is None:
         pitch = -90.0
     # A gimbal reported past straight down has flipped over: the lens looks
-    # backwards. Fold it back so pitch stays within [-90, 90].
+    # backward. Fold it back so pitch stays within [-90, 90].
     if pitch < -90.0:
         pitch, yaw = -180.0 - pitch, yaw + 180.0
 

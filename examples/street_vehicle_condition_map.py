@@ -10,7 +10,7 @@ writes two files next to the crops:
 * a GeoJSON with the verdict (``vehicle_condition``) and the model's one-line
   reason (``vehicle_evidence``) added to every vehicle;
 * a self-contained HTML map with burned vehicles in red, intact vehicles in
-  green and the few the model could not judge in grey. Clicking a marker
+  green and the few the model could not judge in gray. Clicking a marker
   shows the verdict, the evidence and the crops it was judged from.
 
 Run with::
@@ -184,22 +184,22 @@ L.control.scale({imperial: true}).addTo(map);
 function getCSS(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
 // The collection route: one polyline per sequence (white casing under a
-// coloured line), and the individual camera positions on demand.
+// colored line), and the individual camera positions on demand.
 const routeLayer = L.layerGroup().addTo(map);
 const frameLayer = L.layerGroup();
-const routeColour = getCSS('--route');
+const routeColor = getCSS('--route');
 for (const r of ROUTES) {
   const latlngs = r.frames.map(f => [f[1], f[0]]);
   if (latlngs.length < 2) continue;
   L.polyline(latlngs, {color: '#fff', weight: 6, opacity: 0.6, interactive: false}).addTo(routeLayer);
-  L.polyline(latlngs, {color: routeColour, weight: 2.5, opacity: 0.95})
+  L.polyline(latlngs, {color: routeColor, weight: 2.5, opacity: 0.95})
     .bindTooltip(`sequence ${r.seq} · ${r.frames.length} frames · ${r.date || ''}`, {sticky: true})
     .addTo(routeLayer);
 }
 const frameRenderer = L.canvas({padding: 0.5});
 for (const r of ROUTES)
   for (const f of r.frames)
-    L.circleMarker([f[1], f[0]], {renderer: frameRenderer, radius: 2.5, weight: 1, color: routeColour,
+    L.circleMarker([f[1], f[0]], {renderer: frameRenderer, radius: 2.5, weight: 1, color: routeColor,
       fillColor: '#fff', fillOpacity: 1, interactive: false}).addTo(frameLayer);
 document.getElementById('f-route').addEventListener('change', e =>
   e.target.checked ? routeLayer.addTo(map) : map.removeLayer(routeLayer));
@@ -207,19 +207,19 @@ document.getElementById('f-frames').addEventListener('change', e =>
   e.target.checked ? frameLayer.addTo(map) : map.removeLayer(frameLayer));
 
 // Burned vehicles are red, intact ones green, and the few the model could
-// not judge grey. Burned markers are drawn last and slightly larger so they
+// not judge gray. Burned markers are drawn last and slightly larger so they
 // stay visible among the intact majority.
 const renderer = L.canvas({padding: 0.5});
 const markers = new Map();
 let selected = null;
 let lines = L.layerGroup().addTo(map);
-const colour = v => getCSS('--' + v.condition);
+const color = v => getCSS('--' + v.condition);
 const radius = v => v.condition === 'burned' ? 6 : 5;
 const order = v => v.condition === 'burned' ? 2 : v.condition === 'unclear' ? 0 : 1;
 
 for (const v of [...DATA].sort((a, b) => order(a) - order(b))) {
   const m = L.circleMarker([v.lat, v.lon], {renderer, radius: radius(v), weight: 1, color: '#111',
-    fillColor: colour(v), fillOpacity: 0.9});
+    fillColor: color(v), fillOpacity: 0.9});
   m.bindTooltip(`${v.id} · ${v.condition} (${v.n_images} img)`, {direction: 'top'});
   m.on('click', () => select(v.id));
   markers.set(v.id, m);
@@ -274,8 +274,8 @@ function select(id) {
   m.setStyle({color: getCSS('--sel'), weight: 3, radius: 9}).bringToFront();
   lines.clearLayers();
   for (const c of v.cams) {
-    L.polyline([[c[1], c[0]], [v.lat, v.lon]], {color: colour(v), weight: 2, opacity: 0.9, dashArray: '4 4'}).addTo(lines);
-    L.circleMarker([c[1], c[0]], {radius: 4, color: '#fff', weight: 1, fillColor: colour(v), fillOpacity: 1}).addTo(lines);
+    L.polyline([[c[1], c[0]], [v.lat, v.lon]], {color: color(v), weight: 2, opacity: 0.9, dashArray: '4 4'}).addTo(lines);
+    L.circleMarker([c[1], c[0]], {radius: 4, color: '#fff', weight: 1, fillColor: color(v), fillOpacity: 1}).addTo(lines);
   }
   const rows = [
     ['condition', `<span class="verdict ${esc(v.condition)}">${esc(v.condition)}</span>`],
@@ -354,11 +354,11 @@ def verdict_from_properties(p: dict) -> tuple[str, str]:
     """
     condition = p.get(f'{ATTRIBUTE_PREFIX}_condition')
     evidence = p.get(f'{ATTRIBUTE_PREFIX}_evidence') or ''
-    if condition and normalise_condition(condition) != 'unclear' or evidence:
-        return normalise_condition(condition), str(evidence)
+    if condition and normalize_condition(condition) != 'unclear' or evidence:
+        return normalize_condition(condition), str(evidence)
     raw = p.get(f'{ATTRIBUTE_PREFIX}_analysis_raw')
     if not raw:
-        return normalise_condition(condition), str(evidence)
+        return normalize_condition(condition), str(evidence)
     text = str(raw).strip()
     if text.startswith('```'):
         text = text.split('\n', 1)[-1].rsplit('```', 1)[0]
@@ -370,7 +370,7 @@ def verdict_from_properties(p: dict) -> tuple[str, str]:
     items = [i for i in items if isinstance(i, dict)]
     if not items:
         return 'unclear', str(evidence)
-    verdicts = [normalise_condition(i.get('condition')) for i in items]
+    verdicts = [normalize_condition(i.get('condition')) for i in items]
     reasons = [str(i.get('evidence') or '').strip() for i in items]
     if 'burned' in verdicts:
         combined = 'burned'
@@ -381,7 +381,7 @@ def verdict_from_properties(p: dict) -> tuple[str, str]:
     return combined, '; '.join(r for r in reasons if r)
 
 
-def normalise_condition(value: object) -> str:
+def normalize_condition(value: object) -> str:
     """Map whatever the model wrote to one of ``CONDITIONS``."""
     text = str(value or '').strip().lower()
     for condition in CONDITIONS:

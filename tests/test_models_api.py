@@ -151,7 +151,7 @@ def test_resolve_api_key_survives_oserror_on_long_keys():
 
 
 def test_catalog_ids_and_known_models():
-    """Catalogue helpers expose IDs in order for every provider."""
+    """Catalog helpers expose IDs in order for every provider."""
     assert catalog_ids([{'model_id': 'a'}, {'model_id': 'b'}]) == ['a', 'b']
     for cls, catalog in [
         (OpenAIInference, OPENAI_MODEL_CATALOG),
@@ -167,7 +167,7 @@ def test_catalog_ids_and_known_models():
 
 
 def test_latest_models_are_present():
-    """The latest generation of every provider is in its catalogue."""
+    """The latest generation of every provider is in its catalog."""
     assert 'gpt-5.5' in OpenAIInference.list_known_models()
     assert 'gpt-6-sol' in OpenAIInference.list_known_models()
     assert 'claude-opus-5' in ClaudeInference.list_known_models()
@@ -241,7 +241,7 @@ def test_image_urls_are_fetched_without_provider_credentials(
     assert 'SECRET' not in ' '.join(sent.values())
 
 
-def test_remote_image_media_type_is_normalised(image, requests_mock):
+def test_remote_image_media_type_is_normalized(image, requests_mock):
     """Parameters are stripped and non-image types fall back to the extension."""
     model = OpenAIInference(api_key='sk-test')
     cases = {
@@ -278,7 +278,7 @@ def test_openai_lists_models_and_validates(requests_mock, caplog):
 
 
 def test_openai_listing_falls_back_to_catalog(requests_mock):
-    """No key, HTTP errors, empty data and exceptions all yield the catalogue."""
+    """No key, HTTP errors, empty data and exceptions all yield the catalog."""
     catalog = catalog_ids(OPENAI_MODEL_CATALOG)
     assert OpenAIInference.list_available_models() == catalog
     requests_mock.get(f'{OPENAI_BASE_URL}/models', status_code=401)
@@ -490,7 +490,7 @@ def test_muse_spark_wrapper(requests_mock, image):
 
 
 def test_muse_spark_env_var_names(monkeypatch, requests_mock):
-    """Both MODEL_API_KEY and META_API_KEY are honoured."""
+    """Both MODEL_API_KEY and META_API_KEY are honored."""
     requests_mock.get(f'{META_BASE_URL}/models', json={'data': []})
     monkeypatch.setenv('META_API_KEY', 'from-meta')
     assert MuseSparkInference().api_key == 'from-meta'
@@ -538,7 +538,7 @@ def _claude_response(blocks, stop='end_turn', **extra):
 
 
 def test_claude_construction_and_listing(requests_mock, caplog):
-    """Headers, listing, validation warning and catalogue fallback."""
+    """Headers, listing, validation warning and catalog fallback."""
     requests_mock.get(
         f'{ANTHROPIC_BASE_URL}/models',
         json={'data': [{'id': 'claude-opus-5'}, {'id': 'claude-haiku-4-5'}]},
@@ -845,7 +845,7 @@ def test_gemini_extract_text_joins_parts():
     assert GeminiInference._extract_text({'candidates': []}) is None
 
 
-def test_json_payloads_are_serialisable(requests_mock, image):
+def test_json_payloads_are_serializable(requests_mock, image):
     """Every provider payload round-trips through json.dumps."""
     requests_mock.get(re.compile(r'.*'), json={'data': [], 'models': []})
     requests_mock.post(re.compile(r'.*'), json=_chat_response('x'))

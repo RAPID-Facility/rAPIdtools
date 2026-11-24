@@ -112,7 +112,7 @@ class QwenInference(BaseOpenAICompatibleInference):
         timeout: float = API_REQUEST_TIMEOUT,
     ):
         """
-        Initialise the client.
+        Initialize the client.
 
         Args:
             api_key: Key string, key-file path, or ``None`` to read
@@ -155,8 +155,8 @@ class QwenVisionInference(HFVisionInference):
     """
     Local inference with open-weight Qwen vision-language checkpoints.
 
-    A specialisation of :class:`~rapidtools.models.HFVisionInference` whose
-    catalogue lists the Qwen3.8 / Qwen3.6 / Qwen3.5 natively multimodal
+    A specialization of :class:`~rapidtools.models.HFVisionInference` whose
+    catalog lists the Qwen3.8 / Qwen3.6 / Qwen3.5 natively multimodal
     models and the Qwen3-VL / Qwen2.5-VL families.
 
     Example:

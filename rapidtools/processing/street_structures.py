@@ -51,7 +51,7 @@ and those points lie on exactly the surfaces the survey saw: walls, roofs,
 fences, trees and the ground.
 
 The method labels that point cloud with the detection outlines and reads
-the buildings off the labelled points:
+the buildings off the labeled points:
 
 1. **Vote.** Every reconstructed point is projected into each nearby frame
    and counts a hit when it lands inside an outline of the class. Points
@@ -61,7 +61,7 @@ the buildings off the labelled points:
 2. **Group.** Points higher than a low-clutter cut (fences, hedges and
    parked cars are lower) are binned on the ground. Cells with enough
    points are wall and roof; cells closer together than ``min_gap_m`` are
-   one structure. Neighbouring houses stand apart by a side yard, while
+   one structure. Neighboring houses stand apart by a side yard, while
    the garage, the porch and the roof of one house touch.
 3. **Outline.** The front of each structure and the sides the survey saw
    are measured. The rear is not: the footprint is a rectangle along the
@@ -140,7 +140,7 @@ class PointCloud:
         cluster_id: Mapillary identifier of the cluster.
         lon: Longitude of the cluster's local origin.
         lat: Latitude of the cluster's local origin.
-        points: ``(n, 3)`` point coordinates: metres east and north of the
+        points: ``(n, 3)`` point coordinates: meters east and north of the
             origin, and altitude.
         rotations: ``(m, 3)`` axis-angle rotation of every shot (world to
             camera), the same vector an image's ``computed_rotation`` holds.
@@ -162,13 +162,13 @@ class PointCloud:
 @dataclass
 class Structure:
     """
-    One building (or other structure) found in the labelled point cloud.
+    One building (or other structure) found in the labeled point cloud.
 
     Attributes:
         footprint: Outline on the ground as ``(x, y)`` vertices in the
-            local metre frame.
-        x: East coordinate of the footprint's centre.
-        y: North coordinate of the footprint's centre.
+            local meter frame.
+        x: East coordinate of the footprint's center.
+        y: North coordinate of the footprint's center.
         members: One sighting per frame that shows the structure, with the
             outline of the structure's points in that frame.
         n_points: Reconstructed points on the structure.
@@ -251,7 +251,7 @@ def fetch_sfm_cluster(
     """
     Download (or read from ``cache_dir``) one point-cloud cluster.
 
-    Clusters are a few megabytes and cover about a hundred metres of
+    Clusters are a few megabytes and cover about a hundred meters of
     driving. The parsed arrays are cached as ``<cluster_id>.npz``, so a
     second run over the same streets downloads nothing.
 
@@ -315,7 +315,7 @@ def project_points(
         translation: Shot translation, so that ``camera = R @ world + t``.
 
     Returns:
-        tuple: Normalised column ``u`` and row ``v`` in ``[0, 1]`` and the
+        tuple: Normalized column ``u`` and row ``v`` in ``[0, 1]`` and the
         distance of every point from the camera.
 
     Example:
@@ -415,11 +415,11 @@ def footprint_rectangle(
         >>> round(front), round(depth), source, round(facing)
         (12, 10, 'assumed', 180)
     """
-    centre = wall_points.mean(axis=0)
-    centred = wall_points - centre
+    center = wall_points.mean(axis=0)
+    centered = wall_points - center
     # The facade direction is the one, within 30 degrees of the street, that
     # the walls line up with: projected onto it and across it, wall points
-    # pile up in a few half-metre bins, so the squared bin counts peak.
+    # pile up in a few half-meter bins, so the squared bin counts peak.
     base = math.atan2(street[1], street[0])
     best = (-math.inf, base)
     for step in range(-30, 31, 2):
@@ -429,22 +429,22 @@ def footprint_rectangle(
             np.array([math.cos(angle), math.sin(angle)]),
             np.array([-math.sin(angle), math.cos(angle)]),
         ):
-            bins = np.floor((centred @ direction) / 0.5).astype(int)
+            bins = np.floor((centered @ direction) / 0.5).astype(int)
             hist = np.bincount(bins - bins.min())
             score += float((hist.astype(float) ** 2).sum())
         # ties and near-ties go to the street direction
         best = max(best, (score * (1.0 - 0.002 * abs(step)), angle))
     axis = np.array([math.cos(best[1]), math.sin(best[1])])
     away = np.array([-axis[1], axis[0]])
-    if float((centre - camera) @ away) < 0:
+    if float((center - camera) @ away) < 0:
         away = -away
-    s = centred @ axis
-    d = centred @ away
+    s = centered @ axis
+    d = centered @ away
     s0, s1 = np.percentile(s, [1, 99])
     front = float(np.percentile(d, 3))
     observed = float(np.percentile(d, 97) - front)
-    deep = (depth_points - centre) @ away
-    lateral = (depth_points - centre) @ axis
+    deep = (depth_points - center) @ away
+    lateral = (depth_points - center) @ axis
     behind = deep[
         (lateral >= s0)
         & (lateral <= s1)
@@ -458,10 +458,10 @@ def footprint_rectangle(
     else:
         depth, source = assumed_depth_m, 'assumed'
     corners = [
-        centre + s0 * axis + front * away,
-        centre + s1 * axis + front * away,
-        centre + s1 * axis + (front + depth) * away,
-        centre + s0 * axis + (front + depth) * away,
+        center + s0 * axis + front * away,
+        center + s1 * axis + front * away,
+        center + s1 * axis + (front + depth) * away,
+        center + s0 * axis + (front + depth) * away,
     ]
     facing = math.degrees(math.atan2(-away[0], -away[1])) % 360.0
     return (
@@ -476,15 +476,15 @@ def footprint_rectangle(
 
 # --------------------------------------------------------------- pipeline
 @dataclass
-class LabelledPoints:
+class LabeledPoints:
     """
     The reconstructed points the outlines place on a class.
 
     Attributes:
-        rows: ``(n, 4)`` array: metres east and north in the local frame,
+        rows: ``(n, 4)`` array: meters east and north in the local frame,
             altitude, and height above the road at the nearest camera.
         shots: For every usable image ID, its world-to-camera rotation
-            matrix and camera centre (local east, north, altitude).
+            matrix and camera center (local east, north, altitude).
         templates: One sighting per image, the source of the camera facts
             copied onto the sightings written for each structure.
     """
@@ -507,7 +507,7 @@ def label_points(
     max_workers: int = 8,
     loader: Callable[[str, str], PointCloud | None] | None = None,
     counts: dict[str, int] | None = None,
-) -> LabelledPoints:
+) -> LabeledPoints:
     """
     Vote: keep the reconstructed points most frames place on the class.
 
@@ -519,7 +519,7 @@ def label_points(
     Args:
         observations: Sightings of the class.
         clusters: ``(cluster_id, url)`` of the point cloud of every image.
-        project: Projection from longitude and latitude to local metres.
+        project: Projection from longitude and latitude to local meters.
         cache_dir: Folder where downloaded point clouds are cached.
         camera_height_m: Camera height above the road.
         max_range_m: Farthest a frame votes on a point.
@@ -530,11 +530,11 @@ def label_points(
         counts: Counters to add to (clusters, frames, points, ...).
 
     Returns:
-        LabelledPoints: The kept points with the poses of the frames used.
+        LabeledPoints: The kept points with the poses of the frames used.
 
     Example:
-        >>> labelled = label_points(sightings, clusters, project)  # doctest: +SKIP
-        >>> labelled.rows.shape  # doctest: +SKIP
+        >>> labeled = label_points(sightings, clusters, project)  # doctest: +SKIP
+        >>> labeled.rows.shape  # doctest: +SKIP
         (81531, 4)
     """
     counts = counts if counts is not None else defaultdict(int)
@@ -553,7 +553,7 @@ def label_points(
         by_cluster.setdefault(str(cluster_id), (url, []))[1].append(image_id)
     counts['clusters'] = len(by_cluster)
     if not by_cluster:
-        return LabelledPoints(np.zeros((0, 4)), {}, template)
+        return LabeledPoints(np.zeros((0, 4)), {}, template)
 
     load = loader or (lambda cid, url: fetch_sfm_cluster(cid, url, cache_dir))
     with ThreadPoolExecutor(max_workers=max(1, max_workers)) as pool:
@@ -561,7 +561,7 @@ def label_points(
 
     # 1. Vote: label every reconstructed point with the outlines.
     kept: list[np.ndarray] = []  # x, y, altitude, height above road
-    shots: dict[str, tuple[np.ndarray, np.ndarray]] = {}  # image -> (R, centre)
+    shots: dict[str, tuple[np.ndarray, np.ndarray]] = {}  # image -> (R, center)
     for (_cluster_id, (_, image_ids)), cloud in zip(
         by_cluster.items(), clouds, strict=True
     ):
@@ -581,10 +581,10 @@ def label_points(
                 continue
             r = rotation_matrix(cloud.rotations[n])
             t = cloud.translations[n]
-            centre = -r.T @ t
-            shots[image_id] = (r, centre + np.array([ox, oy, 0.0]))
-            cams.append(centre)
-            offset = cloud.points - centre
+            center = -r.T @ t
+            shots[image_id] = (r, center + np.array([ox, oy, 0.0]))
+            cams.append(center)
+            offset = cloud.points - center
             near = np.flatnonzero(
                 (np.abs(offset[:, 0]) < max_range_m)
                 & (np.abs(offset[:, 1]) < max_range_m)
@@ -600,23 +600,23 @@ def label_points(
         if not cams:
             continue
         cams_arr = np.array(cams)
-        labelled = np.flatnonzero(
+        labeled = np.flatnonzero(
             (hits >= min_votes) & (hits >= min_vote_fraction * np.maximum(seen, 1))
         )
-        if not len(labelled):
+        if not len(labeled):
             continue
-        pts = cloud.points[labelled]
+        pts = cloud.points[labeled]
         _, nearest = cKDTree(cams_arr[:, :2]).query(pts[:, :2])
         height = pts[:, 2] - (cams_arr[nearest, 2] - camera_height_m)
         rows = np.c_[pts[:, 0] + ox, pts[:, 1] + oy, pts[:, 2], height]
         counts['points'] += len(rows)
         kept.append(rows)
     rows = np.vstack(kept) if kept else np.zeros((0, 4))
-    return LabelledPoints(rows, shots, template)
+    return LabeledPoints(rows, shots, template)
 
 
 def structures_from_points(
-    labelled: LabelledPoints,
+    labeled: LabeledPoints,
     *,
     max_range_m: float = 40.0,
     min_height_m: float = 2.0,
@@ -631,18 +631,18 @@ def structures_from_points(
     counts: dict[str, int] | None = None,
 ) -> list[Structure]:
     """
-    Group labelled points into structures and outline each one.
+    Group labeled points into structures and outline each one.
 
     Arguments are those of :func:`discover_structures`.
 
     Example:
-        >>> structures = structures_from_points(labelled)  # doctest: +SKIP
+        >>> structures = structures_from_points(labeled)  # doctest: +SKIP
         >>> structures[0].frontage_m  # doctest: +SKIP
         14.5
     """
     counts = counts if counts is not None else defaultdict(int)
-    everything = labelled.rows
-    shots, template = labelled.shots, labelled.templates
+    everything = labeled.rows
+    shots, template = labeled.shots, labeled.templates
     pts = (
         everything[everything[:, 3] >= min_height_m] if len(everything) else everything
     )
@@ -685,18 +685,18 @@ def structures_from_points(
 
     def outline_of(members: np.ndarray) -> tuple[Any, ...]:
         wall = pts[members]
-        centre = wall[:, :2].mean(axis=0)
-        _, nearest_cam = cam_tree.query(centre)
-        street = _street_direction(cameras, cam_tree, centre)
-        radius = float(np.hypot(*(wall[:, :2] - centre).T).max())
+        center = wall[:, :2].mean(axis=0)
+        _, nearest_cam = cam_tree.query(center)
+        street = _street_direction(cameras, cam_tree, center)
+        radius = float(np.hypot(*(wall[:, :2] - center).T).max())
         around = (
-            loose[loose_tree.query_ball_point(centre, radius + 20.0)]
+            loose[loose_tree.query_ball_point(center, radius + 20.0)]
             if loose_tree is not None
             else wall[:, :2]
         )
         return (
             wall,
-            centre,
+            center,
             radius,
             *footprint_rectangle(
                 wall[:, :2], around, cameras[nearest_cam], street, assumed_depth_m
@@ -718,8 +718,8 @@ def structures_from_points(
         return a
 
     if boxes:
-        centres = np.array([[b.centroid.x, b.centroid.y] for b in boxes])
-        for a, b in sorted(cKDTree(centres).query_pairs(40.0)):
+        centers = np.array([[b.centroid.x, b.centroid.y] for b in boxes])
+        for a, b in sorted(cKDTree(centers).query_pairs(40.0)):
             shared = boxes[a].intersection(boxes[b]).area
             if shared > 0.3 * min(boxes[a].area, boxes[b].area):
                 parent[find(a)] = find(b)
@@ -735,7 +735,7 @@ def structures_from_points(
         if len(members) < min_points:
             counts['too_few_points'] += 1
             continue
-        wall, centre, radius, outline, frontage, depth, observed, source, facing = (
+        wall, center, radius, outline, frontage, depth, observed, source, facing = (
             outline_of(members)
         )
         if frontage < min_frontage_m:
@@ -755,7 +755,7 @@ def structures_from_points(
             cam_ids,
             cam_tree,
             template,
-            centre,
+            center,
             radius,
             max_range_m,
             max_views,
@@ -840,7 +840,7 @@ def discover_structures(
             it was seen from among the closer frames; ``0`` keeps one per
             frame in range.
         max_workers: Threads for point-cloud downloads.
-        project: Projection to local metres; made from the sightings when
+        project: Projection to local meters; made from the sightings when
             omitted.
         unproject: Inverse of ``project``.
         loader: ``loader(cluster_id, url)`` returning a :class:`PointCloud`,
@@ -876,7 +876,7 @@ def discover_structures(
         )
         project, unproject = local_projection(lon0, lat0)
 
-    labelled = label_points(
+    labeled = label_points(
         observations,
         clusters,
         project,
@@ -890,7 +890,7 @@ def discover_structures(
         counts=counts,
     )
     structures = structures_from_points(
-        labelled,
+        labeled,
         max_range_m=max_range_m,
         min_height_m=min_height_m,
         cell_m=cell_m,
@@ -917,7 +917,7 @@ def _structure_sightings(
     cam_ids: Sequence[str],
     cam_tree: cKDTree,
     template: Mapping[str, Observation],
-    centre: np.ndarray,
+    center: np.ndarray,
     radius: float,
     max_range_m: float,
     max_views: int,
@@ -925,7 +925,7 @@ def _structure_sightings(
     """One sighting per nearby frame: the outline of the structure's points."""
     world = wall[:, :3]
     found: list[tuple[float, Observation]] = []
-    for n in cam_tree.query_ball_point(centre, max_range_m + radius):
+    for n in cam_tree.query_ball_point(center, max_range_m + radius):
         image_id = cam_ids[n]
         r, cam = shots[image_id]
         u, v, dist = project_points(world - cam, r, np.zeros(3))
@@ -943,7 +943,7 @@ def _structure_sightings(
         v0, v1 = max(0.0, v0 - pad_v), min(1.0, v1 + 2.0 * pad_v)
         ring = [(u0 % 1.0, v0), (u1 % 1.0, v0), (u1 % 1.0, v1), (u0 % 1.0, v1)]
         base = template[image_id]
-        offset = centre - cam[:2]
+        offset = center - cam[:2]
         obs = Observation(
             image_id=image_id,
             label=base.label,
@@ -967,7 +967,7 @@ def _structure_sightings(
     found.sort(key=lambda item: item[0])
     if max_views <= 0 or len(found) <= max_views:
         return [obs for _, obs in found]
-    # Spread the views around the structure instead of taking neighbouring
+    # Spread the views around the structure instead of taking neighboring
     # frames: among the frames not much farther than the closest, pick
     # evenly along the direction they look from.
     nearest = found[0][0]

@@ -58,7 +58,7 @@ from shapely.ops import transform
 
 from rapidtools.core import (
     ImageAsset,
-    OperationCancelled,
+    OperationCanceled,
     PhysicalAsset,
     PhysicalAssetCollection,
 )
@@ -286,21 +286,21 @@ def test_process_empty_input(regularizer, caplog):
     assert 'No assets provided' in caplog.text
 
 
-def test_process_cancelled_after_segmentation(fake_sam, prelim):
+def test_process_canceled_after_segmentation(fake_sam, prelim):
     """A cancel event set during segmentation stops the pipeline."""
     event = threading.Event()
     reg = BuildingRegularizer(cancel_event=event, retry_dropped=False)
     fake_sam['instance'].on_call = event.set
-    with pytest.raises(OperationCancelled, match='building regularization'):
+    with pytest.raises(OperationCanceled, match='building regularization'):
         reg(prelim)
 
 
-def test_process_cancelled_before_start(fake_sam, prelim):
-    """A pre-set cancel event is honoured by the internal segmenter."""
+def test_process_canceled_before_start(fake_sam, prelim):
+    """A pre-set cancel event is honored by the internal segmenter."""
     event = threading.Event()
     event.set()
     reg = BuildingRegularizer(cancel_event=event)
-    with pytest.raises(OperationCancelled):
+    with pytest.raises(OperationCanceled):
         reg(prelim)
     assert fake_sam['instance'].calls == []
 
@@ -527,14 +527,14 @@ def test_truncate_intrusions_skips_empty(regularizer):
 # ==========================================
 
 
-def test_dissolve_merges_duplicates_keeps_neighbours(regularizer):
+def test_dissolve_merges_duplicates_keeps_neighbors(regularizer):
     """Polygons overlapping >50% merge; adjacent ones stay separate."""
     a = box(0, 0, 10, 10)
     a_dup = box(1, 1, 11, 11)
-    neighbour = box(10, 0, 20, 10)
+    neighbor = box(10, 0, 20, 10)
     slight = box(9, 9, 19, 19)  # overlaps a by 1% -> separate
     result = regularizer._dissolve_overlapping_assets(
-        _assets(a, a_dup, neighbour, slight)
+        _assets(a, a_dup, neighbor, slight)
     )
     assert len(result) == 3
     areas = sorted(round(x.geometry.area, 6) for x in result)

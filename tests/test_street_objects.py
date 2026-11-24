@@ -16,7 +16,7 @@ from rapidtools.core import (
     ImageAsset,
     ImageCollection,
     Observation,
-    OperationCancelled,
+    OperationCanceled,
     PhysicalAsset,
     PhysicalAssetCollection,
 )
@@ -43,7 +43,7 @@ WIDTH, HEIGHT = 2048, 1024
 # Synthetic survey
 # ==========================================
 def _b64_box(x0, y0, x1, y1):
-    """Encode a normalised box as the base64 MVT Mapillary uses (tile y up)."""
+    """Encode a normalized box as the base64 MVT Mapillary uses (tile y up)."""
     extent = 4096
     pts = [(x0, 1 - y0), (x1, 1 - y0), (x1, 1 - y1), (x0, 1 - y1), (x0, 1 - y0)]
     wkt = (
@@ -534,7 +534,7 @@ class FakeSAM3:
         masks = []
         for _ in image_inputs:
             m = np.zeros((1, 64, 128), bool)
-            m[0, 40:48, 70:80] = True  # right of centre, below the horizon
+            m[0, 40:48, 70:80] = True  # right of center, below the horizon
             masks.append(m)
         return ModelOutput(masks=masks, bounding_boxes=None)
 
@@ -577,7 +577,7 @@ def test_cancellation_stops_detection(region, tmp_path):
         cancel_event=stop,
         save_directory=tmp_path,
     )
-    with pytest.raises(OperationCancelled):
+    with pytest.raises(OperationCanceled):
         ext()
 
 
@@ -609,7 +609,7 @@ def test_crops_closest_views_with_outline(detected, tmp_path):
     result = cropper(collection)
     car = result[0]
     assert len(car.image_assets) == 2
-    # The closest two frames are the ones level with the car (img2) and its neighbours:
+    # The closest two frames are the ones level with the car (img2) and its neighbors:
     ranges = [img.properties['range_m'] for img in car.image_assets]
     assert ranges == sorted(ranges) and ranges[0] < 7
     for img in car.image_assets:
@@ -757,7 +757,7 @@ def test_cropper_skips_assets_without_observations(tmp_path, caplog):
 
 
 # ==========================================
-# Localisation methods, map features and re-identification
+# Localization methods, map features and re-identification
 # ==========================================
 def test_feature_extractor_rejects_unknown_localization_method():
     with pytest.raises(ValueError):
@@ -988,7 +988,7 @@ def test_reid_skips_objects_never_seen_wide_enough(region, tmp_path):
     frames = list(_survey(with_ego=False)) + _second_pass(dx_m=4.0)
     client = FakeClient(ImageCollection(frames))
     embedder = SameLookEmbedder()
-    # The survey's boxes are 5 % of the frame (102 px at 2048): above the
+    # The survey's boxes are 5% of the frame (102 px at 2048): above the
     # default gate, below a stricter one. Nothing is downloaded or embedded.
     objects = MapillaryFeatureExtractor(
         classes=['cars'],
@@ -1006,7 +1006,7 @@ def test_reid_skips_objects_never_seen_wide_enough(region, tmp_path):
     assert not client.downloaded
 
 
-def test_min_area_fraction_is_deprecated_but_honoured():
+def test_min_area_fraction_is_deprecated_but_honored():
     with pytest.warns(DeprecationWarning):
         ext = MapillaryFeatureExtractor(
             classes=['cars'], access_token='t', min_area_fraction=0.0004

@@ -58,7 +58,7 @@ Key street view indicators:
 CHS Level ‘No Data’: Combustion level cannot be confirmed/denied
 Description: Building data has been tampered with or is 100% blocked such that absolutely zero structural remains or lot surface can be seen.
 Key Street View Indicators:
-- Dense, opaque, living green shrubbery completely creating a solid wall blocking the entire lot. (Note: If you can see through bare/burnt branches to the rubble behind it, DO NOT use 'No Data', assign a score).
+- Dense, opaque, living green shrubbery completely creating a solid wall blocking the entire lot. (Note: If you can see through bare/burned branches to the rubble behind it, DO NOT use 'No Data', assign a score).
 - Building plot is entirely bulldozed, only flat dirt exists within it.
 - Construction/demolition vehicles are present on site 
 

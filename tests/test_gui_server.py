@@ -24,7 +24,7 @@ from rapidtools.gui.workflow import DetectionResult, InferenceResult
 
 # A tiny UTM-projected raster covering a known WGS84 area.
 UTM_CRS = 'EPSG:32611'
-ORIGIN_X, ORIGIN_Y = 380_000.0, 3_780_000.0  # metres, zone 11N
+ORIGIN_X, ORIGIN_Y = 380_000.0, 3_780_000.0  # meters, zone 11N
 PIXEL_SIZE = 10.0
 WIDTH, HEIGHT = 40, 20
 
@@ -131,12 +131,12 @@ class FakeWorkflow:
         self.progress_callback = progress_callback
         self.detect_calls = []
         self.analyze_calls = []
-        self.cancelled = False
+        self.canceled = False
         self.block = threading.Event()
         self.block.set()
 
     def cancel(self):
-        self.cancelled = True
+        self.canceled = True
 
     def detect(self, settings):
         self.detect_calls.append(settings)
@@ -377,7 +377,7 @@ def test_run_all_busy_and_cancel(gui, raster_path):
     # A second job is refused while one is running:
     client.json('POST', '/api/detect', {'assets': 'tree'}, expect=409)
     client.json('POST', '/api/cancel', {})
-    assert workflow.cancelled is True
+    assert workflow.canceled is True
     workflow.block.set()
     state = client.wait_idle()
     assert state['job']['status'] == 'done'
@@ -385,8 +385,8 @@ def test_run_all_busy_and_cancel(gui, raster_path):
     assert workflow.analyze_calls[0].model_id == 'google/gemma-4-E4B-it'
 
 
-def test_cancelled_inference_keeps_partial_collection(gui, raster_path, tmp_path):
-    from rapidtools.core import OperationCancelled
+def test_canceled_inference_keeps_partial_collection(gui, raster_path, tmp_path):
+    from rapidtools.core import OperationCanceled
 
     client, srv = gui
     workflow = srv.state.workflow
@@ -396,19 +396,19 @@ def test_cancelled_inference_keeps_partial_collection(gui, raster_path, tmp_path
     _asset_collection_covering_pixel(2, 2).to_geojson(geojson)
     client.json('POST', '/api/assets/load', {'path': str(geojson)})
 
-    def cancelling_analyze(collection, settings):
+    def canceling_analyze(collection, settings):
         for asset in collection:
             asset.add_attributes({'chs_level': '1'})
         settings.output_dir.mkdir(parents=True, exist_ok=True)
         (settings.output_dir / 'assets_inferred_partial.geojson').write_text('{}')
-        raise OperationCancelled('user pressed cancel')
+        raise OperationCanceled('user pressed cancel')
 
-    workflow.analyze = cancelling_analyze
+    workflow.analyze = canceling_analyze
     client.json(
         'POST', '/api/infer', {'prompt': 'p', 'backend': 'gemini', 'api_key': 'k'}
     )
     state = client.wait_idle()
-    assert state['job']['status'] == 'cancelled'
+    assert state['job']['status'] == 'canceled'
     assert state['collection']['source'] == 'partially analyzed'
     assert 'chs_level' in state['collection']['attribute_keys']
     assert any(r['label'] == 'Partial inference results' for r in state['results'])
@@ -473,7 +473,7 @@ def test_tiles_models_and_asset_details(gui, raster_path, tmp_path, monkeypatch)
     client.json('GET', '/api/tile/raster/x/0/0.jpg', expect=400)
     client.json('GET', '/api/tile/raster/1/0.jpg', expect=404)
 
-    # Backend catalogue is exposed and models can be listed:
+    # Backend catalog is exposed and models can be listed:
     state = client.json('GET', '/api/state')
     assert set(state['options']['backends']) == {
         'gemini',
@@ -1157,9 +1157,9 @@ def test_prompt_assemble_and_example(gui):
     r = client.json(
         'POST',
         '/api/prompt/assemble',
-        {'spec': {'marking': 'in the centre', 'fields': [{'name': 'Grade'}]}},
+        {'spec': {'marking': 'in the center', 'fields': [{'name': 'Grade'}]}},
     )
-    assert r['marking'] == 'in the centre' and r['attributes'] == ['vlm_grade']
+    assert r['marking'] == 'in the center' and r['attributes'] == ['vlm_grade']
     client.json('POST', '/api/prompt/assemble', {'spec': ['bad']}, expect=400)
     client.json(
         'POST',
@@ -2200,7 +2200,7 @@ def test_idle_seconds_ignore_probes(shared_gui):
     client.json('GET', '/api/state', headers=headers)  # a browser poll
     state = client.json('GET', '/api/state', headers=probe)
     assert state['idle_s'] < 5
-    # An unauthorised request never counts either:
+    # An unauthorized request never counts either:
     srv.state.last_activity -= 100
     client.json('GET', '/api/state', expect=401)
     assert client.json('GET', '/api/state', headers=probe)['idle_s'] >= 100

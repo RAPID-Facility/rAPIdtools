@@ -61,7 +61,7 @@ from rapidtools.core import (  # noqa: E402
 )
 from rapidtools.processing import pano_utils as pu  # noqa: E402
 
-# Scenario origin (Altadena, CA) and metre-to-degree conversion factors:
+# Scenario origin (Altadena, CA) and meter-to-degree conversion factors:
 LON0, LAT0 = -118.14, 34.19
 M_LAT = 1.0 / 111320.0
 M_LON = 1.0 / (111320.0 * math.cos(math.radians(LAT0)))
@@ -72,12 +72,12 @@ M_LON = 1.0 / (111320.0 * math.cos(math.radians(LAT0)))
 
 
 def offset_deg(dx_m: float, dy_m: float) -> tuple[float, float]:
-    """Return (lon, lat) displaced from the origin by metres east/north."""
+    """Return (lon, lat) displaced from the origin by meters east/north."""
     return LON0 + dx_m * M_LON, LAT0 + dy_m * M_LAT
 
 
 def rect(cx_m: float, cy_m: float, w_m: float, h_m: float) -> Polygon:
-    """Return a lon/lat rectangle centred at metric offsets from the origin."""
+    """Return a lon/lat rectangle centered at metric offsets from the origin."""
     x0, y0 = offset_deg(cx_m - w_m / 2, cy_m - h_m / 2)
     x1, y1 = offset_deg(cx_m + w_m / 2, cy_m + h_m / 2)
     return box(x0, y0, x1, y1)
@@ -104,7 +104,7 @@ def no_show(monkeypatch):
 
 @pytest.fixture
 def target_asset():
-    """A 20 m x 10 m east-west footprint centred on the origin."""
+    """A 20 m x 10 m east-west footprint centered on the origin."""
     return PhysicalAsset(id='target', geometry=rect(0, 0, 20, 10))
 
 
@@ -141,7 +141,7 @@ def run_scenario(target, panos, extra_buildings=(), **kwargs):
 
 
 def test_local_projection_scalar():
-    """One thousandth of a degree north is about 111 metres."""
+    """One thousandth of a degree north is about 111 meters."""
     project = pu.get_local_projection_func(0.0, 0.0)
     x, y = project(0.0, 0.001)
     assert abs(float(x)) < 1e-3
@@ -154,13 +154,13 @@ def test_local_projection_arrays_and_wrap():
     x, y = project(np.array([-179.9, 179.9]), np.array([0.0, 0.0]))
     # -179.9 is only 0.2 degrees east of 179.9, not 359.8 degrees west:
     assert 20_000 < float(x[0]) < 25_000
-    # float32 radians limit precision to roughly a metre at this longitude:
+    # float32 radians limit precision to roughly a meter at this longitude:
     assert abs(float(x[1])) < 1.0
     assert np.allclose(y, 0.0, atol=1e-3)
 
 
 def test_local_projection_scales_with_latitude():
-    """Longitude metres shrink with the cosine of the origin latitude."""
+    """Longitude meters shrink with the cosine of the origin latitude."""
     equator = pu.get_local_projection_func(0.0, 0.0)
     high = pu.get_local_projection_func(0.0, 60.0)
     xe, _ = equator(0.01, 0.0)
@@ -202,12 +202,12 @@ def test_get_principal_axes_rotated():
 def test_transform_polygon_to_local_rotated():
     """Projection followed by a 90 degree rotation maps +X onto +Y."""
     project = pu.get_local_projection_func(LON0, LAT0)
-    poly = rect(10, 0, 4, 2)  # centred 10 m east of the origin
+    poly = rect(10, 0, 4, 2)  # centered 10 m east of the origin
     rotated = pu._transform_polygon_to_local_rotated(
         poly, project, math.cos(math.pi / 2), math.sin(math.pi / 2)
     )
     cx, cy = rotated.centroid.x, rotated.centroid.y
-    # The projector works in float32, so allow metre-level slack:
+    # The projector works in float32, so allow meter-level slack:
     assert abs(cx) < 2.0 and cy == pytest.approx(10, abs=2.0)
     assert rotated.area == pytest.approx(8, abs=2.0)
 
@@ -249,7 +249,7 @@ def test_build_footprint_index_skips_none_geometry():
 
 
 def test_get_nearby_buildings_excludes_target_and_far_polygons():
-    """Only neighbours inside the radius are returned, never the target."""
+    """Only neighbors inside the radius are returned, never the target."""
     target = rect(0, 0, 10, 10)
     near = rect(20, 0, 10, 10)
     far = rect(500, 0, 10, 10)
@@ -296,7 +296,7 @@ def test_index_panos_missing_properties_default_to_zero():
 
 
 def test_check_occlusion_no_neighbors():
-    """No neighbours means the view is always clear."""
+    """No neighbors means the view is always clear."""
     assert pu._check_occlusion((5.0, 0.5), box(0, 0, 1, 1), []) is False
 
 
@@ -316,7 +316,7 @@ def test_check_occlusion_blocked_and_clear():
 def test_check_occlusion_ignores_target_copy_and_corner_touch():
     """Copies of the target and mere corner touches are not occlusions."""
     target = box(0, 0, 1, 1)
-    # A neighbour whose corner touches the LOS at exactly one point:
+    # A neighbor whose corner touches the LOS at exactly one point:
     corner_toucher = Polygon([(3, 0.5), (4, 1.5), (4, -0.5)])
     assert pu._check_occlusion((5.0, 0.5), target, [box(0, 0, 1, 1)]) is False
     assert pu._check_occlusion((2.0, 0.5), target, [corner_toucher]) is False
@@ -378,7 +378,7 @@ def test_result_img_index_lookup(cardinal_panos):
 
 
 def test_ray_color():
-    """Colours follow the major/minor/other convention."""
+    """Colors follow the major/minor/other convention."""
     assert pu._ray_color('major_neg') == 'blue'
     assert pu._ray_color('minor_pos') == 'purple'
     assert pu._ray_color('corner_1') == 'green'
@@ -436,7 +436,7 @@ def test_find_best_panos_respects_ray_tolerance(target_asset):
 
 
 def test_find_best_panos_occlusion_falls_back(target_asset):
-    """An occluded nearest camera is skipped in favour of a clear one."""
+    """An occluded nearest camera is skipped in favor of a clear one."""
     near = make_pano('near_east', 25, 0)
     panos = ImageCollection([near, make_pano('north', 0, 30)])
     blocker = rect(17, 0, 4, 12)  # wall between the building and near_east
@@ -537,7 +537,7 @@ def test_plot_candidates_without_points():
 
 
 def test_plot_dynamic_results_full(monkeypatch):
-    """Neighbours, raw circles and final stars are all drawn."""
+    """Neighbors, raw circles and final stars are all drawn."""
     shown = []
     monkeypatch.setattr(plt, 'show', lambda *a, **k: shown.append(True))
     pu._plot_dynamic_results(
@@ -558,7 +558,7 @@ def test_plot_dynamic_results_full(monkeypatch):
 
 
 def test_plot_dynamic_results_minimal():
-    """The plot works with no candidates, neighbours or raw points."""
+    """The plot works with no candidates, neighbors or raw points."""
     pu._plot_dynamic_results(
         box(-10, -5, 10, 5),
         np.array([]),
@@ -598,7 +598,7 @@ def test_crop_requires_loaded_image(target_asset):
 
 
 def test_crop_full_mode_front_facing():
-    """A building ahead of the camera is cropped around the image centre."""
+    """A building ahead of the camera is cropped around the image center."""
     pano = make_pano_image()
     building = make_building(0.0)
     crop = pu.crop_panorama_to_asset(

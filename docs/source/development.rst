@@ -59,7 +59,7 @@ request; ``make check`` runs them locally in one go.
        3.13. The suite is offline: it never downloads model weights or
        contacts a provider, a tile server or the Hugging Face Hub.
 
-How the test suite is organised
+How the test suite is organized
 -------------------------------
 
 The suite lives in ``tests/``: 44 modules and about 1,200 tests, run with
@@ -75,7 +75,7 @@ across components:
 
 - ``test_edge_cases.py`` holds the error branches and fallbacks of the
   street-level modules (duplicate resolver, verifier, re-identification,
-  localisation and tracking helpers): unreadable crops, failed model calls,
+  localization and tracking helpers): unreadable crops, failed model calls,
   cancellation, parallel rays, sightings without a ground position, rays that
   meet beyond the range limit, singular merge gates.
 - ``test_coverage_gaps.py`` collects the small fallbacks of otherwise
@@ -84,7 +84,7 @@ across components:
   analyzer).
 - ``test_api_harmonization.py`` checks the public names, the lazy imports and
   the deprecation shims of ``rapidtools``; ``test_cancellation.py`` checks
-  that every long-running component honours its ``cancel_event``.
+  that every long-running component honors its ``cancel_event``.
 
 Put a test next to the component it exercises; use the cross-cutting modules
 only for a branch that needs a fixture the component's own module does not
@@ -131,7 +131,7 @@ Coverage sits at 99% of the package's statements, and the CI badge in the
 README is updated from the Ubuntu / Python 3.11 cell of the test matrix. The
 lines still uncovered are the ones that need a service to misbehave in a
 specific way: the GUI server's survey overview and route builders, the
-building regularisation fallbacks for invalid geometry, cancellation inside a
+building regularization fallbacks for invalid geometry, cancellation inside a
 thread pool, and a few far-sighting rules of the tracker that only fire on
 real survey geometry.
 
@@ -154,7 +154,7 @@ Writing a test
 - Replace model and processor loaders with fakes; never let ``transformers``
   load a checkpoint.
 - Keep fixtures deterministic and small, and build data in ``tmp_path``.
-- Assert on behaviour the user sees (attributes, files, log messages,
+- Assert on behavior the user sees (attributes, files, log messages,
   exceptions), not on how a helper got there.
 - Add a test for every bug fix that would have caught it.
 - Run ``make check`` before opening the pull request; CI runs the same

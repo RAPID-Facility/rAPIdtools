@@ -48,8 +48,8 @@ The pipeline
 
    # The block climbs 23 m end to end: give every footprint its ground level.
    for asset in buildings:
-       centre = asset.geometry.centroid
-       asset.attributes['ground_elevation_m'] = usgs_elevation(centre.x, centre.y)
+       center = asset.geometry.centroid
+       asset.attributes['ground_elevation_m'] = usgs_elevation(center.x, center.y)
 
    extractor = rt.DroneImageExtractor(
        cameras,
@@ -61,7 +61,7 @@ The pipeline
    )
    analyzer = rt.AssetAnalyzer(
        load('gemma4', model_id='google/gemma-4-E2B-it'),
-       prompt=PROMPT,                       # asks for status, storeys, evidence
+       prompt=PROMPT,                       # asks for status, stories, evidence
        max_images_per_asset=4,              # the model sees the whole view set
        batch_size=1,
        generation=GenerationConfig(json_mode=True, temperature=0.0, max_tokens=120),
@@ -103,10 +103,10 @@ the share of each building's walls and roof that the chosen photos show
      - 0.78
      - 0.77
 
-All 452 photos together reach 0.92, so four selected photos carry 95 % of
+All 452 photos together reach 0.92, so four selected photos carry 95% of
 what the whole flight shows of a building. With four photos, every wall is
-seen for 70 % of the buildings; with the four nearest photos that is true of
-13 %. The nearest photo is a poor choice because the nearest camera is the
+seen for 70% of the buildings; with the four nearest photos that is true of
+13%. The nearest photo is a poor choice because the nearest camera is the
 one almost overhead, which sees the roof and nothing else.
 
 What the model reports
@@ -129,7 +129,7 @@ Outputs
 - ``coverage_gaps.geojson``: the walls no photo shows, each with a suggested
   camera position for the next flight.
 - ``contact_sheets/``: the chosen views of a few buildings side by side,
-  labelled with the direction each was taken from and what it adds.
+  labeled with the direction each was taken from and what it adds.
 
 With a real drone
 -----------------

@@ -130,7 +130,7 @@ def test_resolver_model_failures_and_cancellation(tmp_path, caplog):
             [_asset(tmp_path, 'e'), _asset(tmp_path, 'f', east_m=2.0)]
         )
     )
-    assert len(col) == 2  # cancelled before any pair was judged
+    assert len(col) == 2  # canceled before any pair was judged
     lonely = DuplicateResolver(judge=lambda x, y: (True, 1.0))(
         PhysicalAssetCollection([_asset(tmp_path, 'g')])
     )
@@ -146,7 +146,7 @@ def test_resolver_pairs_within_one_grid_cell(tmp_path):
 
 
 # ---------------------------------------------------------------- verifier
-def test_verifier_helpers_normalise_odd_values(tmp_path):
+def test_verifier_helpers_normalize_odd_values(tmp_path):
     assert normalize_confidence('n/a') is None
     assert normalize_confidence(float('nan')) is None
     assert normalize_confidence(85) == 0.85
@@ -280,8 +280,8 @@ def test_union_find_compresses_paths():
     assert union.groups(['a', 'b', 'c', 'd']) == [['a', 'b', 'c', 'd']]
 
 
-# ------------------------------------------------------------ localisation
-def test_localisation_helpers_edge_cases():
+# ------------------------------------------------------------ localization
+def test_localization_helpers_edge_cases():
     ray = world_ray([0.0, 0.0, 1.0], [0.0, 0.0, 0.0])
     assert ray[2] == pytest.approx(1.0)
     assert ground_range_from_ray([0.0, 1.0, 0.1], 2.4) is None
@@ -350,7 +350,7 @@ def _aimed(project_pair, image_id, cam_xy, target_xy, range_m=None):
 def test_tracking_rejects_impossible_geometry():
     from rapidtools.processing.street_tracking import (
         _lon_lat,
-        _points_at_a_neighbour,
+        _points_at_a_neighbor,
         _weighted_intersection,
         classify_track,
         merge_by_rays,
@@ -401,14 +401,14 @@ def test_tracking_rejects_impossible_geometry():
     # Closest rays that carry no range, or no camera, point at nothing.
     bare = ObjectEstimate(10.0, 0.0, np.eye(2), [car], 'triangulated')
     bare.members = [Observation('x', 'car', BOX, LON0, LAT0, 0.0, bearing=90.0)]
-    assert _points_at_a_neighbour(bare, [(12.0, 0.0)], project, 0.01, 4.5) is False
+    assert _points_at_a_neighbor(bare, [(12.0, 0.0)], project, 0.01, 4.5) is False
     blind = Observation('y', 'car', BOX, None, None, 0.0, bearing=90.0)
     blind.range_m = 5.0
     bare.members = [blind]
-    assert _points_at_a_neighbour(bare, [(12.0, 0.0)], project, 0.01, 4.5) is False
+    assert _points_at_a_neighbor(bare, [(12.0, 0.0)], project, 0.01, 4.5) is False
     away = _ray_obs(pair, 'z', (0.0, 0.0), 270.0, 5.0)
     bare.members = [away]
-    assert _points_at_a_neighbour(bare, [(12.0, 0.0)], project, 0.01, 4.5) is False
+    assert _points_at_a_neighbor(bare, [(12.0, 0.0)], project, 0.01, 4.5) is False
     # A sighting with no ground range is judged by its ray alone.
     assert sighting_shows(_ray_obs(pair, 's', (0.0, 0.0), 90.0), (10.0, 0.2), project)
     # Pieces: objects whose sightings carry no bearing or no range are skipped.
@@ -451,16 +451,16 @@ def test_frames_and_witnesses():
     assert len(kept) + dropped == 1
 
 
-# --------------------------------------------------- localisation: more
-def test_localisation_helpers_more_edge_cases():
+# --------------------------------------------------- localization: more
+def test_localization_helpers_more_edge_cases():
     from rapidtools.processing.street_localization import (
         _ground_position,
         observation_angles,
         pixel_bearing,
     )
 
-    centre = pixel_bearing(0.5, 0.5, 'fisheye', 4000, 3000, [0.9, 0.01, 0.0])
-    assert centre[2] == pytest.approx(1.0)
+    center = pixel_bearing(0.5, 0.5, 'fisheye', 4000, 3000, [0.9, 0.01, 0.0])
+    assert center[2] == pytest.approx(1.0)
     obs = Observation(
         'o',
         'car',

@@ -124,7 +124,7 @@ if vehicles:
         color='#e45756',
         ms=5,
     )
-ax.set_aspect(1.0 / 0.673)  # metres per degree at 47.7 degrees north
+ax.set_aspect(1.0 / 0.673)  # meters per degree at 47.7 degrees north
 ax.set_title('Buildings (dark: depth seen, light: depth assumed) and vehicles')
 fig.savefig(MAP_PATH, dpi=120, bbox_inches='tight')
 print(f'Wrote {MAP_PATH}')

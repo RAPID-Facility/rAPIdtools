@@ -386,7 +386,7 @@ class RoadwayRegularizer(Generic[_OutT]):
         """
         Build pyproj transformers between WGS84 and a local feet-based CRS.
 
-        The local CRS is an azimuthal equidistant projection centred on the
+        The local CRS is an azimuthal equidistant projection centered on the
         centroid of ``base_geom`` with units of US survey feet.
 
         Args:
@@ -494,7 +494,7 @@ class RoadwayRegularizer(Generic[_OutT]):
 
         # Voronoi edge endpoints computed from different cells can differ by
         # floating-point noise; snap them to a fine grid so that linemerge
-        # recognises them as shared vertices and produces continuous lines.
+        # recognizes them as shared vertices and produces continuous lines.
         snapped_lines = shapely.set_precision(
             unary_union(clipped_lines), SKELETON_SNAP_GRID_FT
         )

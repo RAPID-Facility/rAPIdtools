@@ -197,7 +197,7 @@ Parameters:
     AllowedPattern: '^[A-Za-z0-9_-]*$'
     Description: >-
       Optional Hugging Face access token (hf_...) of an account that accepted
-      the SAM 3 and Gemma licences. Without one the package falls back to its
+      the SAM 3 and Gemma licenses. Without one the package falls back to its
       shared token.
   DataBucketName:
     Type: String

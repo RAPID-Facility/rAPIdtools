@@ -159,7 +159,7 @@ def render_preview(
     Read ``raster_path`` decimated to at most ``max_px`` on its long side.
 
     The first three bands are averaged down to the preview size and converted
-    to 8-bit RGB. Single-band rasters are replicated to grey RGB. A fourth band
+    to 8-bit RGB. Single-band rasters are replicated to gray RGB. A fourth band
     is treated as alpha; otherwise the raster's nodata mask (if any) is used so
     that holes in the imagery render transparent.
 
@@ -246,7 +246,7 @@ def render_preview(
 
 def _json_safe(value: Any) -> Any:
     """
-    Coerce attribute values into JSON-serialisable primitives.
+    Coerce attribute values into JSON-serializable primitives.
 
     Args:
         value (Any): Any attribute value.
@@ -284,7 +284,7 @@ def project_collection(
     Returns:
         dict[str, Any]:
             ``preview_version``, ``count``, the sorted union of
-            ``attribute_keys`` (so the client can offer a "colour by" menu),
+            ``attribute_keys`` (so the client can offer a "color by" menu),
             and ``features``: one dict per asset with ``id``, ``kind``
             (``'polygon'``, ``'line'`` or ``'point'``), pixel-space ``rings``
             as lists of ``[x, y]`` pairs, JSON-safe ``attributes`` and

@@ -87,12 +87,12 @@ from rapidtools.constants import LATITUDE_SPACING_KM
 from rapidtools.core import (
     BoundingBox,
     ImageAsset,
-    OperationCancelled,
+    OperationCanceled,
     PhysicalAsset,
     PhysicalAssetCollection,
     PolygonRegion,
-    is_cancelled,
-    raise_if_cancelled,
+    is_canceled,
+    raise_if_canceled,
 )
 from rapidtools.data_sources import (
     GoogleStreetViewClient,
@@ -156,7 +156,7 @@ class AerialImageryExtractor:
             is covered by valid imagery (e.g. ``0.3``), instead of the
             patch-level nodata test. Assets partially outside the raster are
             then cropped with nodata padding so every crop keeps its size.
-            Defaults to ``None`` (previous behaviour).
+            Defaults to ``None`` (previous behavior).
         pad_edges (bool | None, optional):
             Pad edge crops with nodata to their full size. Defaults to
             ``True`` when ``min_footprint_coverage`` is set.
@@ -187,7 +187,7 @@ class AerialImageryExtractor:
             (``'1%'``) so outlines look alike across crop sizes. Defaults to
             ``6``.
         outline_color (str | tuple[int, int, int], optional):
-            Any PIL colour name, hex string or RGB tuple. Defaults to
+            Any PIL color name, hex string or RGB tuple. Defaults to
             ``'red'``.
         image_prefix (str, optional):
             The prefix to use for the saved image filenames and asset IDs.
@@ -206,7 +206,7 @@ class AerialImageryExtractor:
             perfectly square area in the real world. Defaults to ``True``.
         cancel_event (threading.Event | None, optional):
             Cooperative cancellation flag checked before every asset. When
-            set, :class:`~rapidtools.core.OperationCancelled` is raised.
+            set, :class:`~rapidtools.core.OperationCanceled` is raised.
             Defaults to ``None``.
 
     Example:
@@ -277,13 +277,13 @@ class AerialImageryExtractor:
             outline_width (int | float | str, optional):
                 Stroke width in pixels or a percentage of the shorter side.
             outline_color (str | tuple[int, int, int], optional):
-                PIL colour for the outline.
+                PIL color for the outline.
             image_prefix (str, optional):
                 Prefix for filenames and ``ImageAsset`` IDs.
             keep_multiple_copies (bool, optional):
                 Append a counter instead of overwriting existing files.
             buffer_m (float | None, optional):
-                Buffer around each asset in metres; overrides ``buffer_asset``
+                Buffer around each asset in meters; overrides ``buffer_asset``
                 when given.
             buffer_asset (float | str, optional):
                 Padding around the asset geometry before cropping.
@@ -377,7 +377,7 @@ class AerialImageryExtractor:
             image_size: ``(width, height)`` of the crop in pixels.
 
         Returns:
-            float: Metres per pixel along the north-south axis, or ``0.0`` if
+            float: Meters per pixel along the north-south axis, or ``0.0`` if
             the crop has no height.
 
         Example:
@@ -454,7 +454,7 @@ class AerialImageryExtractor:
                 attached to their corresponding ``PhysicalAsset`` entities.
 
         Raises:
-            OperationCancelled:
+            OperationCanceled:
                 If ``cancel_event`` is set while iterating over assets.
 
         Example:
@@ -515,7 +515,7 @@ class AerialImageryExtractor:
                     for asset in tqdm(
                         assets_in_bounds, desc=f'Extracting from {raster_path.name}'
                     ):
-                        raise_if_cancelled(self.cancel_event, 'aerial image extraction')
+                        raise_if_canceled(self.cancel_event, 'aerial image extraction')
 
                         # Get the asset geometry:
                         geom = asset.geometry
@@ -621,7 +621,7 @@ class AerialImageryExtractor:
                             f'{raster_path.name} '
                             '(outside the data footprint or too much nodata).'
                         )
-            except OperationCancelled:
+            except OperationCanceled:
                 # Cancellation must propagate to the caller, never be swallowed
                 # by the per-raster error handler below:
                 raise
@@ -702,7 +702,7 @@ class MapillaryImageExtractor:
             Defaults to 10.
         cancel_event (threading.Event | None, optional):
             Cooperative cancellation flag checked before each asset is
-            processed. When set, :class:`~rapidtools.core.OperationCancelled`
+            processed. When set, :class:`~rapidtools.core.OperationCanceled`
             is raised from :meth:`__call__`. Defaults to ``None``.
 
     Example:
@@ -849,7 +849,7 @@ class MapillaryImageExtractor:
                 the properties ``'view_angle'`` and ``'original_pano_id'``.
 
         Raises:
-            OperationCancelled:
+            OperationCanceled:
                 If ``cancel_event`` is set while assets are being processed.
 
         Example:
@@ -901,7 +901,7 @@ class MapillaryImageExtractor:
         # Threaded processing function for a single asset
         def process_asset(asset) -> int:
             """Fetch and attach panoramas for one asset; return the count."""
-            raise_if_cancelled(self.cancel_event, 'Mapillary image extraction')
+            raise_if_canceled(self.cancel_event, 'Mapillary image extraction')
 
             if not asset.geometry:
                 return 0
@@ -1061,8 +1061,8 @@ class TileOrthomosaicExtractor:
             Number of concurrent download threads. Defaults to 10.
         cancel_event (threading.Event | None, optional):
             Cooperative cancellation flag checked as tiles complete. When set,
-            outstanding downloads are cancelled and
-            :class:`~rapidtools.core.OperationCancelled` is raised.
+            outstanding downloads are canceled and
+            :class:`~rapidtools.core.OperationCanceled` is raised.
 
     Example:
         >>> from rapidtools.core import BoundingBox
@@ -1171,7 +1171,7 @@ class TileOrthomosaicExtractor:
         Raises:
             ValueError:
                 If the region collapses to zero pixels at ``zoom_level``.
-            OperationCancelled:
+            OperationCanceled:
                 If ``cancel_event`` is set while tiles are downloading.
 
         Example:
@@ -1277,9 +1277,9 @@ class TileOrthomosaicExtractor:
             ) as executor:
                 futures = [executor.submit(fetch_tile, t) for t in tiles_to_download]
                 for future in concurrent.futures.as_completed(futures):
-                    if is_cancelled(self.cancel_event):
+                    if is_canceled(self.cancel_event):
                         executor.shutdown(wait=False, cancel_futures=True)
-                        raise_if_cancelled(
+                        raise_if_canceled(
                             self.cancel_event, f'{self.PROVIDER_NAME} tile download'
                         )
                     tx, ty, img = future.result()
@@ -1344,8 +1344,8 @@ class BingOrthomosaicExtractor(TileOrthomosaicExtractor):
             parallel. Defaults to 10.
         cancel_event (threading.Event | None, optional):
             Cooperative cancellation flag checked as tiles complete. When set,
-            outstanding downloads are cancelled and
-            :class:`~rapidtools.core.OperationCancelled` is raised. Defaults
+            outstanding downloads are canceled and
+            :class:`~rapidtools.core.OperationCanceled` is raised. Defaults
             to ``None``.
 
     Example:
@@ -1486,7 +1486,7 @@ class GoogleStreetViewImageExtractor:
     the panorama tiles, crops the horizontal span that covers the asset
     footprint and attaches the crop to the asset as an
     :class:`~rapidtools.core.ImageAsset`. Additional viewpoints are taken from
-    the panorama's neighbour links when ``max_images_per_asset`` is greater
+    the panorama's neighbor links when ``max_images_per_asset`` is greater
     than one. No API key is required; the endpoints are the ones used by the
     Google Maps web app (as in BRAILS++), so availability may change.
 
@@ -1502,7 +1502,7 @@ class GoogleStreetViewImageExtractor:
             Defaults to 3.
         max_images_per_asset (int, optional):
             Maximum number of viewpoints per asset; extra viewpoints come from
-            neighbouring panoramas ordered by distance. Defaults to 1.
+            neighboring panoramas ordered by distance. Defaults to 1.
         fov_buffer_deg (float, optional):
             Horizontal margin added on both sides of the footprint.
             Defaults to 10.
@@ -1604,7 +1604,7 @@ class GoogleStreetViewImageExtractor:
         Return up to ``max_images_per_asset`` panoramas near an asset.
 
         The nearest panorama comes from a location search; further viewpoints
-        are its neighbour links that lie within the search radius, ordered by
+        are its neighbor links that lie within the search radius, ordered by
         distance to the asset centroid.
         """
         centroid = asset.geometry.centroid
@@ -1628,13 +1628,13 @@ class GoogleStreetViewImageExtractor:
 
     def _process_asset(self, asset: PhysicalAsset) -> int:
         """Download and attach every selected viewpoint of one asset."""
-        raise_if_cancelled(self.cancel_event, 'Google Street View extraction')
+        raise_if_canceled(self.cancel_event, 'Google Street View extraction')
         if asset.geometry is None or asset.geometry.is_empty:
             return 0
 
         extracted = 0
         for index, (pano, distance) in enumerate(self._candidate_panoramas(asset)):
-            raise_if_cancelled(self.cancel_event, 'Google Street View extraction')
+            raise_if_canceled(self.cancel_event, 'Google Street View extraction')
             try:
                 image = self.client.download_panorama(pano, zoom=self.zoom)
                 if image is None:
@@ -1680,7 +1680,7 @@ class GoogleStreetViewImageExtractor:
                     )
                 )
                 extracted += 1
-            except OperationCancelled:
+            except OperationCanceled:
                 raise
             except Exception as exc:  # noqa: BLE001 - reported per viewpoint
                 logger.error(
@@ -1719,7 +1719,7 @@ class GoogleStreetViewImageExtractor:
             for which imagery was found.
 
         Raises:
-            OperationCancelled: If ``cancel_event`` is set during extraction.
+            OperationCanceled: If ``cancel_event`` is set during extraction.
 
         Example:
             >>> extractor = GoogleStreetViewImageExtractor('output/streetview')
@@ -1743,7 +1743,7 @@ class GoogleStreetViewImageExtractor:
                     desc='Extracting Street View',
                 ):
                     total += future.result()
-            except OperationCancelled:
+            except OperationCanceled:
                 pool.shutdown(wait=False, cancel_futures=True)
                 raise
         logger.info(f'Google Street View: attached {total} images.')

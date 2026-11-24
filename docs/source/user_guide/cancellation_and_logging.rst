@@ -1,7 +1,7 @@
 Cancellation and logging
 ========================
 
-Cancelling long jobs
+Canceling long jobs
 --------------------
 
 Extracting imagery for thousands of assets or running a local model over
@@ -9,13 +9,13 @@ them takes minutes to hours. Every long-running component accepts a
 ``cancel_event``, a standard :class:`threading.Event`, and checks it between
 assets, tiles or batches. Setting the event from another thread, a GUI
 button or a signal handler stops the job at the next boundary and raises
-:class:`~rapidtools.core.OperationCancelled`, while keeping everything
+:class:`~rapidtools.core.OperationCanceled`, while keeping everything
 produced so far.
 
 .. code-block:: python
 
    import threading
-   from rapidtools import AerialImageryExtractor, AssetAnalyzer, OperationCancelled, Pipeline
+   from rapidtools import AerialImageryExtractor, AssetAnalyzer, OperationCanceled, Pipeline
 
    stop = threading.Event()
    pipeline = Pipeline(
@@ -28,14 +28,14 @@ produced so far.
 
    try:
        buildings = pipeline.run(buildings)
-   except OperationCancelled:
+   except OperationCanceled:
        print('Stopped by the user; partial results are on the assets.')
 
 Sharing one event between the pipeline and its steps means the pipeline
 stops between steps and each step stops within itself. The exception derives
 from :class:`RuntimeError`, so generic handlers still catch it while specific
 ones can tell a user-requested stop from a failure. Your own components can
-join the scheme with :func:`~rapidtools.core.raise_if_cancelled`.
+join the scheme with :func:`~rapidtools.core.raise_if_canceled`.
 
 Logging
 -------

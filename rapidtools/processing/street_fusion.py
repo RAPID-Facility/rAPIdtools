@@ -67,11 +67,11 @@ association rules to tune per class:
 
 Where frames keep seeing several outlines on one blob (two cars parked door
 to door), the blob is split along the outlines of the closest frame that
-separates them. Each object is then placed by intersecting the centre
+separates them. Each object is then placed by intersecting the center
 bearings of its sightings, and its footprint is the part of the blob that
 lies inside the outlines of most of them (a plan-view visual hull).
 
-All geometry runs in a local metre frame from
+All geometry runs in a local meter frame from
 :func:`~rapidtools.processing.street_localization.local_projection`.
 
 Example:
@@ -129,9 +129,9 @@ class Scan:
         cols: Bearing columns the outline covers (``N_BINS`` per turn).
         bottom: Lowest elevation of the outline in each column, degrees.
         top: Highest elevation of the outline in each column, degrees.
-        centre: Bearing of the outline's centre, degrees clockwise from north.
+        center: Bearing of the outline's center, degrees clockwise from north.
         width: Angular width of the outline, degrees.
-        lo: Near end of the occupied band per column in metres; ``nan``
+        lo: Near end of the occupied band per column in meters; ``nan``
             where the column gives no range.
         hi: Far end of the occupied band per column.
         contact: Ground-contact range of the outline (its nearer quartile),
@@ -142,7 +142,7 @@ class Scan:
     cols: np.ndarray
     bottom: np.ndarray
     top: np.ndarray
-    centre: float
+    center: float
     width: float
     lo: np.ndarray | None = None
     hi: np.ndarray | None = None
@@ -155,20 +155,20 @@ class FusedObject:
     One object found by occupancy fusion.
 
     Attributes:
-        x: East coordinate of the object in the local metre frame.
+        x: East coordinate of the object in the local meter frame.
         y: North coordinate.
-        cov: 2 x 2 position covariance in square metres, or ``None`` when
-            the position is the blob centre rather than an intersection.
+        cov: 2 x 2 position covariance in square meters, or ``None`` when
+            the position is the blob center rather than an intersection.
         members: The sightings that show the object.
         footprint: Outline of the object on the ground, as ``(x, y)``
-            vertices in the local metre frame.
+            vertices in the local meter frame.
         area_m2: Area of the footprint.
         length_m: Long side of the footprint's bounding rectangle.
         width_m: Short side of the footprint's bounding rectangle.
         parallax_deg: Largest spread among the sightings' bearings.
         days: Survey days the object was seen on.
         localization: ``'triangulated'`` (bearings intersected) or
-            ``'fused'`` (centre of the occupied cells).
+            ``'fused'`` (center of the occupied cells).
         rms_m: Root-mean-square distance between the position and the
             sightings' bearing lines, when triangulated.
     """
@@ -207,7 +207,7 @@ class _Frame:
     x: float
     y: float
     scans: list[Scan] = field(default_factory=list)
-    fov: tuple[float, float] | None = None  # (centre, width) of a perspective frame
+    fov: tuple[float, float] | None = None  # (center, width) of a perspective frame
 
 
 class _Grid:
@@ -220,7 +220,7 @@ class _Grid:
         self.views = np.zeros((ny, nx), np.uint16)
 
     def xy(self, flat: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Centre coordinates of cells given by their flat indices."""
+        """Center coordinates of cells given by their flat indices."""
         jj, ii = np.divmod(flat, self.nx)
         return self.x0 + (ii + 0.5) * self.cell, self.y0 + (jj + 0.5) * self.cell
 
@@ -327,8 +327,8 @@ def scan_from_observation(index: int, obs: Observation) -> Scan | None:
     seen = np.isfinite(bottom)
     cols = (np.arange(n) + b0)[seen] % N_BINS
     width = float(a.max() - a.min())
-    centre = float(((a.max() + a.min()) / 2.0) % 360.0)
-    return Scan(index, cols, bottom[seen], top[seen], centre, width)
+    center = float(((a.max() + a.min()) / 2.0) % 360.0)
+    return Scan(index, cols, bottom[seen], top[seen], center, width)
 
 
 def set_range_bands(
@@ -459,9 +459,9 @@ def _fuse_frame(
     free_to = np.where(has, lo.min(axis=0), max_range_m).astype(np.float32)
     free_to[blind & ~has] = 0.0
     if frame.fov is not None:
-        centre, width = frame.fov
+        center, width = frame.fov
         b = (np.arange(N_BINS) + 0.5) * BIN_DEG
-        outside = np.abs((b - centre + 180.0) % 360.0 - 180.0) > width / 2.0
+        outside = np.abs((b - center + 180.0) % 360.0 - 180.0) > width / 2.0
         free_to[outside & ~has] = 0.0
     c = grid.cell
     i0 = max(0, int((frame.x - max_range_m - grid.x0) / c))
@@ -569,13 +569,13 @@ def _split_instances(
         for s, label in zip(sets, labels, strict=True):
             votes[label][s[owners[s] == 1]] += weights[iid]
     part = votes.argmax(axis=0)
-    unlabelled = votes.max(axis=0) <= 0
-    if unlabelled.all():
+    unlabeled = votes.max(axis=0) <= 0
+    if unlabeled.all():
         return [(cells, members)]
-    if unlabelled.any():
+    if unlabeled.any():
         pts = np.c_[xs, ys]
-        _, nearest = cKDTree(pts[~unlabelled]).query(pts[unlabelled])
-        part[unlabelled] = part[~unlabelled][nearest]
+        _, nearest = cKDTree(pts[~unlabeled]).query(pts[unlabeled])
+        part[unlabeled] = part[~unlabeled][nearest]
     assigned: dict[int, list[tuple[str, Scan, np.ndarray]]] = defaultdict(list)
     for iid, scan, claimed in members:
         s = np.fromiter((position[int(c)] for c in claimed), int, len(claimed))
@@ -597,7 +597,7 @@ def _intersect(
     Robust least-squares intersection of bearings; falls back to ``start``.
 
     Returns the position, its covariance (``None`` without enough parallax),
-    the parallax in degrees and the root-mean-square distance in metres
+    the parallax in degrees and the root-mean-square distance in meters
     between the position and the bearing lines.
     """
     az = np.radians(bearings_deg)
@@ -749,7 +749,7 @@ def _extract(
             for n_scan, scan in enumerate(frame.scans):
                 if not math.isfinite(scan.contact):
                     continue
-                off = abs((scan.centre - bearing + 180.0) % 360.0 - 180.0)
+                off = abs((scan.center - bearing + 180.0) % 360.0 - 180.0)
                 if off > scan.width / 2.0 + half + 1.0:
                     continue
                 key = (frame.image_id, n_scan)
@@ -785,27 +785,27 @@ def _extract(
                 continue
             xs, ys = grid.xy(hull)
             w = grid.occ.ravel()[hull]
-            centre = np.array([np.average(xs, weights=w), np.average(ys, weights=w)])
+            center = np.array([np.average(xs, weights=w), np.average(ys, weights=w)])
             if core is not None and not (
-                core[0] <= centre[0] < core[2] and core[1] <= centre[1] < core[3]
+                core[0] <= center[0] < core[2] and core[1] <= center[1] < core[3]
             ):
                 continue
             cams = np.array([[frames[i].x, frames[i].y] for i, _, _ in part_members])
-            bearings = np.array([s.centre for _, s, _ in part_members])
+            bearings = np.array([s.center for _, s, _ in part_members])
             p, cov, parallax, rms = _intersect(
-                cams, bearings, centre, bearing_sigma_deg
+                cams, bearings, center, bearing_sigma_deg
             )
             if parallax < min_parallax_deg:
                 # Seen along one line only (a vehicle driving ahead of the
                 # survey car where a sequence ends): nothing fixes its range.
                 counts['no_parallax'] += 1
                 continue
-            if cov is not None and math.hypot(*(p - centre)) > max(length, 2.0):
-                p, cov, rms = centre, None, None  # bearings disagree with the blob
+            if cov is not None and math.hypot(*(p - center)) > max(length, 2.0):
+                p, cov, rms = center, None, None  # bearings disagree with the blob
             sightings = []
             for (_, scan, _), cam in zip(part_members, cams, strict=True):
                 obs = observations[scan.index]
-                obs.bearing = round(scan.centre, 2)
+                obs.bearing = round(scan.center, 2)
                 obs.elevation = round(float(scan.bottom.min()), 2)
                 obs.range_m = round(float(math.hypot(*(p - cam))), 2)
                 sightings.append(obs)
@@ -909,7 +909,7 @@ def fuse_observations(
     See the module docstring for the method. Each survey day is fused by
     itself, so a car that left between two passes is not voted away by the
     later one; objects of different days that stand on the same spot are
-    joined afterwards.
+    joined afterward.
 
     Args:
         observations: Sightings of one class. ``bearing``, ``elevation`` and
@@ -919,12 +919,12 @@ def fuse_observations(
             and ``horizontal_fov_deg``, such as
             :class:`~rapidtools.processing.street_tracking.CameraFrame`),
             including those without a sighting: they are the ones that say
-            a stretch of kerb is empty. The sightings' own frames are used
+            a stretch of curb is empty. The sightings' own frames are used
             when omitted.
         camera_height_m: Camera height above the ground.
         min_range_m: Closest range anything is placed at.
         max_range_m: Farthest range a frame votes at.
-        cell_m: Size of a ground cell. A quarter of a metre suits vehicles;
+        cell_m: Size of a ground cell. A quarter of a meter suits vehicles;
             use ``0.1`` for hydrants and poles.
         occupancy_threshold: Share of the (range-weighted) votes on a cell
             that must say "occupied".
@@ -945,10 +945,10 @@ def fuse_observations(
             uncertainty.
         min_parallax_deg: Objects whose sightings all look along one line
             (bearings spread less than this) are dropped; ``0`` keeps them
-            at the centre of their cells.
+            at the center of their cells.
         tile_m: Side of the ground tiles the survey is processed in; bounds
             memory, not accuracy.
-        project: Projection to local metres; one centred on the sightings is
+        project: Projection to local meters; one centered on the sightings is
             made when omitted.
         unproject: Inverse of ``project``.
 
@@ -1046,9 +1046,9 @@ def fuse_observations(
                 gx0 = x_min + tx * tile_m - pad
                 gy0 = y_min + ty * tile_m - pad
                 span = tile_m + 2.0 * pad
-                centre = [gx0 + span / 2.0, gy0 + span / 2.0]
+                center = [gx0 + span / 2.0, gy0 + span / 2.0]
                 near = tree.query_ball_point(
-                    centre, span / math.sqrt(2.0) + max_range_m
+                    center, span / math.sqrt(2.0) + max_range_m
                 )
                 tile_frames = {
                     ids[i]: day_frames[ids[i]]

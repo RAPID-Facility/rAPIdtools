@@ -65,7 +65,7 @@ def test_parse_structured_results_json_and_lines():
         (ia.QwenAssetAnalyzer, 'qwen', ia.QWEN_DEFAULT_MODEL),
     ],
 )
-def test_api_analyzers_share_behaviour(
+def test_api_analyzers_share_behavior(
     monkeypatch, tmp_path, analyzer_class, prefix, default_model
 ):
     monkeypatch.setattr(analyzer_class, 'MODEL_CLASS', FakeModel)
@@ -129,31 +129,31 @@ def test_llama_analyzer_sequential(monkeypatch, tmp_path):
 
 
 # ------------------------------------------------------------ cancellation
-def test_api_analyzer_stops_when_cancelled(monkeypatch, tmp_path):
+def test_api_analyzer_stops_when_canceled(monkeypatch, tmp_path):
     import threading
 
-    from rapidtools.core import OperationCancelled
+    from rapidtools.core import OperationCanceled
 
     stop = threading.Event()
 
-    class CancellingModel(FakeModel):
+    class CancelingModel(FakeModel):
         def run_inference(self, image_inputs, prompt, **kwargs):
             stop.set()  # cancel as soon as the first request is made
             return super().run_inference(image_inputs, prompt, **kwargs)
 
-    monkeypatch.setattr(ia.GeminiAssetAnalyzer, 'MODEL_CLASS', CancellingModel)
+    monkeypatch.setattr(ia.GeminiAssetAnalyzer, 'MODEL_CLASS', CancelingModel)
     analyzer = ia.GeminiAssetAnalyzer(
         api_key='k', prompt='p', max_workers=1, cancel_event=stop
     )
-    with pytest.raises(OperationCancelled):
+    with pytest.raises(OperationCanceled):
         analyzer(_collection(tmp_path))
-    assert len(CancellingModel.created[0].calls) <= 2
+    assert len(CancelingModel.created[0].calls) <= 2
 
 
 def test_local_analyzer_stops_between_batches(monkeypatch, tmp_path):
     import threading
 
-    from rapidtools.core import OperationCancelled
+    from rapidtools.core import OperationCanceled
 
     stop = threading.Event()
 
@@ -168,7 +168,7 @@ def test_local_analyzer_stops_between_batches(monkeypatch, tmp_path):
     monkeypatch.setattr(ia, 'Gemma4Inference', BatchModel)
     analyzer = ia.Gemma4AssetAnalyzer(prompt='p', batch_size=1, cancel_event=stop)
     collection = _collection(tmp_path)
-    with pytest.raises(OperationCancelled):
+    with pytest.raises(OperationCanceled):
         analyzer(collection)
     # The first batch completed and its result was kept before stopping:
     analyzed = [a for a in collection if 'gemma4_chs_level' in a.attributes]
@@ -249,7 +249,7 @@ def test_pipeline_checks_cancel_between_steps(tmp_path):
     import threading
 
     from rapidtools import Pipeline
-    from rapidtools.core import OperationCancelled
+    from rapidtools.core import OperationCanceled
 
     stop = threading.Event()
     calls = []
@@ -266,7 +266,7 @@ def test_pipeline_checks_cancel_between_steps(tmp_path):
     pipeline = Pipeline(cancel_event=stop)
     pipeline.add_step(step_one)
     pipeline.add_step(step_two)
-    with pytest.raises(OperationCancelled):
+    with pytest.raises(OperationCanceled):
         pipeline.run(_collection(tmp_path))
     assert calls == [1]
 
@@ -293,7 +293,7 @@ def test_api_analyzer_cooldown_reset_and_raw_fallback(monkeypatch, tmp_path):
     collection = _collection(tmp_path)
     good = collection.get('good')
 
-    # A pending global cooldown is honoured and a success resets the counter:
+    # A pending global cooldown is honored and a success resets the counter:
     analyzer._consecutive_error_count = 2
     analyzer._global_cooldown_until = time.time() + 0.01
     assert analyzer._process_single_asset(good) is True

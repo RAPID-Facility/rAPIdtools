@@ -44,7 +44,7 @@ Everything here is generated from the step-type registry of
 :mod:`rapidtools.jobs.steps`: the `JSON Schema <https://json-schema.org>`_
 documents a partner system can validate job and result files against
 (:func:`job_schema`, :func:`result_schema`, :func:`secrets_schema`), a JSON
-catalogue of the step types (:func:`describe_steps`) and the reference
+catalog of the step types (:func:`describe_steps`) and the reference
 tables of the documentation (:func:`steps_rst`).
 """
 
@@ -312,7 +312,7 @@ def result_schema() -> dict[str, Any]:
 
     Example:
         >>> result_schema()['properties']['status']['enum']
-        ['running', 'done', 'error', 'cancelled']
+        ['running', 'done', 'error', 'canceled']
     """
     nullable_time = {'type': ['string', 'null']}
     output = {
@@ -435,7 +435,7 @@ def secrets_schema() -> dict[str, Any]:
 
 def describe_steps() -> list[dict[str, Any]]:
     """
-    Return the catalogue of step types as plain JSON data.
+    Return the catalog of step types as plain JSON data.
 
     A client can build its forms from this instead of hard-coding the
     options of each step.
@@ -444,7 +444,7 @@ def describe_steps() -> list[dict[str, Any]]:
         >>> [step['type'] for step in describe_steps()][:3]
         ['imagery.basemap', 'data.download', 'detect.aerial']
     """
-    catalogue = []
+    catalog = []
     for step_type in STEP_TYPES.values():
         params = []
         for param in step_type.params:
@@ -465,7 +465,7 @@ def describe_steps() -> list[dict[str, Any]]:
                 if getattr(param, bound) is not None:
                     entry[bound] = getattr(param, bound)
             params.append(entry)
-        catalogue.append(
+        catalog.append(
             {
                 'type': step_type.name,
                 'title': step_type.title,
@@ -487,7 +487,7 @@ def describe_steps() -> list[dict[str, Any]]:
                 ],
             }
         )
-    return catalogue
+    return catalog
 
 
 def _table(headers: list[str], rows: list[list[str]], widths: list[int]) -> list[str]:

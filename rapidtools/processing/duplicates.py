@@ -42,7 +42,7 @@ Fold two reports of one vehicle into one by asking a model to look.
 
 Where one parked vehicle was reported twice, a long vehicle seen as a cab
 and a box, a track split by a corner, or two passes that geometry could not
-join, the two objects sit a few metres apart with good crops each. Geometry
+join, the two objects sit a few meters apart with good crops each. Geometry
 cannot settle such pairs without also joining cars parked side by side, but
 a vision-language model can: shown the crops of both with the detection
 outlined, and told that the viewpoints differ, it says whether they show the
@@ -52,9 +52,9 @@ that asks that question of every pair of objects within ``max_distance_m``
 and merges the pairs the model is confident about.
 
 Each crop is zoomed to its detection outline, which is drawn thick, so a
-neighbour that the cropper's margin let into the frame is not what gets
-judged, and the model is made to name each vehicle's type and colour before
-it answers: lighting changes brightness, never colour. On a labelled block
+neighbor that the cropper's margin let into the frame is not what gets
+judged, and the model is made to name each vehicle's type and color before
+it answers: lighting changes brightness, never color. On a labeled block
 of the Spokane survey the step removed every remaining duplicate and merged
 one pair of real vehicles by mistake.
 
@@ -93,16 +93,16 @@ logger = logging.getLogger(__name__)
 PAIR_PROMPT = (
     'Row A (top) and row B (bottom) each show crops of one parked vehicle '
     'detected along a street-view survey; the detection is outlined in '
-    'magenta in each crop. The two detections lie within a few metres of '
+    'magenta in each crop. The two detections lie within a few meters of '
     'each other and were made from DIFFERENT camera positions, often on '
     'different passes, so the angle, the background and the apparent '
     'position differ even when it is the same vehicle. A different '
     'viewpoint or background is not evidence of a different vehicle. '
-    'Lighting changes brightness, never colour: a white vehicle is never '
+    'Lighting changes brightness, never color: a white vehicle is never '
     'the same as a red one, and a car is never the same as a pickup. First '
     'describe the outlined vehicle in each row, then decide. Return JSON '
-    'with keys "type_a", "colour_a", "type_b", "colour_b" (short strings), '
-    '"same" (true only if type, body style and colour all agree and no '
+    'with keys "type_a", "color_a", "type_b", "color_b" (short strings), '
+    '"same" (true only if type, body style and color all agree and no '
     'visible marking, roof rack, canopy or damage differs), "confidence" '
     '(0 to 1) and "reason" (one sentence naming the deciding property).'
 )
@@ -213,7 +213,7 @@ class DuplicateResolver:
         max_distance_m: Farthest apart two objects may be and still be
             compared. Defaults to 8.
         min_confidence: Confidence at or above which a ``same`` verdict is
-            acted on. Defaults to 0.9; on the labelled block every true
+            acted on. Defaults to 0.9; on the labeled block every true
             duplicate scored 0.95 or more and the one false match that
             was not flagged at 0.5 came from crops without outlines.
         max_images_per_asset: Crops of each object shown, closest first.
@@ -303,7 +303,7 @@ class DuplicateResolver:
 
         Returns:
             list[tuple[PhysicalAsset, PhysicalAsset, float]]: Each pair
-            once, with its separation in metres.
+            once, with its separation in meters.
 
         Example:
             >>> resolver.candidate_pairs(vehicles)  # doctest: +SKIP
@@ -344,7 +344,7 @@ class DuplicateResolver:
     ) -> Image.Image | None:
         """
         One crop, zoomed to its outline with ``margin`` around it and the
-        outline drawn thick, so the model cannot mistake a neighbour in the
+        outline drawn thick, so the model cannot mistake a neighbor in the
         frame for the object. Without an outline record the crop is shown
         as it is.
         """
@@ -390,7 +390,7 @@ class DuplicateResolver:
         Lay two objects' crops out as row A over row B and save the image.
 
         Each crop is zoomed to its outline, which is drawn thick, so that a
-        neighbour the cropper's margin let into the frame is not what the
+        neighbor the cropper's margin let into the frame is not what the
         model judges.
 
         Args:

@@ -53,7 +53,7 @@ What it does
   and rate-limit back-off handled for you.
 - **Discover and clean geometries.** Scan a raster for a text concept with
   SAM 3, then regularize the masks into building footprints or road
-  centrelines.
+  centerlines.
 - **Stop cleanly.** Every long-running component takes a cancel event, so
   notebooks and the bundled GUI can interrupt a job and keep partial results.
 

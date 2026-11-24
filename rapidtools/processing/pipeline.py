@@ -62,7 +62,7 @@ import logging
 import threading
 from collections.abc import Callable
 
-from rapidtools.core import PhysicalAssetCollection, raise_if_cancelled
+from rapidtools.core import PhysicalAssetCollection, raise_if_canceled
 
 from .step import stage_of
 
@@ -98,7 +98,7 @@ class Pipeline:
         cancel_event (threading.Event | None, optional):
             A cooperative cancellation flag. When set (typically from another
             thread), the pipeline raises
-            :class:`~rapidtools.core.OperationCancelled` before starting the
+            :class:`~rapidtools.core.OperationCanceled` before starting the
             next step. The event is also handed to every step that has a
             ``cancel_event`` of its own left at ``None``, so the step in
             progress stops promptly too. Defaults to ``None``.
@@ -188,7 +188,7 @@ class Pipeline:
                 a warning is logged and the input is returned unchanged.
 
         Raises:
-            OperationCancelled:
+            OperationCanceled:
                 If ``cancel_event`` is set before any step starts.
             TypeError:
                 If a step returns something other than a collection.
@@ -216,7 +216,7 @@ class Pipeline:
             logger.info(f'--- Running step {i}/{len(self.steps)}: {step_name} ---')
 
             # Stop promptly if the caller asked us to cancel:
-            raise_if_cancelled(self.cancel_event, f'pipeline step {step_name}')
+            raise_if_canceled(self.cancel_event, f'pipeline step {step_name}')
 
             # One event on the pipeline is enough: steps that were given none
             # of their own share it, so the step in progress stops too.

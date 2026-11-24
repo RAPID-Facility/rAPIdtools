@@ -15,7 +15,7 @@ from rapidtools.core import Observation
 from rapidtools.processing import MapillaryFeatureExtractor, street_structures
 from rapidtools.processing.street_localization import local_projection, rotation_matrix
 from rapidtools.processing.street_structures import (
-    LabelledPoints,
+    LabeledPoints,
     PointCloud,
     Structure,
     discover_structures,
@@ -85,14 +85,14 @@ def _survey(n=21, spacing=3.0, houses=HOUSES, day='2026-08-27'):
     points = np.vstack([*house_pts, ground, shrub])
     rotations, translations, sightings, clusters = [], [], [], {}
     for i in range(n):
-        centre = np.array([-30.0 + spacing * i, 0.0, GROUND + CAMERA_HEIGHT])
+        center = np.array([-30.0 + spacing * i, 0.0, GROUND + CAMERA_HEIGHT])
         # A slightly different heading per frame, as in a real drive:
         r = LEVEL @ Rotation.from_euler('z', 0.002 * (i - n // 2)).as_matrix()
         rotvec = Rotation.from_matrix(r).as_rotvec()
-        t = -r @ centre
+        t = -r @ center
         rotations.append(rotvec)
         translations.append(t)
-        lon, lat = UNPROJECT(centre[0], centre[1])
+        lon, lat = UNPROJECT(center[0], center[1])
         image_id = f'img{i}'
         clusters[image_id] = ('c1', 'https://clouds/c1')
         for house in houses:
@@ -406,14 +406,14 @@ def test_nothing_to_do_cases(survey):
         sightings, clusters, loader=lambda c, u: empty
     )
     assert structures == []
-    assert structures_from_points(LabelledPoints(np.zeros((0, 4)), {}, {})) == []
+    assert structures_from_points(LabeledPoints(np.zeros((0, 4)), {}, {})) == []
 
 
 def test_label_points_keeps_walls_and_drops_ground_and_clutter(survey):
     cloud, sightings, clusters = survey
-    labelled = label_points(sightings, clusters, PROJECT, loader=lambda cid, url: cloud)
-    rows = labelled.rows
-    assert len(labelled.shots) == 21 and len(labelled.templates) == 21
+    labeled = label_points(sightings, clusters, PROJECT, loader=lambda cid, url: cloud)
+    rows = labeled.rows
+    assert len(labeled.shots) == 21 and len(labeled.templates) == 21
     heights = rows[:, 3]
     assert np.percentile(heights, 99) < HOUSE_HEIGHT + 0.5
     # Nearly everything kept stands on a house (the convex test outlines also
@@ -470,7 +470,7 @@ def test_extractor_places_buildings_from_the_point_cloud(survey, tmp_path, monke
     lon, lat = assets[0].geometry.centroid.x, assets[0].geometry.centroid.y
     x, y = local_projection(LON0, LAT0)[0](lon, lat)
     assert min(math.hypot(x - cx, y - 15.0) for cx in (-8.0, 8.0)) < 1.5
-    # geometry='point' writes the footprint centre instead:
+    # geometry='point' writes the footprint center instead:
     ext = MapillaryFeatureExtractor(
         classes=['buildings'],
         client=_Client(),

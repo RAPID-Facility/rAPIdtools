@@ -87,7 +87,7 @@ MODEL_ID = 'google/gemma-4-E2B-it'  # about 5 GB of GPU memory
 N_CONTACT_SHEETS = 6
 # Gemma 4 E2B takes about five seconds per building on a 16 GB GPU. Set to
 # e.g. 40 to send only that many buildings (spread evenly over the area) to
-# the model on a first run; None analyses all of them.
+# the model on a first run; None analyzes all of them.
 MAX_MODEL_BUILDINGS = None
 
 # Written for a small local model: neutral wording (telling Gemma 4 E2B that
@@ -101,7 +101,7 @@ PROMPT = (
     '"status": one of "standing" (a complete building with a finished roof), '
     '"under_construction" (a building being built: exposed wood framing, bare '
     'sheathing, no finished roof), "empty_lot" (no building: bare soil, a '
-    'concrete slab or vegetation); "stories": the number of storeys of the '
+    'concrete slab or vegetation); "stories": the number of stories of the '
     'building, 0 if there is none; "evidence": one short sentence describing '
     'what you see inside the brackets.'
 )
@@ -133,7 +133,7 @@ print(f'{len(cameras)} drone photos, {len(buildings)} buildings.')
 
 
 # --------------------------------------------------------------- Step 2
-# This neighbourhood climbs 23 m from one end to the other, which at a 45
+# This neighborhood climbs 23 m from one end to the other, which at a 45
 # degree view is 23 m of error in where a building appears. Ground elevations
 # come from the USGS elevation service (United States only) and are cached.
 # On flat terrain skip this step and drop the ground_elevation argument
@@ -152,14 +152,14 @@ cache_path = OUTPUT_DIR / 'ground_elevations.json'
 elevations = json.loads(cache_path.read_text()) if cache_path.exists() else {}
 for asset in buildings:
     if asset.id not in elevations:
-        centre = asset.geometry.centroid
-        elevations[asset.id] = usgs_elevation(centre.x, centre.y)
+        center = asset.geometry.centroid
+        elevations[asset.id] = usgs_elevation(center.x, center.y)
     asset.attributes['ground_elevation_m'] = elevations[asset.id]
 cache_path.write_text(json.dumps(elevations))
 
 # --------------------------------------------------------------- Step 3
-# View selection and cropping. Buildings are modelled as 6 m tall boxes
-# unless they carry a height attribute; neighbours hide one another.
+# View selection and cropping. Buildings are modeled as 6 m tall boxes
+# unless they carry a height attribute; neighbors hide one another.
 extractor = DroneImageExtractor(
     cameras,
     save_directory=OUTPUT_DIR / 'crops',
@@ -179,7 +179,7 @@ if RUN_MODEL:
         batch_size=1,  # four photos per building: one building at a time
         generation=GenerationConfig(json_mode=True, temperature=0.0, max_tokens=120),
     )
-    # View selection used every building (neighbours hide one another); the
+    # View selection used every building (neighbors hide one another); the
     # model may be given fewer. The subset shares its assets with
     # ``buildings``, so the answers land on the full collection.
     subset = [a for a in buildings if len(a.image_assets) > 0]
@@ -197,7 +197,7 @@ print(
 if RUN_MODEL:
     statuses: dict[str, int] = {}
     for asset in buildings:
-        status = str(asset.attributes.get('gemma4_status', 'not analysed'))
+        status = str(asset.attributes.get('gemma4_status', 'not analyzed'))
         statuses[status] = statuses.get(status, 0) + 1
     print(f'Recovery status: {statuses}')
 

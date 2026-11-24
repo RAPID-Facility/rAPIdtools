@@ -119,7 +119,7 @@ class SegmentationConfig:
 
     Attributes:
         threshold: Detection confidence threshold.
-        mask_threshold: Threshold for binarising mask logits.
+        mask_threshold: Threshold for binarizing mask logits.
 
     Example:
         >>> from rapidtools.models.base import SegmentationConfig

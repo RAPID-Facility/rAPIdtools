@@ -72,7 +72,7 @@ from shapely.geometry.base import BaseGeometry
 from shapely.ops import split, unary_union
 from shapely.ops import transform as shapely_transform
 
-from rapidtools.core import PhysicalAsset, PhysicalAssetCollection, raise_if_cancelled
+from rapidtools.core import PhysicalAsset, PhysicalAssetCollection, raise_if_canceled
 from rapidtools.data_sources.orthomosaic_reader import PatchGeoref
 from rapidtools.processing.image_segmenters import SAM3ImageSegmenter
 from rapidtools.processing.step import Stage
@@ -141,7 +141,7 @@ class BuildingRegularizer:
             Tolerance in feet for snapping polygon vertices. Defaults to 0.5.
         cancel_event (threading.Event | None, optional):
             Cooperative cancellation flag shared with the internal segmenter.
-            When set, :class:`~rapidtools.core.OperationCancelled` is raised
+            When set, :class:`~rapidtools.core.OperationCanceled` is raised
             between SAM 3 batches or between pipeline stages. Defaults to
             ``None``.
 
@@ -275,7 +275,7 @@ class BuildingRegularizer:
                 collection when ``input_assets`` is empty.
 
         Raises:
-            OperationCancelled:
+            OperationCanceled:
                 If ``cancel_event`` is set during processing.
 
         Example:
@@ -293,7 +293,7 @@ class BuildingRegularizer:
         logger.info('Step 1/4: Running SAM 3 segmentation on image crops...')
         segmented_assets = self.segmenter(input_assets)
 
-        raise_if_cancelled(self.cancel_event, 'building regularization')
+        raise_if_canceled(self.cancel_event, 'building regularization')
         logger.info('Step 2/4: Georeferencing masks and dynamically bridging gaps...')
         refined_collection = self._georeference_and_filter(segmented_assets)
 
@@ -389,7 +389,7 @@ class BuildingRegularizer:
         self, asset_collection: PhysicalAssetCollection
     ) -> PhysicalAssetCollection:
         """
-        Slice off intrusions of smaller buildings into larger neighbours.
+        Slice off intrusions of smaller buildings into larger neighbors.
 
         Assets are processed from largest to smallest. Whenever a polygon
         overlaps an already-accepted (larger) polygon, the longest wall of the
@@ -755,7 +755,7 @@ class BuildingRegularizer:
         Builds a network graph in which two polygons are connected when their
         intersection exceeds 50% of the smaller polygon's area, then merges
         each connected component with ``unary_union``. Adjacent but distinct
-        neighbour buildings stay separate. Holes are filled in the result.
+        neighbor buildings stay separate. Holes are filled in the result.
 
         Args:
             asset_collection (PhysicalAssetCollection):

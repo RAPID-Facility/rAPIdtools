@@ -21,7 +21,7 @@ body:
     id: proposal
     attributes:
       label: Proposed change
-      description: What you would like rapidtools to do. A sketch of the API or GUI behaviour is welcome.
+      description: What you would like rapidtools to do. A sketch of the API or GUI behavior is welcome.
     validations:
       required: true
   - type: textarea

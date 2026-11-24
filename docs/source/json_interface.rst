@@ -42,7 +42,7 @@ From a terminal:
 
    rapidtools-job validate job.json    # check a job without running it
    rapidtools-job schema job           # print a JSON Schema: job | result | secrets
-   rapidtools-job steps                # print the catalogue of step types as JSON
+   rapidtools-job steps                # print the catalog of step types as JSON
 
 ``python -m rapidtools.jobs`` is the same command for environments where the
 console script is not on the path. ``run`` prints progress to the console,
@@ -61,11 +61,11 @@ writes the result file and exits with:
    * - ``2``
      - The job file is invalid (or unreadable). Nothing was run.
    * - ``3``
-     - The job was cancelled.
+     - The job was canceled.
 
 ``SIGINT`` (Ctrl+C) or ``SIGTERM`` cancels cooperatively: the batch or tile
 being processed finishes, partial results are written, the result file is
-marked ``cancelled`` and the process exits with ``3``. A second signal ends
+marked ``canceled`` and the process exits with ``3``. A second signal ends
 the process immediately.
 
 From Python, the same thing is one call:
@@ -182,7 +182,7 @@ A job file is one JSON object.
      - Free-form object. Never interpreted.
 
 Any other field, at the top level, in a step, under ``inputs`` or under
-``params``, is an error. A misspelt option is reported with the closest
+``params``, is an error. A misspelled option is reported with the closest
 valid name instead of being silently ignored.
 
 Paths
@@ -314,7 +314,7 @@ reader always sees a complete document: polling it is safe.
    * - Field
      - Meaning
    * - ``status``
-     - ``running``, ``done``, ``error`` or ``cancelled``. A job is finished
+     - ``running``, ``done``, ``error`` or ``canceled``. A job is finished
        when the status is anything but ``running``.
    * - ``message``
      - While running: the latest progress line. At the end: the outcome, or
@@ -342,7 +342,7 @@ reader always sees a complete document: polling it is safe.
      - Copied from the job.
    * - ``status``
      - ``pending`` (not reached yet), ``running``, ``done``, ``error``,
-       ``cancelled``, or ``skipped`` (an earlier step ended the job).
+       ``canceled``, or ``skipped`` (an earlier step ended the job).
    * - ``outputs``
      - The declared outputs that were written, by name: ``{"path": <absolute
        path>, "kind": "raster" | "geojson" | "file"}``. An output the step
@@ -357,7 +357,7 @@ reader always sees a complete document: polling it is safe.
      - Present only for steps whose result is not a file
        (``prompt.assist``).
    * - ``error``
-     - Present when the step failed or was cancelled:
+     - Present when the step failed or was canceled:
        ``{"type": <exception name>, "message": <text>}``.
    * - ``started_at``, ``finished_at``, ``duration_s``
      - As above; ``null`` for steps that never started.
@@ -368,12 +368,12 @@ How a job ends
 - Every step is validated **before the first one runs**. An invalid job ends
   with ``status: "error"``, the offending step marked ``error`` and no step
   started.
-- Steps run one after the other. The first step that fails or is cancelled
+- Steps run one after the other. The first step that fails or is canceled
   ends the job; the steps after it are ``skipped``.
 - A detection step that finds nothing succeeds, but a later step that needed
   its assets fails with a message saying so ("No assets were detected;
   skipping inference.").
-- A cancelled ``analyze.vlm`` step keeps what it finished: the assets
+- A canceled ``analyze.vlm`` step keeps what it finished: the assets
   analyzed so far are written and listed as the ``partial_assets`` output.
 
 Step types
@@ -401,7 +401,7 @@ A step type is named ``<stage>.<variant>``. Version 1.0 defines six:
      - Asks a model to draft, refine or review a prompt.
 
 The tables below are generated from the code that validates job files, and
-``rapidtools-job steps`` prints the same catalogue as JSON for clients that
+``rapidtools-job steps`` prints the same catalog as JSON for clients that
 build their forms from it.
 
 .. include:: _generated/job_steps.inc
@@ -458,7 +458,7 @@ Adding a step type
 ------------------
 
 The interface is extended by registering one record; the runner, the
-schemas, the catalogue and the tables on this page follow from it.
+schemas, the catalog and the tables on this page follow from it.
 
 .. code-block:: python
 
@@ -501,7 +501,7 @@ the design where it can be added in a minor release.
   ``rapidtools-job run``.
 - **Progress is a message.** The result file carries the latest progress
   line and the state of each step, not a percentage.
-- **Cancellation is a signal.** A job is cancelled by signalling the process
+- **Cancellation is a signal.** A job is canceled by signaling the process
   that runs it; there is no cancel file to drop next to the job.
 - **No sandbox.** The runner reads and writes whatever paths the job names
   and its user may access. The folder restriction of a shared GUI server

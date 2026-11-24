@@ -141,22 +141,22 @@ L.control.layers({'Bing aerial': bing, 'OpenStreetMap': osm}).addTo(map);
 L.control.scale({imperial: true}).addTo(map);
 
 // The collection route: one polyline per sequence (white casing under a
-// coloured line), and the individual camera positions on demand.
+// colored line), and the individual camera positions on demand.
 const routeLayer = L.layerGroup().addTo(map);
 const frameLayer = L.layerGroup();
-const routeColour = getComputedStyle(document.documentElement).getPropertyValue('--route').trim();
+const routeColor = getComputedStyle(document.documentElement).getPropertyValue('--route').trim();
 for (const r of ROUTES) {
   const latlngs = r.frames.map(f => [f[1], f[0]]);
   if (latlngs.length < 2) continue;
   L.polyline(latlngs, {color: '#fff', weight: 6, opacity: 0.6, interactive: false}).addTo(routeLayer);
-  L.polyline(latlngs, {color: routeColour, weight: 2.5, opacity: 0.95})
+  L.polyline(latlngs, {color: routeColor, weight: 2.5, opacity: 0.95})
     .bindTooltip(`sequence ${r.seq} · ${r.frames.length} frames · ${r.date || ''}`, {sticky: true})
     .addTo(routeLayer);
 }
 const frameRenderer = L.canvas({padding: 0.5});
 for (const r of ROUTES)
   for (const f of r.frames)
-    L.circleMarker([f[1], f[0]], {renderer: frameRenderer, radius: 2.5, weight: 1, color: routeColour,
+    L.circleMarker([f[1], f[0]], {renderer: frameRenderer, radius: 2.5, weight: 1, color: routeColor,
       fillColor: '#fff', fillOpacity: 1, interactive: false}).addTo(frameLayer);
 document.getElementById('f-route').addEventListener('change', e =>
   e.target.checked ? routeLayer.addTo(map) : map.removeLayer(routeLayer));
@@ -167,12 +167,12 @@ const renderer = L.canvas({padding: 0.5});
 const markers = new Map();
 let selected = null;
 let lines = L.layerGroup().addTo(map);
-const colour = v => v.loc === 'triangulated' ? getCSS('--tri') : getCSS('--single');
+const color = v => v.loc === 'triangulated' ? getCSS('--tri') : getCSS('--single');
 function getCSS(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
 for (const v of DATA) {
   const m = L.circleMarker([v.lat, v.lon], {renderer, radius: 5, weight: 1, color: '#111',
-    fillColor: colour(v), fillOpacity: 0.9});
+    fillColor: color(v), fillOpacity: 0.9});
   m.bindTooltip(`${v.id} (${v.loc}, ${v.n_images} img)`, {direction: 'top'});
   m.on('click', () => select(v.id));
   markers.set(v.id, m);
@@ -383,9 +383,9 @@ def _chain(
     """
     Put frames in driving order when they carry no time of capture.
 
-    Starts at the frame farthest from the sequence's centre (an end of the
+    Starts at the frame farthest from the sequence's center (an end of the
     drive) and repeatedly steps to the nearest unvisited frame; a survey
-    sampled every few metres chains almost perfectly this way.
+    sampled every few meters chains almost perfectly this way.
     """
     import math
 

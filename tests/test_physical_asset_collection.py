@@ -195,7 +195,7 @@ def test_getitem_negative_step_slice():
 
 def test_getitem_negative_step_partial_slice():
     """
-    Test a partial reverse slice (e.g., taking every 2nd item backwards).
+    Test a partial reverse slice (e.g., taking every 2nd item backward).
     """
     assets = [
         PhysicalAsset(id='0', geometry=Point(0, 0)),
@@ -1028,7 +1028,7 @@ def test_from_geojson_applies_default_asset_type():
 
 
 def test_from_shapefile_applies_default_asset_type(tmp_path):
-    """asset_type is applied to shapefile records, honouring overwrite_asset_type."""
+    """asset_type is applied to shapefile records, honoring overwrite_asset_type."""
     shp_path = tmp_path / 'typed.shp'
     with shapefile.Writer(str(shp_path)) as w:
         w.field('id', 'C', 50)

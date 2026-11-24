@@ -243,7 +243,7 @@ def resolve_alias(
     Pop a deprecated keyword alias from ``kwargs`` and return the value.
 
     Used while parameter names are being harmonized: components accept the
-    new name (e.g. ``save_directory``) and still honour the old one (e.g.
+    new name (e.g. ``save_directory``) and still honor the old one (e.g.
     ``output_dir``) with a :class:`DeprecationWarning`.
 
     Args:
@@ -257,7 +257,7 @@ def resolve_alias(
         Any: The alias value, or ``default``.
 
     Raises:
-        TypeError: If ``kwargs`` still holds unrelated keys afterwards
+        TypeError: If ``kwargs`` still holds unrelated keys afterward
             (mirrors the error a normal signature would raise).
 
     Example:

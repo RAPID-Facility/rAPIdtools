@@ -50,7 +50,7 @@ part of the library builds on:
   linked imagery.
 - :class:`ImageAsset` and :class:`ImageCollection` manage image files, their
   metadata, and segmentation masks.
-- :class:`OperationCancelled` plus the ``is_cancelled`` / ``raise_if_cancelled``
+- :class:`OperationCanceled` plus the ``is_canceled`` / ``raise_if_canceled``
   helpers provide cooperative cancellation for long-running components.
 
 Example:
@@ -63,8 +63,9 @@ Example:
     True
 """
 
+from . import cancellation as _cancellation
 from .bounding_box import BoundingBox
-from .cancellation import OperationCancelled, is_cancelled, raise_if_cancelled
+from .cancellation import OperationCanceled, is_canceled, raise_if_canceled
 from .image_asset import ImageAsset, ImageCollection
 from .observation import Observation
 from .physical_asset import PhysicalAsset, PhysicalAssetCollection
@@ -75,10 +76,17 @@ __all__ = [
     'ImageAsset',
     'ImageCollection',
     'Observation',
-    'OperationCancelled',
+    'OperationCanceled',
     'PhysicalAsset',
     'PhysicalAssetCollection',
     'PolygonRegion',
-    'is_cancelled',
-    'raise_if_cancelled',
+    'is_canceled',
+    'raise_if_canceled',
 ]
+
+
+def __getattr__(attr: str):
+    """Keep ``OperationCancelled`` and the other pre-0.3.0 spellings importable."""
+    return _cancellation.renamed_attribute(
+        __name__, attr, _cancellation.RENAMED, globals()
+    )

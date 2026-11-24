@@ -43,7 +43,7 @@ Runs rapidtools job files and reports what happened.
 :class:`JobRunner` executes the steps of a job in order and keeps a *result
 file* next to the job file up to date while it works. The result file is the
 only thing a client has to read: it says whether the job is running, done,
-failed or cancelled, which step it is on, and where every output was
+failed or canceled, which step it is on, and where every output was
 written.
 
 Example:
@@ -63,7 +63,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from rapidtools.core import OperationCancelled
+from rapidtools.core import OperationCanceled
 
 from .schema import (
     RESULT_SCHEMA,
@@ -80,9 +80,9 @@ from .steps import STEP_TYPES, StepContext, prepare_step
 logger = logging.getLogger(__name__)
 
 #: Every status a job can report.
-JOB_STATUSES = ('running', 'done', 'error', 'cancelled')
+JOB_STATUSES = ('running', 'done', 'error', 'canceled')
 #: Every status a step can report.
-STEP_STATUSES = ('pending', 'running', 'done', 'error', 'cancelled', 'skipped')
+STEP_STATUSES = ('pending', 'running', 'done', 'error', 'canceled', 'skipped')
 
 
 def _json_safe(value: Any) -> Any:
@@ -110,7 +110,7 @@ class StepResult:
             ``{'n_assets': 179}``.
         data (Any): A JSON result that is not a file.
         error (dict[str, str] | None): ``{'type', 'message'}`` of the
-            failure, when ``status`` is ``'error'`` or ``'cancelled'``.
+            failure, when ``status`` is ``'error'`` or ``'canceled'``.
         objects (dict[str, Any]): In-memory results for callers in the same
             process, e.g. ``objects['assets']`` is the live collection. Not
             written to the result file.
@@ -221,8 +221,8 @@ class JobResult:
             JobResult: ``self`` when the job is done, for chaining.
 
         Raises:
-            BaseException: The original exception of the failed or cancelled
-                step (:class:`~rapidtools.core.OperationCancelled` for a
+            BaseException: The original exception of the failed or canceled
+                step (:class:`~rapidtools.core.OperationCanceled` for a
                 cancellation, :class:`~rapidtools.jobs.JobError` for an
                 invalid job).
         """
@@ -445,20 +445,20 @@ class JobRunner:
             began = time.monotonic()
             context: StepContext | None = None
             try:
-                if self._cancel_requested:  # cancelled between two steps
-                    raise OperationCancelled('The job was cancelled.')
+                if self._cancel_requested:  # canceled between two steps
+                    raise OperationCanceled('The job was canceled.')
                 context = prepare_step(job, spec, secrets, lookup)
                 context.workflow = self.workflow
                 step.settings = context.settings
                 context.step_type.run(context)
                 step.status = 'done'
-            except OperationCancelled as exc:
+            except OperationCanceled as exc:
                 step.status, result.status, result.exception = (
-                    'cancelled',
-                    'cancelled',
+                    'canceled',
+                    'canceled',
                     exc,
                 )
-                result.message = f'{job.name} cancelled.'
+                result.message = f'{job.name} canceled.'
             except Exception as exc:  # noqa: BLE001 - reported in the result
                 step.status, result.status, result.exception = 'error', 'error', exc
                 result.message = (

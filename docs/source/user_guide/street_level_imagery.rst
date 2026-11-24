@@ -23,7 +23,7 @@ account is needed.
    street = GoogleStreetViewImageExtractor(
        'output/streetview',
        search_radius_m=50,
-       max_images_per_asset=2,     # extra viewpoints from neighbouring panoramas
+       max_images_per_asset=2,     # extra viewpoints from neighboring panoramas
        vertical_crop=(0.2, 0.9),   # trim sky and the camera vehicle
        save_depth_map=True,        # also write the decoded depth map (.npy)
    )
@@ -39,7 +39,7 @@ Mapillary
 
 :class:`~rapidtools.processing.MapillaryImageExtractor` fetches regional
 image metadata once, indexes it spatially, and casts rays from each
-candidate camera towards the asset to reject views blocked by a neighbouring
+candidate camera toward the asset to reject views blocked by a neighboring
 building. It then downloads one panorama per viewing direction: the four
 principal axes of the footprint, plus the corners when ``cast_corner_rays``
 is on.
@@ -123,7 +123,7 @@ out. Passing the token, or the path of a text file holding it, works too.
 The extractor's signature lists the arguments a first run needs; the options
 that tune one method (fusion, structures, SAM 3, re-identification, the
 earlier tracker) are passed as keywords in the same way and are documented,
-by group, on its API page. A misspelt option raises an error that names the
+by group, on its API page. A misspelled option raises an error that names the
 closest match.
 
 How it works:
@@ -166,18 +166,18 @@ How it works:
      cannot create an object by itself and cannot move one placed from
      close up.
    - Frames in which the detector did not fire clear the ground they look
-     at, so a few stray detections of an empty kerb do not survive the
+     at, so a few stray detections of an empty curb do not survive the
      pass that drives right by it.
 
    Where frames keep seeing several outlines on one blob (two cars parked
    door to door), the blob is split along the outlines of the closest frame
    that separates them. Each object is then positioned by intersecting the
-   centre bearings of its sightings, and its footprint is the part of the
+   center bearings of its sightings, and its footprint is the part of the
    blob most of its outlines cover. Each survey day is fused by itself, so a
    car that left between two surveys is not voted away by the later one;
-   objects of different days on the same spot are joined afterwards and
+   objects of different days on the same spot are joined afterward and
    list both days in ``survey_days``. Objects carry ``localization``
-   (``'triangulated'``, or ``'fused'`` when the position is the centre of
+   (``'triangulated'``, or ``'fused'`` when the position is the center of
    the cells), ``position_sigma_m``, ``parallax_deg``, ``n_images`` and the
    footprint's ``length_m``, ``width_m`` and ``footprint_area_m2``. The
    footprint of a small object is generous in depth, because a pass along
@@ -217,7 +217,7 @@ How it works:
    ``frontage_m``, ``depth_m``, ``observed_depth_m``, ``height_m`` (the
    highest points above the road), ``facade_bearing`` and ``n_points``, and
    ``structure_views`` sightings spread over the directions it was seen
-   from. Point clouds are a few megabytes per hundred metres of driving and
+   from. Point clouds are a few megabytes per hundred meters of driving and
    are cached under ``point_cloud_dir``. Frames Mapillary has not
    reconstructed have no point cloud; a class with none falls back to
    occupancy fusion with a warning.
@@ -234,16 +234,16 @@ September 2026, one panorama every 3 m):
   and occupancy fusion 178. Fusion found 134 of the 146 objects the tracker
   had triangulated well. Of the tracker's 51 low-parallax objects fusion
   kept 12; a random sample of the others, checked against the panoramas,
-  were empty kerb, lawn and driveway, or vehicles that drove past. Where
-  the two methods disagreed by a few metres the tracker had usually left a
+  were empty curb, lawn and driveway, or vehicles that drove past. Where
+  the two methods disagreed by a few meters the tracker had usually left a
   second object between two real vehicles.
-- *Buildings.* On a 1 km neighbourhood, 336 structures against 346
-  OpenStreetMap footprints within 35 m of the route. 78 % of those
+- *Buildings.* On a 1 km neighborhood, 336 structures against 346
+  OpenStreetMap footprints within 35 m of the route. 78% of those
   footprints are overlapped by a structure, with a median intersection
   over union of 0.38 (the rear of most houses is assumed, and garages and
   porches differ between the two sources). About one house in six is
   reported as two structures, usually where a tree hides the middle of the
-  facade, and 12 structures span two neighbouring houses. Treat the
+  facade, and 12 structures span two neighboring houses. Treat the
   polygons as located facades with a plausible depth, not as surveyed
   footprints; when an aerial footprint layer exists, use it for the shape
   and the street-level structures for what each building looks like.
@@ -276,24 +276,24 @@ Further steps sit on top of this:
   model gave no usable verdict for). A custom ``classifier`` callable can
   stand in for the model. Give it the widest views rather than the closest
   (``view_selection='widest'`` on the cropper): a close view can be an
-  end-on sliver or a bumper, and on a labelled block the widest views let
+  end-on sliver or a bumper, and on a labeled block the widest views let
   the model reject every piece of junk while keeping every vehicle, where
   the closest views let a bush through as a car.
 - **A model settles the pairs geometry cannot.** One vehicle reported twice,
   a long vehicle seen as a cab and a box, a track split by a corner, two
-  passes that geometry could not join, sits a few metres from its twin
+  passes that geometry could not join, sits a few meters from its twin
   with good crops each, and no geometric rule separates such a pair from
   two cars parked side by side. :class:`~rapidtools.processing.DuplicateResolver`
   (stage ``VERIFY``, after the verifier) shows the model the crops of
   every pair of objects within ``max_distance_m`` (8 m) as two rows,
   tells it the viewpoints differ, and merges the pairs it calls one
   vehicle with at least ``min_confidence`` (0.9). Each crop is zoomed to
-  its outline, drawn thick, so a neighbour in the frame is not what gets
-  judged, and the model is made to name each vehicle's type and colour
+  its outline, drawn thick, so a neighbor in the frame is not what gets
+  judged, and the model is made to name each vehicle's type and color
   before answering. The object seen in the most frames is kept with the
-  others' sightings and crops. On a labelled block of 39 vehicles the
-  full chain, localisation, verifier and resolver, went from 81 %
-  precision and 97 % recall to 95 % and 92 %: every duplicate gone, one
+  others' sightings and crops. On a labeled block of 39 vehicles the
+  full chain, localization, verifier and resolver, went from 81%
+  precision and 97% recall to 95% and 92 %: every duplicate gone, one
   junk report left, and two real vehicles lost, one to the verifier and
   one to a mistaken merge.
 - **Repeated passes are reconciled by appearance.** With ``reid=True`` the
@@ -325,7 +325,7 @@ Mapillary payload lists every label it contains. The extractor therefore
 fetches frames in batches of ``frame_batch_size`` (200 by default), keeps
 only the requested classes and drops the rest before the next batch, and
 simplifies every outline with ``simplify_tolerance`` (about four pixels of a
-2048-wide image by default, capped at 1 % of the outline's size so distant
+2048-wide image by default, capped at 1% of the outline's size so distant
 objects keep their detail) so memory stays flat however large the region.
 The cropper likewise downloads each source image once, serves every object
 seen in it and releases it, holding at most ``max_workers`` images at a time.
@@ -333,7 +333,7 @@ seen in it and releases it, holding at most ``max_workers`` images at a time.
 Classes Mapillary does not segment, such as debris piles, can be detected
 with SAM 3 on the same thumbnails: with ``detection_source='auto'`` (the
 default) unresolved classes go to SAM 3, and the SAM 3 sightings enter the
-same localisation and clustering. Use ``frame_spacing_m`` generously in that
+same localization and clustering. Use ``frame_spacing_m`` generously in that
 mode, since each frame then costs an inference call.
 
 The track-based method
@@ -344,7 +344,7 @@ occupancy fusion. It links detections from frame to frame, triangulates each
 track and merges the results with a set of rules tuned on parked vehicles.
 It remains available for comparison, and its arguments
 (``max_single_view_range_m``, ``witness_radius_m``, ``close_range_m``,
-``min_sighting_deg``, ``merge_pieces_of_neighbours``, ``abeam_window_deg``,
+``min_sighting_deg``, ``merge_pieces_of_neighbors``, ``abeam_window_deg``,
 ``report_single_views``, ``track_gap_frames`` and the merge distances) apply
 only to it. After the first two steps above it works as follows:
 
@@ -356,7 +356,7 @@ only to it. After the first two steps above it works as follows:
    since two detections in one frame normally are two objects. Adjacent
    pieces are not joined: two cars parked side by side look exactly like a
    split outline and are far more common.
-4. **Each sighting becomes a ray.** The polygon's centre column and the full
+4. **Each sighting becomes a ray.** The polygon's center column and the full
    camera pose (Mapillary's ``computed_rotation``, camera type and lens
    parameters, so pitch and roll are accounted for) give an accurate bearing
    from the camera. The polygon's lowest point gives the elevation of the
@@ -383,14 +383,14 @@ only to it. After the first two steps above it works as follows:
    which only a split outline can produce. A *weak* triangulation (never
    seen closer than 25 m, little parallax or a large uncertainty) is not
    compared by position at all, because a bearing bias from a tree hiding
-   half the car moves a 40 m intersection metres along the line of sight:
+   half the car moves a 40 m intersection meters along the line of sight:
    its rays are checked against the well-located objects they point at and
    it joins the nearest one within a fraction of its range, keeping the
    close pass's position. Two checks then remove what the geometry cannot
    vouch for. A single-view position whose nearest sighting
    is beyond ``max_single_view_range_m`` (30 m) is not reported: at that
    distance the ground-contact range is a guess and the track tends to hop
-   between neighbouring cars in a distant row. And the frames in which the
+   between neighboring cars in a distant row. And the frames in which the
    detector did *not* fire are used as negative evidence against weak
    estimates (single views, and triangulations never seen closer than 25 m
    or with little parallax): when same-day frames passed within
@@ -408,34 +408,34 @@ baseline (rays deposit votes on a ground grid; objects are the peaks), and
 
 Further rules of the track-based method:
 
-- **Pieces of a neighbour are folded in.** Where vehicles line up along
+- **Pieces of a neighbor are folded in.** Where vehicles line up along
   the line of sight, a driveway seen end-on or cars down the street, the
   tracker can slide from one to the next, and a detector can cut one car in
   two past a pole or into a front and a rear. Each leaves a second object a
-  few metres from a well-located one, made of sightings that show the same
+  few meters from a well-located one, made of sightings that show the same
   vehicle. Because the two share frames, which the position merge takes as
   proof of two objects, they are judged on what their sightings show: when
   the weaker object's closest sightings point at the stronger one, at its
-  range and within a quarter of a car of its centre, and no shared frame
+  range and within a quarter of a car of its center, and no shared frame
   shows both objects properly at once, the weaker is folded into the
-  stronger (``merge_pieces_of_neighbours``, on by default). An object never
+  stronger (``merge_pieces_of_neighbors``, on by default). An object never
   seen within 20 m has no dependable position of its own whatever its
   parallax, since ground-contact ranges read from that far are off by a
-  third and a low-parallax intersection lands metres from where the
+  third and a low-parallax intersection lands meters from where the
   sightings point; its closest sightings decide. When their ground points
   land on the close pass it joins it outright, and when only their
   bearings and the range band agree it joins if its triangulation lies
-  within 30 % of its range. Its bearings may sit up to half a vehicle from
-  the close pass's centre rather than a quarter, since the end of a long
-  vehicle cut by a tree is what such a piece usually is, while a neighbour
+  within 30% of its range. Its bearings may sit up to half a vehicle from
+  the close pass's center rather than a quarter, since the end of a long
+  vehicle cut by a tree is what such a piece usually is, while a neighbor
   parked alongside would have close sightings of its own. The close pass
   keeps the position. What is left of an object never seen within 20 m is
   then dropped when its closest rays point at an object within 15 m that
   was seen up close, unless it is well triangulated regardless, with
-  parallax of 45 degrees or more and uncertainty of half a metre or less
+  parallax of 45 degrees or more and uncertainty of half a meter or less
   (``close_range_m``, ``0`` to keep everything): such a far sighting is of
   a vehicle the close pass already placed. One whose rays point elsewhere,
-  a car set back in a driveway behind the kerb or down a side street,
+  a car set back in a driveway behind the curb or down a side street,
   stays. The bias is deliberate: the close pass is the dependable one.
 - **What no one could identify is not reported.** An object must have been
   seen at least once with an outline at least ``min_sighting_deg`` wide or
@@ -451,7 +451,7 @@ Further rules of the track-based method:
   set (75 is the sensible value) objects are built only from the sightings
   made while passing them, within that many degrees of abeam on either
   side of the direction of travel; the frames looking down the road ahead
-  or behind, whose rays are nearly parallel to it, are attached afterwards
+  or behind, whose rays are nearly parallel to it, are attached afterward
   to the objects they point at but never create one. The idea is sound
   for a drive-by survey, but the track classification was tuned on tracks
   that include the approach and a pass alone trips its moving-vehicle,

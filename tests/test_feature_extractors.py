@@ -47,7 +47,7 @@ import rasterio
 from rasterio.transform import from_bounds
 from shapely.geometry import box
 
-from rapidtools.core import OperationCancelled, PhysicalAssetCollection
+from rapidtools.core import OperationCanceled, PhysicalAssetCollection
 from rapidtools.models.base import ModelOutput
 from rapidtools.processing import feature_extractors
 from rapidtools.processing.feature_extractors import SAM3OrthoFeatureExtractor
@@ -104,7 +104,7 @@ class FakeSAM3:
         if self.mode == 'all_zero':
             return ModelOutput(masks=[np.zeros((1, 32, 32), dtype=bool)] * n)
         if self.mode == 'full':
-            # Mask covering the whole tile so neighbouring tiles overlap/touch
+            # Mask covering the whole tile so neighboring tiles overlap/touch
             return ModelOutput(masks=[np.ones((1, 32, 32), dtype=bool)] * n)
         if self.mode == 'scored':
             # Default squares plus per-instance confidences:
@@ -335,7 +335,7 @@ def test_call_missing_raster_raises(fake_sam, tmp_path):
 
 
 def test_process_batch_cleans_temp_files(fake_sam, wgs84_raster):
-    """Temporary JPEGs exist during inference and are removed afterwards."""
+    """Temporary JPEGs exist during inference and are removed afterward."""
     ext = SAM3OrthoFeatureExtractor(
         prompt='x', patch_size=32, unit='pixels', overlap_ratio=0.0, batch_size=2
     )
@@ -383,19 +383,19 @@ def test_process_batch_direct_with_prebuilt_images(fake_sam, tmp_path):
 # ==========================================
 
 
-def test_call_cancelled_before_first_tile(fake_sam, wgs84_raster):
+def test_call_canceled_before_first_tile(fake_sam, wgs84_raster):
     """A pre-set cancel event aborts before any inference happens."""
     event = threading.Event()
     event.set()
     ext = SAM3OrthoFeatureExtractor(
         prompt='building', patch_size=32, unit='pixels', cancel_event=event
     )
-    with pytest.raises(OperationCancelled, match="scan for 'building'"):
+    with pytest.raises(OperationCanceled, match="scan for 'building'"):
         ext(wgs84_raster)
     assert fake_sam['instance'].calls == []
 
 
-def test_call_cancelled_between_tiles(fake_sam, wgs84_raster):
+def test_call_canceled_between_tiles(fake_sam, wgs84_raster):
     """Cancellation requested during batch one stops the scan at the next tile."""
     event = threading.Event()
     ext = SAM3OrthoFeatureExtractor(
@@ -407,7 +407,7 @@ def test_call_cancelled_between_tiles(fake_sam, wgs84_raster):
         cancel_event=event,
     )
     fake_sam['instance'].on_call = event.set
-    with pytest.raises(OperationCancelled):
+    with pytest.raises(OperationCanceled):
         ext(wgs84_raster)
     assert len(fake_sam['instance'].calls) == 1
 

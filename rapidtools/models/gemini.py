@@ -137,7 +137,7 @@ class GeminiInference(BaseAPIInferenceModel):
         timeout: float = API_REQUEST_TIMEOUT,
     ):
         """
-        Initialise the client and validate the chosen model.
+        Initialize the client and validate the chosen model.
 
         Args:
             api_key: Key string, key-file path, or ``None`` for
@@ -188,7 +188,7 @@ class GeminiInference(BaseAPIInferenceModel):
         List Gemini models that support ``generateContent``.
 
         Without a key (or when the API cannot be reached) the curated
-        catalogue is returned instead.
+        catalog is returned instead.
 
         Args:
             api_key: Key string, key-file path, or ``None`` for the env var.

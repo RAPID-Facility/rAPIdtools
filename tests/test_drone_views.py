@@ -12,7 +12,7 @@ from PIL import Image
 from shapely.geometry import LineString, MultiPolygon, Point, Polygon, box
 
 from rapidtools.core import PhysicalAsset, PhysicalAssetCollection
-from rapidtools.core.cancellation import OperationCancelled
+from rapidtools.core.cancellation import OperationCanceled
 from rapidtools.data_sources import DroneCamera, write_pose_metadata
 from rapidtools.processing import (
     DroneImageExtractor,
@@ -36,7 +36,7 @@ PROJECT, UNPROJECT = local_projection(LON0, LAT0)
 
 
 def geo(polygon: Polygon) -> Polygon:
-    """A polygon given in local metres, as longitude/latitude."""
+    """A polygon given in local meters, as longitude/latitude."""
     return Polygon([UNPROJECT(x, y) for x, y in polygon.exterior.coords])
 
 
@@ -89,7 +89,7 @@ def test_patches_cover_walls_and_roof_with_area_weights():
     assert np.allclose(patches.points[roof, 2], 16.0)
     assert patches.points[walls, 2].min() > 10.0
     assert patches.points[walls, 2].max() < 16.0
-    # Normals are unit length and point away from the centre.
+    # Normals are unit length and point away from the center.
     assert np.allclose(np.linalg.norm(patches.normals, axis=1), 1.0)
     outward = (patches.points[walls, :2] * patches.normals[walls, :2]).sum(axis=1)
     assert (outward > 0).all()
@@ -111,8 +111,8 @@ def test_tiny_footprint_still_gets_a_roof_patch_and_clockwise_rings_are_fixed():
     patches = surface_patches(sliver, 0.0, 3.0, roof_spacing_m=5.0)
     assert int(patches.is_roof.sum()) >= 1
     walls = ~patches.is_roof
-    centre = np.array([sliver.centroid.x, sliver.centroid.y])
-    outward = ((patches.points[walls, :2] - centre) * patches.normals[walls, :2]).sum(1)
+    center = np.array([sliver.centroid.x, sliver.centroid.y])
+    outward = ((patches.points[walls, :2] - center) * patches.normals[walls, :2]).sum(1)
     assert (outward > 0).all()
 
 
@@ -186,7 +186,7 @@ def test_quality_falls_with_distance_and_frame():
     assert quality[2].max() == 0.0 and not in_frame[2].any()  # behind the camera
 
 
-def test_neighbour_hides_the_wall_behind_it():
+def test_neighbor_hides_the_wall_behind_it():
     patches = surface_patches(HOUSE, 0.0, 6.0)
     camera = camera_at('east', 60.0, 0.0, 20.0)
     ring = np.asarray(box(8, -10, 14, 10).exterior.coords)[:, :2]
@@ -253,12 +253,12 @@ def test_greedy_matches_exhaustive_search_on_small_problems():
         assert greedy >= 0.9 * optimum  # far better than the bound in practice
 
 
-def test_diversity_breaks_ties_towards_a_new_direction():
+def test_diversity_breaks_ties_toward_a_new_direction():
     quality = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
     directions = np.array([[1.0, 0, 0], [0.99, 0.14, 0], [-1.0, 0, 0]])
     directions /= np.linalg.norm(directions, axis=1)[:, None]
     chosen, _, _ = select_views(quality, np.ones(3), 2, 0.0, directions, 0.2)
-    assert chosen == [0, 2]  # the opposite side beats the neighbouring frame
+    assert chosen == [0, 2]  # the opposite side beats the neighboring frame
     plain, _, _ = select_views(quality, np.ones(3), 2, 0.0, directions, 0.0)
     assert plain == [0, 1]
 
@@ -308,7 +308,7 @@ def test_one_sided_flight_reports_the_unseen_walls():
     assert gap.attributes['fly_yaw_deg'] == pytest.approx(180.0)
 
 
-def test_tall_neighbour_changes_which_views_are_chosen():
+def test_tall_neighbor_changes_which_views_are_chosen():
     house, tower = building('house', HOUSE), building('tower', box(8, -10, 14, 10))
     tower.attributes['height'] = 30
     alone = DroneViewSelector(ring_of_cameras(), max_views=6).select([house])['house']
@@ -317,7 +317,7 @@ def test_tall_neighbour_changes_which_views_are_chosen():
     assert alone.coverage_by_side['east'] > 0.8
     assert shaded.coverage_by_side['east'] < 0.5
     assert shaded.coverage < alone.coverage
-    # The same tower passed as an obstacle (not analysed) has the same effect.
+    # The same tower passed as an obstacle (not analyzed) has the same effect.
     blocked = DroneViewSelector(
         ring_of_cameras(), max_views=6, obstacles=PhysicalAssetCollection([tower])
     ).select([house])
@@ -325,19 +325,19 @@ def test_tall_neighbour_changes_which_views_are_chosen():
     assert blocked['house'].coverage == pytest.approx(shaded.coverage)
 
 
-def test_clipped_views_are_penalised():
-    centred = camera_at('centred', 60.0, 0.0, 20.0, focal=3000.0)
+def test_clipped_views_are_penalized():
+    centered = camera_at('centered', 60.0, 0.0, 20.0, focal=3000.0)
     # Same spot, aimed so the house is cut by the frame edge:
     clipped = camera_at('clipped', 60.0, 0.0, 20.0, target=(0.0, 40.0, 3.0))
-    selector = DroneViewSelector([clipped, centred], max_views=1)
+    selector = DroneViewSelector([clipped, centered], max_views=1)
     view = selector.select([building('house', HOUSE)])['house'].views[0]
-    assert view.camera.image_id == 'centred' and view.frame_fraction == 1.0
+    assert view.camera.image_id == 'centered' and view.frame_fraction == 1.0
     alone = DroneViewSelector([clipped], max_views=1, clip_penalty=1.0)
     free = DroneViewSelector([clipped], max_views=1, clip_penalty=0.0)
-    penalised = alone.select([building('house', HOUSE)])['house']
-    unpenalised = free.select([building('house', HOUSE)])['house']
-    assert 0 < penalised.views[0].frame_fraction < 1
-    assert penalised.coverage < unpenalised.coverage
+    penalized = alone.select([building('house', HOUSE)])['house']
+    unpenalized = free.select([building('house', HOUSE)])['house']
+    assert 0 < penalized.views[0].frame_fraction < 1
+    assert penalized.coverage < unpenalized.coverage
 
 
 def test_roof_weight_steers_the_first_view():
@@ -425,7 +425,7 @@ def test_cancellation_stops_selection():
     event = threading.Event()
     event.set()
     selector = DroneViewSelector(ring_of_cameras(), cancel_event=event)
-    with pytest.raises(OperationCancelled):
+    with pytest.raises(OperationCanceled):
         selector.select([building('house', HOUSE)])
 
 
@@ -478,7 +478,7 @@ def test_extractor_attaches_crops_and_coverage(flight):
     with Image.open(first.path) as crop:
         assert crop.size == (right - left, bottom - top)
         assert crop.size[0] >= 256 or crop.size[0] == 400  # grown or clipped
-        # The asset is marked: some pixels are the outline colour.
+        # The asset is marked: some pixels are the outline color.
         reds = sum(1 for r, g, b in crop.getdata() if r > 200 and g < 60 and b < 60)
         assert reds > 20
     assert (
@@ -509,8 +509,8 @@ def test_extractor_reads_a_folder_and_can_leave_crops_unmarked(flight):
     image = house.image_assets[0]
     assert image.id.startswith('house_uav_') and house.attributes['n_uav_views'] >= 2
     with Image.open(image.path) as crop:
-        colours = np.asarray(crop).reshape(-1, 3).astype(int)
-        assert np.abs(colours - [90, 120, 90]).max() <= 3  # no mark drawn
+        colors = np.asarray(crop).reshape(-1, 3).astype(int)
+        assert np.abs(colors - [90, 120, 90]).max() <= 3  # no mark drawn
     view = extractor.view_sets['house'].views[0]
     left, top, right, bottom = extractor.crop_box(view)
     assert left == max(0, math.floor(view.bbox[0] - 10))

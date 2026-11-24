@@ -45,7 +45,7 @@ application uses (also employed by BRAILS++ and the ``streetlevel`` project),
 so no Street View Static API key is needed:
 
 * ``SingleImageSearch`` - find the panorama closest to a coordinate.
-* ``photometa`` - full panorama metadata, neighbour links and depth map.
+* ``photometa`` - full panorama metadata, neighbor links and depth map.
 * ``streetviewpixels-pa`` / ``cbk`` tile servers - 512 px panorama tiles.
 
 Because these endpoints are unofficial they may change without notice; every
@@ -113,16 +113,16 @@ class StreetViewPanorama:
         id: Google panorama ID.
         lat: Camera latitude in degrees.
         lon: Camera longitude in degrees.
-        heading: Compass heading of the panorama centre column (degrees,
+        heading: Compass heading of the panorama center column (degrees,
             0 = north, clockwise).
         pitch: Camera pitch in degrees (Google reports ~90 for level).
         roll: Camera roll in degrees.
-        elevation: Camera elevation above sea level in metres, if known.
+        elevation: Camera elevation above sea level in meters, if known.
         date: ``(year, month)`` of capture, if known.
         address: Human-readable address strings reported by Google.
         sizes: ``{zoom: (width, height)}`` of the full panorama per zoom level.
         tile_size: Edge length of the panorama tiles in pixels.
-        links: Neighbouring panoramas as ``(pano_id, lat, lon, heading)``.
+        links: Neighboring panoramas as ``(pano_id, lat, lon, heading)``.
         depth_map_b64: URL-safe Base64 depth-map string (see
             :func:`decode_depth_map`), if the metadata included one.
 
@@ -175,7 +175,7 @@ class StreetViewPanorama:
 
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """
-    Great-circle distance between two WGS84 points in metres.
+    Great-circle distance between two WGS84 points in meters.
 
     Example:
         >>> round(haversine_m(0.0, 0.0, 0.0, 1.0))
@@ -237,7 +237,7 @@ def decode_depth_map(depth_map_b64: str) -> np.ndarray:
             :attr:`StreetViewPanorama.depth_map_b64`.
 
     Returns:
-        np.ndarray: ``(height, width)`` float32 array of distances in metres,
+        np.ndarray: ``(height, width)`` float32 array of distances in meters,
         oriented like the panorama image (column 0 on the left).
 
     Raises:
@@ -404,11 +404,11 @@ class GoogleStreetViewClient:
         Args:
             lat: Latitude in degrees.
             lon: Longitude in degrees.
-            radius_m: Search radius in metres. Defaults to 50.
+            radius_m: Search radius in meters. Defaults to 50.
 
         Returns:
             StreetViewPanorama | None: The nearest official panorama with its
-            location, heading, sizes, date and neighbour links (the depth map
+            location, heading, sizes, date and neighbor links (the depth map
             requires :meth:`get_panorama_metadata`), or ``None`` when nothing
             is within the radius or the request failed.
 
@@ -666,8 +666,8 @@ class GoogleStreetViewClient:
         start = min(angles) - fov_buffer_deg
         end = max(angles) + fov_buffer_deg
         if end - start < min_fov_deg:
-            centre = (start + end) / 2.0
-            start, end = centre - min_fov_deg / 2.0, centre + min_fov_deg / 2.0
+            center = (start + end) / 2.0
+            start, end = center - min_fov_deg / 2.0, center + min_fov_deg / 2.0
         end = min(end, start + 360.0)
 
         width, height = image.size

@@ -313,7 +313,7 @@ def get_local_projection_func(centroid_lon: float, centroid_lat: float):
     """
     Return a function projecting geographic to local planar coordinates.
 
-    The returned projector applies an equirectangular approximation centred
+    The returned projector applies an equirectangular approximation centered
     on ``(centroid_lon, centroid_lat)``: X grows eastward and Y grows
     northward, both in meters. Longitude deltas are wrapped to
     ``[-180, 180)`` degrees before scaling.
@@ -561,7 +561,7 @@ def find_best_panos(
             Angular spacing of off-axis rays when ``cast_corner_rays`` is
             ``False``.
         max_candidates (int):
-            Maximum number of KD-tree neighbours to consider.
+            Maximum number of KD-tree neighbors to consider.
         cast_corner_rays (bool):
             If ``True``, casts rays toward the four corners of the minimum
             rotated rectangle instead of evenly spaced off-axis rays.
@@ -1218,7 +1218,7 @@ def _plot_dynamic_results(
 
 def _ray_color(key: str) -> str:
     """
-    Pick a plot colour for a ray name.
+    Pick a plot color for a ray name.
 
     Args:
         key (str):
@@ -1497,12 +1497,12 @@ def _get_bearing(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
             The bearing in degrees (0.0 to 360.0).
 
     Example:
-        Bearing from (0, 0) towards the east (0, 10):
+        Bearing from (0, 0) toward the east (0, 10):
 
         >>> _get_bearing(0.0, 0.0, 0.0, 10.0)
         90.0
 
-        Bearing from (0, 0) towards the north (10, 0):
+        Bearing from (0, 0) toward the north (10, 0):
 
         >>> _get_bearing(0.0, 0.0, 10.0, 0.0)
         0.0

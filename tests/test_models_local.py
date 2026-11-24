@@ -270,7 +270,7 @@ def test_local_base_run_batch_is_sequential(monkeypatch):
 
 
 def test_catalogs_are_consistent():
-    """Every catalogue has unique IDs and contains its class default."""
+    """Every catalog has unique IDs and contains its class default."""
     for cls, catalog in [
         (HFVisionInference, OPEN_VLM_CATALOG),
         (QwenVisionInference, QWEN_VL_MODEL_CATALOG),
@@ -349,7 +349,7 @@ def test_hf_vision_loading_variants(fake_hf):
 
 
 def test_hf_vision_version_gate(fake_hf, monkeypatch):
-    """Catalogue entries with min_transformers raise a helpful ImportError."""
+    """Catalog entries with min_transformers raise a helpful ImportError."""
     monkeypatch.setattr(hf_mod, 'transformers_at_least', lambda minimum: False)
     with pytest.raises(ImportError, match='transformers>=5.15.0'):
         HFVisionInference('meta-models/Muse-Glimmer-30B')

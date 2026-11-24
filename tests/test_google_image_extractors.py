@@ -53,7 +53,7 @@ from shapely.geometry import box
 
 from rapidtools.core import (
     BoundingBox,
-    OperationCancelled,
+    OperationCanceled,
     PhysicalAsset,
     PhysicalAssetCollection,
 )
@@ -138,9 +138,9 @@ def test_google_ortho_failures_and_cancel(tmp_path, caplog):
     ext = GoogleOrthomosaicExtractor(zoom_level=8, cancel_event=event)
     with requests_mock.Mocker() as m:
         m.get(GOOGLE_TILE_URL, content=_jpeg_bytes())
-        with pytest.raises(OperationCancelled, match='Google tile download'):
-            ext(region, tmp_path / 'cancelled.tiff')
-    assert not (tmp_path / 'cancelled.tiff').exists()
+        with pytest.raises(OperationCanceled, match='Google tile download'):
+            ext(region, tmp_path / 'canceled.tiff')
+    assert not (tmp_path / 'canceled.tiff').exists()
 
 
 # ==========================================
@@ -276,7 +276,7 @@ def test_streetview_extractor_multiple_views_from_links(tmp_path):
 
 
 def test_streetview_extractor_saves_panorama_and_depth(tmp_path):
-    """Optional artefacts are written and referenced from the properties."""
+    """Optional artifacts are written and referenced from the properties."""
     import base64
     import struct
 
@@ -344,39 +344,39 @@ def test_streetview_extractor_errors_and_empty_geometry(tmp_path, caplog):
 
 
 def test_streetview_extractor_cancellation(tmp_path):
-    """A set cancel event aborts extraction with OperationCancelled."""
+    """A set cancel event aborts extraction with OperationCanceled."""
     event = threading.Event()
     event.set()
     client = FakeStreetViewClient({'nearest': _pano('P1')})
     ext = GoogleStreetViewImageExtractor(tmp_path, client=client, cancel_event=event)
-    with pytest.raises(OperationCancelled):
+    with pytest.raises(OperationCanceled):
         ext(_collection(2))
 
-    # Cancelling between viewpoints propagates too:
+    # Canceling between viewpoints propagates too:
     event = threading.Event()
 
-    class CancellingClient(FakeStreetViewClient):
+    class CancelingClient(FakeStreetViewClient):
         def download_panorama(self, pano, zoom=3):
             event.set()
             return super().download_panorama(pano, zoom)
 
     nearest = _pano('P1', links=[('L1', CAM_LAT + 0.0001, CAM_LON, 0.0)])
-    client = CancellingClient({'nearest': nearest, 'L1': _pano('L1', 0.0001)})
+    client = CancelingClient({'nearest': nearest, 'L1': _pano('L1', 0.0001)})
     ext = GoogleStreetViewImageExtractor(
         tmp_path, zoom=0, max_images_per_asset=2, client=client, cancel_event=event
     )
-    with pytest.raises(OperationCancelled):
+    with pytest.raises(OperationCanceled):
         ext(_collection(1))
 
 
 def test_streetview_extractor_reraises_cancellation_from_client(tmp_path):
-    """OperationCancelled raised inside the client is not swallowed."""
+    """OperationCanceled raised inside the client is not swallowed."""
 
-    class CancellingCropClient(FakeStreetViewClient):
+    class CancelingCropClient(FakeStreetViewClient):
         def crop_to_geometry(self, image, pano, geometry, **kwargs):
-            raise OperationCancelled('stop now')
+            raise OperationCanceled('stop now')
 
-    client = CancellingCropClient({'nearest': _pano('P1')})
+    client = CancelingCropClient({'nearest': _pano('P1')})
     ext = GoogleStreetViewImageExtractor(tmp_path, zoom=0, client=client)
-    with pytest.raises(OperationCancelled, match='stop now'):
+    with pytest.raises(OperationCanceled, match='stop now'):
         ext(_collection(1))

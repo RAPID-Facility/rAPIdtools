@@ -41,15 +41,15 @@
 """
 Geometry for placing street-level detections on the ground.
 
-A detection in a street-level image is a polygon in normalised image
-coordinates. Knowing where the camera stood and looked, the polygon's centre
+A detection in a street-level image is a polygon in normalized image
+coordinates. Knowing where the camera stood and looked, the polygon's center
 column gives the bearing to the object and its lowest row gives the elevation
 of the ground contact, from which the camera height yields a range. One view
 gives a rough point; several views of the same object from different camera
 positions give a much better one by intersecting the bearings. This module
 provides those steps plus the two filters every street survey needs: dropping
 the collection vehicle itself (it sits at the same place in every frame of a
-sequence) and thinning frames that are only a metre or two apart.
+sequence) and thinning frames that are only a meter or two apart.
 
 Example:
     >>> from rapidtools.core import Observation
@@ -78,14 +78,14 @@ from rapidtools.core import Observation
 EARTH_RADIUS_M = 6_371_000.0
 
 # A detection whose lowest edge is less than this far below the horizon has
-# no usable ground contact (the range would be hundreds of metres or worse):
+# no usable ground contact (the range would be hundreds of meters or worse):
 MIN_DEPRESSION_DEG = 1.0
 
 # Bearings closer than this cannot be intersected reliably:
 MIN_TRIANGULATION_SEPARATION_DEG = 8.0
 # Outlines smaller than this share of the image are decoding noise (a few
 # hundred pixels on a survey panorama). Whether an object is big enough is
-# judged in metres once its distance is known, not in pixels.
+# judged in meters once its distance is known, not in pixels.
 MIN_POLYGON_AREA_FRACTION = 5e-6
 # Farthest triangulated position worth reporting by default.
 DEFAULT_MAX_RANGE_M = 60.0
@@ -94,7 +94,7 @@ DEFAULT_MAX_RANGE_M = 60.0
 # --------------------------------------------------------------- basics
 def haversine_m(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
     """
-    Great-circle distance between two WGS84 points in metres.
+    Great-circle distance between two WGS84 points in meters.
 
     Example:
         >>> round(haversine_m(0.0, 0.0, 0.0, 0.001))
@@ -113,7 +113,7 @@ def destination_point(
     lon: float, lat: float, bearing_deg: float, distance_m: float
 ) -> tuple[float, float]:
     """
-    Point reached from ``(lon, lat)`` travelling ``distance_m`` along a bearing.
+    Point reached from ``(lon, lat)`` traveling ``distance_m`` along a bearing.
 
     Example:
         >>> lon, lat = destination_point(0.0, 0.0, 0.0, 111_195)
@@ -141,10 +141,10 @@ def local_projection(
     Callable[[float, float], tuple[float, float]],
 ]:
     """
-    Return ``(project, unproject)`` for a local east/north metre frame.
+    Return ``(project, unproject)`` for a local east/north meter frame.
 
-    Uses the equirectangular approximation centred on ``(lon0, lat0)``, which
-    is accurate to well under a metre over the few kilometres a survey covers.
+    Uses the equirectangular approximation centered on ``(lon0, lat0)``, which
+    is accurate to well under a meter over the few kilometers a survey covers.
 
     Example:
         >>> project, unproject = local_projection(-117.4, 47.66)
@@ -203,12 +203,12 @@ def view_angles(
     Bearing to a detection and elevation of its ground contact.
 
     Args:
-        polygon: Detection outline in normalised image coordinates (``y``
+        polygon: Detection outline in normalized image coordinates (``y``
             down).
-        compass_angle: Heading of the image centre column, degrees clockwise
+        compass_angle: Heading of the image center column, degrees clockwise
             from north.
         is_pano: Equirectangular panorama (360 x 180 degrees). For panoramas
-            the horizontal centre is a circular mean so objects straddling
+            the horizontal center is a circular mean so objects straddling
             the left/right seam are handled.
         focal_norm: Focal length divided by image width, for perspective
             images. Defaults to ``0.85`` when unknown.
@@ -238,7 +238,7 @@ def view_angles(
     else:
         f = focal_norm if focal_norm else 0.85
         cx = sum(xs) / len(xs)
-        # OpenSfM convention: image coordinates are normalised by the larger
+        # OpenSfM convention: image coordinates are normalized by the larger
         # image side, which is also what the focal length is relative to.
         if aspect >= 1.0:
             x_n = cx - 0.5
@@ -249,7 +249,7 @@ def view_angles(
         # The contact point lies on the ray (x_n, y_n, f): its bearing is the
         # azimuth of that ray and its depression is measured against the full
         # horizontal component, not just the focal length (an off-axis pixel
-        # at the same row is less steep than one in the centre column).
+        # at the same row is less steep than one in the center column).
         rel_bearing = math.degrees(math.atan2(x_n, f))
         elevation = -math.degrees(math.atan2(y_n, math.hypot(f, x_n)))
     return (compass_angle + rel_bearing) % 360.0, elevation
@@ -300,7 +300,7 @@ def localize(
         max_range_m: Farthest single-view range worth keeping as a prior.
         min_area_fraction: Outlines smaller than this share of the image are
             treated as noise. The default only rejects decoding garbage;
-            whether an object is large enough is decided in metres by
+            whether an object is large enough is decided in meters by
             :func:`~rapidtools.processing.street_tracking.classify_track`.
     """
     if obs.area < min_area_fraction:
@@ -352,7 +352,7 @@ def pixel_bearing(
     camera_parameters: Sequence[float] | None = None,
 ) -> np.ndarray:
     """
-    Unit direction in the camera frame of a normalised image point.
+    Unit direction in the camera frame of a normalized image point.
 
     Follows OpenSfM's camera models, which is what Mapillary's
     ``camera_type`` and ``camera_parameters`` describe. The camera frame has
@@ -368,14 +368,14 @@ def pixel_bearing(
             ratio; a 2:1 panorama or a 4:3 frame is assumed when unknown.
         height: Image height in pixels.
         camera_parameters: ``[focal, k1, k2]`` with the focal length
-            normalised by the larger image side (OpenSfM convention). Ignored
+            normalized by the larger image side (OpenSfM convention). Ignored
             for spherical cameras; ``[0.85, 0, 0]`` is assumed when missing.
 
     Returns:
         numpy.ndarray: Unit vector ``(x, y, z)`` in the camera frame.
 
     Example:
-        >>> [round(float(v), 3) for v in pixel_bearing(0.5, 0.5)]        # pano centre
+        >>> [round(float(v), 3) for v in pixel_bearing(0.5, 0.5)]        # pano center
         [0.0, 0.0, 1.0]
         >>> [round(float(v), 3) for v in pixel_bearing(0.75, 0.5)]       # 90 deg right
         [1.0, 0.0, 0.0]
@@ -502,9 +502,9 @@ def polygon_anchor(
     polygon: Sequence[tuple[float, float]], is_pano: bool
 ) -> tuple[float, float, float]:
     """
-    Centre column, vertical centre and bottom row of a detection outline.
+    Center column, vertical center and bottom row of a detection outline.
 
-    For panoramas the centre column is a circular mean so an outline that
+    For panoramas the center column is a circular mean so an outline that
     straddles the left/right seam is handled.
 
     Example:
@@ -558,7 +558,7 @@ def observation_angles(
         'spherical' if obs.is_pano else 'perspective'
     )
     params = obs.extra.get('camera_parameters')
-    centre = world_ray(
+    center = world_ray(
         pixel_bearing(cx, cy, camera_type, obs.image_width, obs.image_height, params),
         rotation,
     )
@@ -568,7 +568,7 @@ def observation_angles(
         ),
         rotation,
     )
-    bearing, _ = ray_angles(centre)
+    bearing, _ = ray_angles(center)
     _, elevation = ray_angles(contact)
     return bearing, elevation
 
@@ -619,7 +619,7 @@ def polygon_angular_size(obs: Observation) -> tuple[float, float]:
         )
 
     # Width is the azimuth span (what a ground footprint subtends), height the
-    # elevation span between the top and bottom edges on the centre column.
+    # elevation span between the top and bottom edges on the center column.
     left = pixel_bearing(x0, cy, camera_type, w, h, params)
     right = pixel_bearing(x1, cy, camera_type, w, h, params)
     top = pixel_bearing(cx, y0, camera_type, w, h, params)
@@ -641,7 +641,7 @@ def intersect_bearings(
 
     Args:
         rays: ``(camera_lon, camera_lat, bearing_deg)`` per observation.
-        project: Local metre projection from :func:`local_projection`.
+        project: Local meter projection from :func:`local_projection`.
         unproject: Its inverse.
         max_range_m: Reject solutions farther than this from any camera.
         min_separation_deg: Require at least one pair of bearings this far
@@ -677,7 +677,7 @@ def intersect_bearings(
     if spread < min_separation_deg:
         return None
     # Each ray: point p_i, unit direction d_i = (sin b, cos b) in east/north.
-    # Minimise sum of squared perpendicular distances: solve (sum (I - d d^T)) x
+    # Minimize sum of squared perpendicular distances: solve (sum (I - d d^T)) x
     # = sum (I - d d^T) p.
     a_sum = np.zeros((2, 2))
     b_sum = np.zeros(2)
@@ -780,7 +780,7 @@ def estimate_ego_mask(
             group['n'] = n + 1
             group['frames'].add(obs_list[i].image_id)
             group['members'].append(i)
-        # Bucket the group boxes by their centre so each is compared with few others:
+        # Bucket the group boxes by their center so each is compared with few others:
         cell = 0.05
         buckets: dict[tuple[int, int], list[tuple[int, int, int, int]]] = defaultdict(
             list
@@ -812,14 +812,14 @@ def simplify_polygon(
 
     Mapillary segmentation outlines trace every pixel step of a mask, so a
     single car can carry hundreds of vertices. Only the bounding box, the
-    bottom edge and the horizontal centre feed the localisation, and a crop
+    bottom edge and the horizontal center feed the localization, and a crop
     outline needs no sub-pixel detail, so the ring is simplified with
     Douglas-Peucker before it is stored. The bounding box of the result is
     within ``tolerance`` of the original's.
 
     Args:
-        polygon: Exterior ring in normalised image coordinates.
-        tolerance: Largest allowed deviation, in normalised units (``0.002``
+        polygon: Exterior ring in normalized image coordinates.
+        tolerance: Largest allowed deviation, in normalized units (``0.002``
             is about four pixels of a 2048-wide image). ``0`` disables the
             simplification.
 
@@ -852,7 +852,7 @@ def thin_frames(
     spacing_m: float,
 ) -> set[str]:
     """
-    Keep one frame per ``spacing_m`` metres along each sequence.
+    Keep one frame per ``spacing_m`` meters along each sequence.
 
     Args:
         frames: ``(image_id, lon, lat, captured_at, sequence_id)`` tuples.
@@ -898,7 +898,7 @@ def cluster_observations(
     Group located observations that are within ``radius_m`` of each other.
 
     Greedy single-linkage clustering seeded from the closest views first:
-    each observation joins the first existing cluster whose running centre
+    each observation joins the first existing cluster whose running center
     lies within the radius, otherwise it starts a new one.
 
     Args:

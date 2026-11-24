@@ -73,7 +73,7 @@ Choosing a model
      - local
      - ``facebook/sam3``, used for segmentation rather than text.
 
-Every wrapper offers ``list_known_models()`` for the curated catalogue and,
+Every wrapper offers ``list_known_models()`` for the curated catalog and,
 where the provider supports it, ``list_available_models(api_key)`` for a live
 listing of what your key can reach.
 
@@ -115,7 +115,7 @@ the prompt to the model and writes the answer to the asset's attributes.
   apply per call and map to the native flags of each provider.
 
 The provider-specific classes such as ``GeminiAssetAnalyzer`` and
-``Gemma4AssetAnalyzer`` still work but are deprecated in favour of
+``Gemma4AssetAnalyzer`` still work but are deprecated in favor of
 ``AssetAnalyzer(load(...))``.
 
 Local model options

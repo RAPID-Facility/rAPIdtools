@@ -40,7 +40,7 @@
 """
 Synthetic-survey tests for tracking, triangulation, merging and voting.
 
-A camera drives along a street taking a level panorama every few metres.
+A camera drives along a street taking a level panorama every few meters.
 Parked cars at known positions (and one car driving the other way) are
 projected into each frame with realistic noise, and the pipeline has to
 give back one object per parked car, close to where it really is, and no
@@ -98,7 +98,7 @@ def _pano_polygon(
     height_m=1.5,
 ):
     """
-    Normalised pano outline of an object seen from ``cam_xy``.
+    Normalized pano outline of an object seen from ``cam_xy``.
 
     ``occlusion`` > 1 raises the visible bottom edge as a fence or a parked
     car hiding the wheels would: the ground contact then reads that many
@@ -139,7 +139,7 @@ def _survey(
     width_m=2.0,
 ):
     """
-    Sightings of ``cars`` (local-frame metres) from a camera driving east
+    Sightings of ``cars`` (local-frame meters) from a camera driving east
     along y = 0. ``moving`` is an optional (start_xy, velocity_per_frame).
     Returns the observations and the unproject function for the frame.
     """
@@ -324,7 +324,7 @@ def test_merge_estimates_fuses_same_object_and_keeps_shared_frame_apart():
     assert len(merged) == 2
     fused = min(merged, key=lambda e: e.x)
     assert fused.localization == 'triangulated'
-    assert 0.0 < fused.x < 0.5  # pulled only slightly towards the vaguer view
+    assert 0.0 < fused.x < 0.5  # pulled only slightly toward the vaguer view
 
 
 def test_merge_estimates_fuses_two_fixes_on_one_spot_despite_shared_frame():
@@ -487,7 +487,7 @@ def test_car_close_to_the_road_is_one_object_despite_fast_bearing_swing():
 
 
 def test_long_vehicle_seen_from_both_ends_is_one_object():
-    """A 9 m truck: the visible centre shifts 4 m between approach and pass.
+    """A 9 m truck: the visible center shifts 4 m between approach and pass.
 
     Halves farther apart than half the measured length are not reunited:
     that distance is also what separates two cars parked side by side.
@@ -497,13 +497,13 @@ def test_long_vehicle_seen_from_both_ends_is_one_object():
     obs = []
     for k in range(16):
         cam = (3.0 * k, 0.0)
-        centre = (24.0 - 2.0, 5.0) if cam[0] < 24.0 else (24.0 + 2.0, 5.0)
+        center = (24.0 - 2.0, 5.0) if cam[0] < 24.0 else (24.0 + 2.0, 5.0)
         lon, lat = unproject(*cam)
         obs.append(
             Observation(
                 image_id=f't{k:03d}',
                 label=LABEL,
-                polygon=_pano_polygon(cam, 90.0, centre, rng, 0.4, 0.15, width_m=9.0),
+                polygon=_pano_polygon(cam, 90.0, center, rng, 0.4, 0.15, width_m=9.0),
                 camera_lon=lon,
                 camera_lat=lat,
                 compass_angle=90.0,
@@ -592,7 +592,7 @@ def _pano_sighting(
     lat=LAT0,
     day=None,
 ):
-    """A rectangle (normalised coordinates) in an equirectangular frame."""
+    """A rectangle (normalized coordinates) in an equirectangular frame."""
     x0 = 0.5 + (az_deg - half_width_deg) / 360.0
     x1 = 0.5 + (az_deg + half_width_deg) / 360.0
     y1 = 0.5 + bottom_deg / 180.0  # ground contact below the horizon
@@ -977,7 +977,7 @@ def _strong(x, y):
     return est
 
 
-def _rays_towards(target_x, target_y, cams):
+def _rays_toward(target_x, target_y, cams):
     return [
         (cx, cy, math.degrees(math.atan2(target_x - cx, target_y - cy)) % 360)
         for cx, cy in cams
@@ -988,7 +988,7 @@ def test_far_triangulation_joins_the_close_object_its_rays_point_at():
     strong = _strong(0.0, 10.0)
     # A pass 40 m south triangulated the same car, but 6 m too far along the ray:
     cams = [(-4.0, -30.0), (0.0, -30.0), (4.0, -30.0)]
-    weak = _ray_estimate(0.0, 16.0, _rays_towards(0.0, 10.5, cams), range_m=40.0)
+    weak = _ray_estimate(0.0, 16.0, _rays_toward(0.0, 10.5, cams), range_m=40.0)
     merged = merge_by_rays([weak, strong], bearing_sigma_deg=0.75)
     assert len(merged) == 1
     kept = merged[0]
@@ -1000,7 +1000,7 @@ def test_far_triangulation_too_far_along_its_ray_stays_separate():
     strong = _strong(0.0, 10.0)
     cams = [(-4.0, -30.0), (0.0, -30.0), (4.0, -30.0)]
     # Rays point at the car, but the estimate sits 25 m beyond it: another object.
-    weak = _ray_estimate(0.0, 35.0, _rays_towards(0.0, 10.0, cams), range_m=40.0)
+    weak = _ray_estimate(0.0, 35.0, _rays_toward(0.0, 10.0, cams), range_m=40.0)
     assert len(merge_by_rays([weak, strong], bearing_sigma_deg=0.75)) == 2
 
 
@@ -1016,7 +1016,7 @@ def test_weak_estimate_prefers_the_nearest_of_two_cars_in_line():
     for o in far_car.members:
         o.range_m = 8.0
     cams = [(-4.0, -30.0), (0.0, -30.0), (4.0, -30.0)]
-    weak = _ray_estimate(0.0, 14.0, _rays_towards(0.0, 12.0, cams), range_m=42.0)
+    weak = _ray_estimate(0.0, 14.0, _rays_toward(0.0, 12.0, cams), range_m=42.0)
     merged = merge_by_rays([weak, near_car, far_car], bearing_sigma_deg=0.75)
     assert len(merged) == 2
     joined = next(e for e in merged if e.n_images == 6)
@@ -1164,7 +1164,7 @@ def test_merge_pieces_keeps_the_car_alongside_and_the_one_behind():
     car = (10.0, 6.0)
     frames = [float(x) for x in range(0, 22, 2)]
     a = _estimate(car, _sightings_of(car, frames, project, unproject), 0.06, 150)
-    beside = (12.7, 6.0)  # parked alongside at the kerb, in the same frames
+    beside = (12.7, 6.0)  # parked alongside at the curb, in the same frames
     b = _estimate(
         beside, _sightings_of(beside, frames, project, unproject, prefix='f'), 0.4, 30
     )
@@ -1214,7 +1214,7 @@ def test_merge_pieces_folds_a_far_only_object_into_the_close_pass():
         30,
     )
     assert len(merge_pieces([close, far], project)) == 1
-    # Beyond 30 % of its range it stays a separate object:
+    # Beyond 30% of its range it stays a separate object:
     farther = _estimate(
         (2.0, 1.0),
         _sightings_of(car, far_frames, project, unproject, range_bias=0.7, prefix='g'),
@@ -1278,7 +1278,7 @@ def test_merge_pieces_allows_an_end_piece_only_for_a_far_only_object():
     close = _estimate(
         car, _sightings_of(car, close_frames, project, unproject), 0.06, 150
     )
-    # The end of a long vehicle cut by a tree sits 2.7 m from its centre.
+    # The end of a long vehicle cut by a tree sits 2.7 m from its center.
     far_frames = [float(x) for x in range(-40, -24, 2)]
     far_end = _estimate(
         (13.0, 7.0),
@@ -1338,7 +1338,7 @@ def test_discover_objects_reports_pieces_and_can_skip_the_pass():
     obs, _, _ = _survey(CARS)
     on, counts_on, _ = discover_objects(obs, camera_height_m=CAM_H, max_range_m=35.0)
     off, counts_off, _ = discover_objects(
-        obs, camera_height_m=CAM_H, max_range_m=35.0, merge_pieces_of_neighbours=False
+        obs, camera_height_m=CAM_H, max_range_m=35.0, merge_pieces_of_neighbors=False
     )
     assert counts_off['pieces'] == 0 and counts_on['pieces'] >= 0
     assert len(on) == len(off) == len(CARS)

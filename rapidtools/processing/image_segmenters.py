@@ -72,7 +72,7 @@ from rapidtools.core import (
     ImageAsset,
     PhysicalAsset,
     PhysicalAssetCollection,
-    raise_if_cancelled,
+    raise_if_canceled,
 )
 
 from .step import Stage
@@ -150,7 +150,7 @@ class SAM3ImageSegmenter:
             attached to the asset are processed. Defaults to ``None``.
         cancel_event (threading.Event | None, optional):
             Cooperative cancellation flag. When set, the segmenter raises
-            :class:`~rapidtools.core.OperationCancelled` before starting the
+            :class:`~rapidtools.core.OperationCanceled` before starting the
             next batch. Defaults to ``None``.
 
     Example:
@@ -250,7 +250,7 @@ class SAM3ImageSegmenter:
                 successfully segmented image.
 
         Raises:
-            OperationCancelled:
+            OperationCanceled:
                 If ``cancel_event`` is set between two batches.
 
         Example:
@@ -284,7 +284,7 @@ class SAM3ImageSegmenter:
             range(0, len(items_to_process), self.batch_size),
             desc='Segmenting Image Batches',
         ):
-            raise_if_cancelled(self.cancel_event, 'SAM 3 segmentation')
+            raise_if_canceled(self.cancel_event, 'SAM 3 segmentation')
             batch = items_to_process[i : i + self.batch_size]
             image_paths = [str(img.path) for _, img in batch]
 

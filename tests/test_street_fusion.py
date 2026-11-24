@@ -26,9 +26,9 @@ CAMERA_HEIGHT = 2.4
 PROJECT, UNPROJECT = local_projection(LON0, LAT0)
 
 
-def _box_outline(camera_xy, centre_xy, length=4.5, width=1.8, height=1.5, yaw=0.0):
+def _box_outline(camera_xy, center_xy, length=4.5, width=1.8, height=1.5, yaw=0.0):
     """Outline, in a level north-facing panorama, of a box standing on the ground."""
-    cx, cy = centre_xy
+    cx, cy = center_xy
     c, s = math.cos(yaw), math.sin(yaw)
     pts = []
     for dx in (-length / 2, length / 2):
@@ -72,14 +72,14 @@ def _drive(cars, n=14, spacing=3.0, y=0.0, day='2026-08-27', prefix='f', x0=-20.
         )
         for car in cars:
             if isinstance(car, dict):
-                centre = car['at']
+                center = car['at']
                 kwargs = {k: v for k, v in car.items() if k != 'at'}
             else:
-                centre, kwargs = car, {}
-            if math.hypot(centre[0] - cam[0], centre[1] - cam[1]) > 30.0:
+                center, kwargs = car, {}
+            if math.hypot(center[0] - cam[0], center[1] - cam[1]) > 30.0:
                 continue
             sightings.append(
-                _sighting(f'{prefix}{i}', cam, _box_outline(cam, centre, **kwargs), day)
+                _sighting(f'{prefix}{i}', cam, _box_outline(cam, center, **kwargs), day)
             )
     return sightings, frames
 
@@ -131,7 +131,7 @@ def test_scan_reads_lower_and_upper_edge_and_handles_the_seam():
     cam = (0.0, 0.0)
     scan = scan_from_observation(3, _sighting('a', cam, _box_outline(cam, (0.0, 8.0))))
     assert scan.index == 3
-    assert abs(scan.centre) < 1.0 or abs(scan.centre - 360.0) < 1.0
+    assert abs(scan.center) < 1.0 or abs(scan.center - 360.0) < 1.0
     assert 28.0 < scan.width < 37.0  # 4.5 m seen from about 7 m
     assert len(scan.cols) == len(scan.bottom) == len(scan.top)
     # The outline straddles north, so its columns wrap around the horizon:
@@ -140,7 +140,7 @@ def test_scan_reads_lower_and_upper_edge_and_handles_the_seam():
     # An outline right across the left/right seam of the panorama:
     seam = _sighting('b', cam, [(0.98, 0.55), (0.02, 0.55), (0.02, 0.6), (0.98, 0.6)])
     scan = scan_from_observation(0, seam)
-    assert 13.0 < scan.width < 16.0 and 175.0 < scan.centre < 185.0
+    assert 13.0 < scan.width < 16.0 and 175.0 < scan.center < 185.0
 
 
 def test_scan_rejects_outlines_that_circle_the_camera():
@@ -194,7 +194,7 @@ def test_range_bands_split_an_outline_into_faces():
 # ==========================================
 # Fusion
 # ==========================================
-def test_parked_car_is_found_once_and_placed_within_half_a_metre():
+def test_parked_car_is_found_once_and_placed_within_half_a_meter():
     car = (3.0, 7.0)
     sightings, frames = _drive([car])
     objects, counts, unproject = fuse_observations(
@@ -210,11 +210,11 @@ def test_parked_car_is_found_once_and_placed_within_half_a_metre():
     assert obj.localization == 'triangulated' and obj.n_images == len(frames)
     assert obj.parallax_deg > 90.0 and obj.sigma_m < 0.3 and obj.rms_m < 0.3
     assert obj.days == ['2026-08-27']
-    # The footprint is car-sized and contains the car's centre:
+    # The footprint is car-sized and contains the car's center:
     # (generous in depth: a pass from one side cannot see how deep it is)
     assert 3.0 < obj.length_m < 8.0 and 1.0 < obj.width_m < 6.0
     assert Polygon(obj.footprint).contains(Point(*car))
-    # Sightings come back localised:
+    # Sightings come back localized:
     assert all(
         o.bearing is not None and o.range_m and o.has_location for o in obj.members
     )
@@ -240,7 +240,7 @@ def test_two_passes_from_different_streets_give_one_object():
 
 
 def test_cars_in_a_row_and_side_by_side_stay_apart():
-    # Nose to tail along the kerb with a metre between them:
+    # Bumper to bumper along the curb with a meter between them:
     row = [(-6.0, 6.0), (-0.5, 6.0), (5.0, 6.0)]
     sightings, frames = _drive(row)
     objects, _, _ = fuse_observations(
@@ -289,7 +289,7 @@ def test_single_sighting_is_not_an_object():
     assert objects == []
 
 
-def test_survey_days_are_fused_apart_and_joined_afterwards():
+def test_survey_days_are_fused_apart_and_joined_afterward():
     stays, leaves = (-4.0, 7.0), (8.0, 7.0)
     day1, frames1 = _drive([stays, leaves], day='2026-08-27', prefix='a')
     day2, frames2 = _drive([stays], day='2026-09-15', prefix='b')
@@ -297,7 +297,7 @@ def test_survey_days_are_fused_apart_and_joined_afterwards():
         day1 + day2, frames1 + frames2, project=PROJECT, unproject=UNPROJECT
     )
     # The car that left is not voted away by the later pass that saw the
-    # kerb empty; the one that stayed is one object seen on both days.
+    # curb empty; the one that stayed is one object seen on both days.
     assert len(objects) == 2 and counts['merged_days'] == 1
     by_x = sorted(objects, key=lambda o: o.x)
     assert by_x[0].days == ['2026-08-27', '2026-09-15']
@@ -307,7 +307,7 @@ def test_survey_days_are_fused_apart_and_joined_afterwards():
 
 def test_empty_frames_clear_what_a_few_far_sightings_claim():
     # Two far sightings of nothing in particular, and a pass right by the spot
-    # that saw the kerb empty.
+    # that saw the curb empty.
     spot = (0.0, 6.0)
     far = [
         _sighting(

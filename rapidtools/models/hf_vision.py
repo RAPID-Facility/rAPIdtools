@@ -50,7 +50,7 @@ Granite Vision and many more.
 :class:`HFVisionInference` is also the base class of the family-specific
 wrappers :class:`~rapidtools.models.QwenVisionInference` and
 :class:`~rapidtools.models.MuseGlimmerInference`, which only swap the
-default checkpoint and catalogue.
+default checkpoint and catalog.
 
 Example:
     >>> from rapidtools.models import HFVisionInference
@@ -196,12 +196,12 @@ class HFVisionInference(BaseLocalInferenceModel):
                 consumer GPUs.
             temperature: Sampling temperature (0 disables sampling).
             max_tokens: Maximum new tokens generated per call.
-            trust_remote_code: Allow repositories that ship custom modelling
+            trust_remote_code: Allow repositories that ship custom modeling
                 code. Only enable for sources you trust.
 
         Raises:
             ImportError: If the installed Transformers is older than
-                :attr:`MIN_TRANSFORMERS_VERSION` (or the catalogue entry's
+                :attr:`MIN_TRANSFORMERS_VERSION` (or the catalog entry's
                 ``min_transformers``).
         """
         logging.getLogger('huggingface_hub').setLevel(logging.WARNING)
@@ -246,7 +246,7 @@ class HFVisionInference(BaseLocalInferenceModel):
         self.model.eval()
         logger.info(f'Model {self.model_id} loaded successfully.')
 
-    # ------------------------------------------------------------ catalogue
+    # ------------------------------------------------------------ catalog
     def _check_transformers_version(self) -> None:
         """Raise ``ImportError`` when Transformers is too old for the model."""
         required = self.MIN_TRANSFORMERS_VERSION
@@ -264,7 +264,7 @@ class HFVisionInference(BaseLocalInferenceModel):
     @classmethod
     def list_available_models(cls, auth_key: str | None = None) -> list[str]:
         """
-        Return the curated catalogue of checkpoints for this family.
+        Return the curated catalog of checkpoints for this family.
 
         Args:
             auth_key: Unused; present for signature parity with API wrappers.
@@ -284,8 +284,8 @@ class HFVisionInference(BaseLocalInferenceModel):
         """
         List the most downloaded image-text-to-text checkpoints on the Hub.
 
-        The curated catalogue is returned first; Hub results that are not
-        already listed are appended. Falls back to the catalogue alone when
+        The curated catalog is returned first; Hub results that are not
+        already listed are appended. Falls back to the catalog alone when
         the Hub cannot be reached.
 
         Args:

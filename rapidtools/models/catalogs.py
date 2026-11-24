@@ -38,7 +38,7 @@
 # 09-22-2026
 
 """
-Model catalogues and provider metadata for every rapidtools model backend.
+Model catalogs and provider metadata for every rapidtools model backend.
 
 This module has no heavy dependencies (no PyTorch, no Transformers) so the
 GUI and other front ends can list providers and model IDs instantly. The
@@ -60,7 +60,7 @@ from dataclasses import dataclass, field
 
 def catalog_ids(catalog: list[dict[str, str]]) -> list[str]:
     """
-    Return the ``model_id`` of every entry in a model catalogue.
+    Return the ``model_id`` of every entry in a model catalog.
 
     Example:
         >>> catalog_ids([{'model_id': 'a'}, {'model_id': 'b'}])
@@ -423,7 +423,7 @@ class ModelInfo:
             the GUI; falls back to ``default_model``.
         supports_4bit: Whether ``load_in_4bit`` is accepted.
         supports_batch: Whether the wrapper offers ``run_inference_batch``.
-        free_form_model: Whether arbitrary model IDs beyond the catalogue are
+        free_form_model: Whether arbitrary model IDs beyond the catalog are
             expected to work (generic Hugging Face backends).
 
     Example:
@@ -452,7 +452,7 @@ class ModelInfo:
 
     @property
     def model_ids(self) -> list[str]:
-        """Model IDs of the catalogue, with the analyzer default first."""
+        """Model IDs of the catalog, with the analyzer default first."""
         ids = catalog_ids(self.catalog)
         first = self.analyzer_default_model or self.default_model
         if first in ids:

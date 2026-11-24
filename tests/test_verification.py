@@ -10,7 +10,7 @@ from shapely.geometry import Point
 import rapidtools
 from rapidtools.core import (
     ImageAsset,
-    OperationCancelled,
+    OperationCanceled,
     PhysicalAsset,
     PhysicalAssetCollection,
 )
@@ -213,7 +213,7 @@ def test_vehicle_description_excludes_trailers_and_prompt_is_strict():
     ('name', 'accepted', 'match'),
     [('yesstr_1', True, True), ('truestr_1', True, True), ('nostr_1', False, False)],
 )
-def test_string_match_values_are_normalised(tmp_path, name, accepted, match):
+def test_string_match_values_are_normalized(tmp_path, name, accepted, match):
     col = PhysicalAssetCollection([_asset('v', images=[_image(tmp_path, name)])])
     out = DetectionVerifier(FakeModel(), keep_rejected=True, rate_limit=NO_WAIT)(col)
     attrs = out.get('v').attributes
@@ -222,7 +222,7 @@ def test_string_match_values_are_normalised(tmp_path, name, accepted, match):
     assert isinstance(attrs['verify_confidence'], float)
 
 
-def test_normalisation_helpers():
+def test_normalization_helpers():
     assert ver.normalize_match('Yes.') is True
     assert ver.normalize_match('FALSE') is False
     assert ver.normalize_match(0) is False
@@ -299,13 +299,13 @@ def test_descriptions_and_prompt_override(tmp_path):
     col = PhysicalAssetCollection([_asset('v', images=[_image(tmp_path, 'car_1')])])
     verifier = DetectionVerifier(
         model,
-        descriptions={'vehicles': 'a burnt-out vehicle'},
+        descriptions={'vehicles': 'a burned-out vehicle'},
         prompt='Is it {description}? JSON {"match": bool}',
         rate_limit=NO_WAIT,
     )
     verifier(col)
-    assert model.calls[0][1] == 'Is it a burnt-out vehicle? JSON {"match": bool}'
-    assert verifier.description_for('Vehicles') == 'a burnt-out vehicle'
+    assert model.calls[0][1] == 'Is it a burned-out vehicle? JSON {"match": bool}'
+    assert verifier.description_for('Vehicles') == 'a burned-out vehicle'
     assert ver.describe_asset_type(None) == 'the object it was detected as'
     assert ver.describe_asset_type('fire_hydrants') == 'a fire hydrant'
 
@@ -405,7 +405,7 @@ def test_empty_collection_is_returned(caplog):
 def test_cancellation_propagates(tmp_path):
     stop = threading.Event()
     stop.set()
-    with pytest.raises(OperationCancelled):
+    with pytest.raises(OperationCanceled):
         DetectionVerifier(FakeModel(), cancel_event=stop)(_collection(tmp_path))
 
     def classifier(paths, description):
@@ -420,7 +420,7 @@ def test_cancellation_propagates(tmp_path):
             _asset('b', images=[_image(tmp_path, 'car_b')]),
         ]
     )
-    with pytest.raises(OperationCancelled):
+    with pytest.raises(OperationCanceled):
         DetectionVerifier(classifier=classifier, cancel_event=stop2)(col)
 
 

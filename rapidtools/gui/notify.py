@@ -161,7 +161,7 @@ class JobSummary:
 
     Attributes:
         name (str): Job name as shown in the GUI.
-        status (str): ``'done'``, ``'error'`` or ``'cancelled'``.
+        status (str): ``'done'``, ``'error'`` or ``'canceled'``.
         message (str): The one-line outcome.
         duration_s (float): Wall-clock time of the job.
         results (list[dict[str, str]]): ``{'label', 'path'}`` result files.
@@ -178,7 +178,7 @@ class JobSummary:
     @property
     def subject(self) -> str:
         """Subject line, e.g. ``'rapidtools: Inference finished'``."""
-        verb = {'done': 'finished', 'error': 'failed', 'cancelled': 'was cancelled'}
+        verb = {'done': 'finished', 'error': 'failed', 'canceled': 'was canceled'}
         return f'rapidtools: {self.name} {verb.get(self.status, self.status)}'
 
     @property
@@ -239,7 +239,7 @@ class Notifier:
     @staticmethod
     def classify(target: str) -> str:
         """
-        ``'email'``, ``'webhook'`` or ``''`` for an unrecognised target.
+        ``'email'``, ``'webhook'`` or ``''`` for an unrecognized target.
 
         Example:
             >>> Notifier.classify('a@b.co'), Notifier.classify('ftp://x')
@@ -257,7 +257,7 @@ class Notifier:
         Check that ``target`` can be delivered to and return its kind.
 
         Raises:
-            ValueError: For an unrecognised target, or an email address when
+            ValueError: For an unrecognized target, or an email address when
                 no SMTP relay is configured.
         """
         kind = self.classify(target)

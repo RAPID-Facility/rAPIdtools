@@ -51,7 +51,7 @@ from shapely.geometry import box
 import rapidtools
 from rapidtools.core import (
     ImageAsset,
-    OperationCancelled,
+    OperationCanceled,
     PhysicalAsset,
     PhysicalAssetCollection,
 )
@@ -118,7 +118,7 @@ def _collection(tmp_path: Path, n: int = 2) -> PhysicalAssetCollection:
 
 
 def test_provider_registry_is_consistent():
-    """Every provider has a class, catalogue, default and unique prefix."""
+    """Every provider has a class, catalog, default and unique prefix."""
     assert list_providers() == list(PROVIDERS)
     assert list_providers('api') == ['gemini', 'claude', 'openai', 'muse_spark', 'qwen']
     assert list_providers('segmentation') == ['sam3']
@@ -180,7 +180,7 @@ def test_generation_config_merging():
 
 
 def test_generation_config_reaches_api_payloads(requests_mock, tmp_path):
-    """config= is honoured by the hosted wrappers (temperature, tokens, system)."""
+    """config= is honored by the hosted wrappers (temperature, tokens, system)."""
     from rapidtools.models import ClaudeInference, GeminiInference, OpenAIInference
 
     img = tmp_path / 'x.png'
@@ -475,10 +475,10 @@ def test_asset_analyzer_cancellation_and_empty(tmp_path, caplog):
     analyzer = AssetAnalyzer(
         FakeModel(PROVIDERS['gemini']), prompt='p', cancel_event=stop
     )
-    with pytest.raises(OperationCancelled):
+    with pytest.raises(OperationCanceled):
         analyzer(_collection(tmp_path, 2))
     local = AssetAnalyzer(FakeModel(PROVIDERS['gemma4']), prompt='p', cancel_event=stop)
-    with pytest.raises(OperationCancelled):
+    with pytest.raises(OperationCanceled):
         local(_collection(tmp_path, 1))
     with caplog.at_level(logging.WARNING):
         assert (

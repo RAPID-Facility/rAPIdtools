@@ -127,7 +127,7 @@ stays offline in more detail.
   block. The API reference is generated from them, so a new public object also
   needs an entry in `docs/source/api/index.rst`.
 - Build the docs with `make docs` and check the result in
-  `docs/build/html/index.html` when you change user-facing behaviour.
+  `docs/build/html/index.html` when you change user-facing behavior.
 - Add a line to the `Unreleased` section of `CHANGELOG.md` under `Added`,
   `Changed`, `Deprecated`, `Removed` or `Fixed`. The file follows
   [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).

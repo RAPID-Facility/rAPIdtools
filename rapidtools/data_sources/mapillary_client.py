@@ -575,7 +575,7 @@ class MapillaryClient:
     @staticmethod
     def decode_detection_polygons(b64_geometry: str) -> list[list[tuple[float, float]]]:
         """
-        Decode a detection's vector-tile geometry into normalised polygons.
+        Decode a detection's vector-tile geometry into normalized polygons.
 
         Args:
             b64_geometry (str):
@@ -584,7 +584,7 @@ class MapillaryClient:
         Returns:
             list[list[tuple[float, float]]]:
                 Exterior rings with ``x`` and ``y`` in ``[0, 1]``, ``y``
-                growing downwards like image pixels. Multi-polygons yield one
+                growing downward like image pixels. Multi-polygons yield one
                 ring per part; malformed geometry yields an empty list.
 
         Example:
@@ -644,7 +644,7 @@ class MapillaryClient:
         Mapillary's coverage tiles carry a ``sequence`` layer at zoom 6 to
         14 (the routes driven, as polylines) so a map can show where
         street-level imagery exists without listing images. Coordinates are
-        returned in the tile's own pixel space, ``y`` growing downwards, so
+        returned in the tile's own pixel space, ``y`` growing downward, so
         a client can draw them straight onto the tile.
 
         Args:

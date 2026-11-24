@@ -178,8 +178,8 @@ def test_successful_streamed_download(tmp_path, requests_mock):
     assert requests_mock.last_request.timeout == 15
 
 
-def test_case_whitespace_normalisation_and_dedupe(tmp_path, monkeypatch):
-    """Names are normalised and duplicates collapse into one download."""
+def test_case_whitespace_normalization_and_dedupe(tmp_path, monkeypatch):
+    """Names are normalized and duplicates collapse into one download."""
     calls = _install_fake_get(monkeypatch, lambda url: _FakeResponse([b'tok', b'en']))
     paths = download_dataset(
         ['  HF_Token ', 'hf_token', 'Mapillary_Token'], output_dir=tmp_path

@@ -1,4 +1,4 @@
-"""Tests for the street-level localisation geometry."""
+"""Tests for the street-level localization geometry."""
 
 import math
 
@@ -68,10 +68,10 @@ def test_bbox_iou():
 
 
 # ------------------------------------------------------------------ angles
-def test_view_angles_pano_centre_and_edges():
+def test_view_angles_pano_center_and_edges():
     bearing, elevation = view_angles(_box(0.5, 0.5), compass_angle=90.0)
     assert bearing == pytest.approx(90.0)
-    assert elevation == pytest.approx(-0.04 * 180)  # bottom edge 4% below centre
+    assert elevation == pytest.approx(-0.04 * 180)  # bottom edge 4% below center
     bearing, _ = view_angles(_box(0.25, 0.5), compass_angle=90.0)
     assert bearing == pytest.approx(0.0)  # a quarter turn to the left
     bearing, _ = view_angles(_box(0.75, 0.5), compass_angle=90.0)
@@ -79,7 +79,7 @@ def test_view_angles_pano_centre_and_edges():
 
 
 def test_view_angles_pano_seam():
-    """A box straddling the left/right seam is centred on the seam, not mid-image."""
+    """A box straddling the left/right seam is centered on the seam, not mid-image."""
     seam_box = [
         (0.97, 0.5),
         (1.0, 0.5),
@@ -111,7 +111,7 @@ def test_ground_range():
 
 # ------------------------------------------------------------------ localize
 def test_localize_fills_position():
-    obs = _obs(polygon=_box(0.75, 0.55), compass=0.0)  # right of centre, below horizon
+    obs = _obs(polygon=_box(0.75, 0.55), compass=0.0)  # right of center, below horizon
     assert localize(obs, camera_height_m=2.4) is True
     assert obs.bearing == pytest.approx(90.0)
     assert obs.range_m == pytest.approx(2.4 / math.tan(math.radians(0.09 * 180)))
@@ -313,7 +313,7 @@ def _rotation_vector(yaw_deg, pitch_deg=0.0, roll_deg=0.0):
 
 
 def _project_pano(point_enu, rotation_vector):
-    """Normalised pano pixel of a point given in camera-centred ENU metres."""
+    """Normalized pano pixel of a point given in camera-centered ENU meters."""
     import numpy as np
 
     from rapidtools.processing.street_localization import rotation_matrix
@@ -347,8 +347,8 @@ def test_pixel_bearing_models():
     assert pixel_bearing(0.5, 1.0) == pytest.approx([0, 1, 0], abs=1e-9)
     # Perspective: the principal point looks straight ahead; a point one focal
     # length to the right of it is 45 degrees off axis.
-    centre = pixel_bearing(0.5, 0.5, 'perspective', 4000, 3000, [0.9, 0, 0])
-    assert centre == pytest.approx([0, 0, 1], abs=1e-9)
+    center = pixel_bearing(0.5, 0.5, 'perspective', 4000, 3000, [0.9, 0, 0])
+    assert center == pytest.approx([0, 0, 1], abs=1e-9)
     right = pixel_bearing(0.5 + 0.9, 0.5, 'perspective', 4000, 3000, [0.9, 0, 0])
     assert math.degrees(math.atan2(right[0], right[2])) == pytest.approx(45.0)
     # Distortion is undone: a distorted point maps back to the ideal direction.
@@ -396,7 +396,7 @@ def test_localize_with_full_pose_recovers_position_under_pitch_and_roll():
         assert haversine_m(posed.lon, posed.lat, *target) < 0.1
         assert posed.bearing == pytest.approx(bearing, abs=0.3)
         assert posed.range_m == pytest.approx(rng, rel=0.01)
-        # The level-camera fallback is wrong by metres once the camera pitches:
+        # The level-camera fallback is wrong by meters once the camera pitches:
         if abs(pitch) >= 3.0:
             assert localize(level, camera_height_m=cam_h, max_range_m=60)
             assert haversine_m(level.lon, level.lat, *target) > 1.0
@@ -434,7 +434,7 @@ def test_polygon_angular_size_pano_and_seam():
 
 
 def test_view_angles_perspective_matches_lens_model_off_axis():
-    """The level-camera fallback agrees with the full lens model off-centre."""
+    """The level-camera fallback agrees with the full lens model off-center."""
     from rapidtools.processing.street_localization import observation_angles
 
     base = {

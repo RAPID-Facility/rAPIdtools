@@ -9,7 +9,7 @@
 
 - [ ] Bug fix
 - [ ] New feature or component
-- [ ] Behaviour change to an existing component (describe the migration below)
+- [ ] Behavior change to an existing component (describe the migration below)
 - [ ] Documentation, examples or wiki
 - [ ] Tests, tooling or CI
 

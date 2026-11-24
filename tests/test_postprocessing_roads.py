@@ -71,7 +71,7 @@ def regularizer():
 
 @pytest.fixture
 def to_wgs84(regularizer):
-    """Transform from the local feet frame (centred on ORIGIN) to WGS84."""
+    """Transform from the local feet frame (centered on ORIGIN) to WGS84."""
     _, project_to_wgs84 = regularizer._get_transformers(ORIGIN)
     return lambda geom: transform(project_to_wgs84, geom)
 
@@ -82,7 +82,7 @@ def _ribbon(x0, y0, x1, y1, width_ft):
 
 
 def _noisy_ribbon(x0, y0, x1, y1, width_ft, sigma=1.0, seed=0):
-    """Straight road with jittered boundary vertices (raster artefacts)."""
+    """Straight road with jittered boundary vertices (raster artifacts)."""
     rng = np.random.default_rng(seed)
     base = _ribbon(x0, y0, x1, y1, width_ft).segmentize(10)
     coords = [

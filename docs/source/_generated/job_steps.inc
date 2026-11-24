@@ -149,7 +149,7 @@ detect.aerial
    * - ``overlap_ratio``
      - number
      - ``0.25``
-     - Overlap between neighbouring patches, as a fraction of the patch size. Must be at least 0.
+     - Overlap between neighboring patches, as a fraction of the patch size. Must be at least 0.
    * - ``batch_size``
      - integer
      - ``4``
@@ -376,7 +376,7 @@ analyze.vlm
    * - ``outline_color``
      - string
      - ``"red"``
-     - Outline colour: a name or a hex code ("#00ffff").
+     - Outline color: a name or a hex code ("#00ffff").
    * - ``image_prefix``
      - string
      - ``"aerial"``
@@ -452,7 +452,7 @@ analyze.vlm
      - The analyzed assets with their new attributes (assets_inferred.geojson).
    * - ``partial_assets``
      - geojson
-     - Written only when the step is cancelled: the assets analyzed so far (assets_inferred_partial.geojson).
+     - Written only when the step is canceled: the assets analyzed so far (assets_inferred_partial.geojson).
 
 prompt.assist
 ~~~~~~~~~~~~~

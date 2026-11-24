@@ -103,7 +103,7 @@ def single_band_raster(tmp_path):
     """A one-band raster with a nodata hole in its top-left corner."""
     data = np.full((1, SIZE, SIZE), 150, dtype=np.uint8)
     data[0, :2, :2] = 0
-    return _write_raster(tmp_path / 'grey.tif', data, nodata=0)
+    return _write_raster(tmp_path / 'gray.tif', data, nodata=0)
 
 
 @pytest.fixture
@@ -200,7 +200,7 @@ def test_project_collection_handles_every_geometry_kind(wgs84_preview):
     assert data['preview_version'] == wgs84_preview.version
 
 
-def test_project_collection_serialises_attributes(wgs84_preview):
+def test_project_collection_serializes_attributes(wgs84_preview):
     """Attribute values are coerced into JSON-safe primitives, recursively."""
     when = datetime(2026, 9, 22, 12, 0)
     collection = PhysicalAssetCollection()

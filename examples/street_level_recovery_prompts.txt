@@ -6,11 +6,11 @@ CRITICAL WARNING ON TARGET IDENTIFICATION:
 Focus ONLY on the primary residential building footprint, which is typically located in the center-middle ground behind the driveway or yard. You MUST ignore surviving foreground barriers such as iron gates, brick/stucco boundary walls, and fences. An intact front gate with an empty dirt lot behind it is NOT a reconstructed building.
 
 Analyze the following specific visual indicators in your comparison:
-- Debris Status: Has the charred structural rubble, ash, or debris of the primary building been cleared away? (Note: Do not confuse a clean, scraped brown dirt lot with an ash-covered lot). RUBBLE DEFINITION: "Rubble and ash" refers to collapsed roofing, charred wooden beams, blackened debris piles, and grey ash covering the foundation. Do not confuse a clean, scraped brown dirt lot with an ash-covered lot.
+- Debris Status: Has the charred structural rubble, ash, or debris of the primary building been cleared away? (Note: Do not confuse a clean, scraped brown dirt lot with an ash-covered lot). RUBBLE DEFINITION: "Rubble and ash" refers to collapsed roofing, charred wooden beams, blackened debris piles, and gray ash covering the foundation. Do not confuse a clean, scraped brown dirt lot with an ash-covered lot.
 - Site Prep: Is the primary building footprint scraped down to bare dirt, or is a clean foundation pad visible?
 - Safety & Erosion Control: Are there new, temporary protective measures installed? Look specifically for temporary chain-link construction fences (often with green or black privacy screen mesh) enclosing the lot. Look for erosion control materials like tubular straw wattles (long cylindrical mesh tubes of straw), sandbags, or fiber blankets placed along slopes, driveways, or street curbs to prevent ash runoff.
 - New Construction Activity: Is there clear evidence of NEW rebuilding? Look for fresh, unburned building materials (e.g., stacked new lumber, wrapped drywall, fresh concrete forms) or new wooden framing. 
-  * IMPORTANT DISTINCTION: Do not confuse heavy machinery used for cleanup/demolition (e.g., excavators or bulldozers sitting in ash/dirt) with new construction. Do not confuse burnt, twisted metal or charred remaining posts with new framing.
+  * IMPORTANT DISTINCTION: Do not confuse heavy machinery used for cleanup/demolition (e.g., excavators or bulldozers sitting in ash/dirt) with new construction. Do not confuse burned, twisted metal or charred remaining posts with new framing.
 
 Return ONLY a valid JSON block matching this exact schema. Do not include markdown formatting outside the JSON block. You MUST complete the observations before assigning the metrics and status:
 {

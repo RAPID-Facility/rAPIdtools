@@ -35,7 +35,7 @@ Sizing the crop
 
 ``buffer_asset`` accepts a percentage of the asset's extent (``'20%'``, the
 default), a real-world distance (``'10 m'``, ``'30 ft'``) or a bare number in
-the raster's units; ``buffer_m`` is a shortcut for metres. With
+the raster's units; ``buffer_m`` is a shortcut for meters. With
 ``force_square_image=True`` every crop covers a square area on the ground,
 which keeps aspect ratios consistent for the model.
 
@@ -44,24 +44,24 @@ Assets on the edge of the imagery
 
 Coverage is judged from the raster's own mask, so nodata values, alpha bands
 and internal masks all count. By default a crop is skipped when more than
-``max_missing_data_ratio`` (20 %) of it is empty. For assets that straddle
+``max_missing_data_ratio`` (20%) of it is empty. For assets that straddle
 the edge of a flight, switch to a footprint-based test instead:
 
 .. code-block:: python
 
    AerialImageryExtractor(
        'ortho.tif', save_directory='crops',
-       min_footprint_coverage=0.3,   # keep if 30 % of the footprint is imaged
+       min_footprint_coverage=0.3,   # keep if 30% of the footprint is imaged
        pad_edges=True,               # pad with nodata so crops keep their size
    )
 
 Outlining the target asset
 --------------------------
 
-Dense neighbourhoods are where a model most often describes the wrong
+Dense neighborhoods are where a model most often describes the wrong
 building. ``overlay_asset_outline=True`` draws the asset onto the crop so the
 prompt can refer to "the outlined building". The outline's shape, offset,
-stroke and colour are configurable:
+stroke and color are configurable:
 
 .. code-block:: python
 

@@ -107,7 +107,7 @@ def describe_marking(shape: str, color: str, overlay: bool = True) -> str:
 
     Args:
         shape (str): One of the extractor ``outline_shape`` values.
-        color (str): The PIL colour name or hex code used for the outline.
+        color (str): The PIL color name or hex code used for the outline.
         overlay (bool): ``False`` when no outline is drawn.
 
     Returns:
@@ -126,12 +126,12 @@ def describe_marking(shape: str, color: str, overlay: bool = True) -> str:
     if not overlay:
         return ''
     word = _SHAPE_WORDS.get(shape, 'outline')
-    colour = str(color).strip() or 'red'
+    color = str(color).strip() or 'red'
     prefix = (
         'roughly marked with' if shape in ('geometry', 'convex_hull') else 'marked with'
     )
     article = '' if word.endswith('s') else 'a '
-    return f'{prefix} {article}{colour} {word}'
+    return f'{prefix} {article}{color} {word}'
 
 
 def snake_case(name: str) -> str:
@@ -176,7 +176,7 @@ class OutputField:
     description: str = ''
 
     def __post_init__(self) -> None:
-        """Normalise the kind and strip whitespace from the options."""
+        """Normalize the kind and strip whitespace from the options."""
         self.name = ' '.join(str(self.name).split())
         self.kind = str(self.kind or 'category').strip().lower()
         if self.kind not in FIELD_KINDS:
@@ -264,7 +264,7 @@ class PromptSpec:
     Everything needed to assemble a prompt in the rapidtools sample layout.
 
     Attributes:
-        asset: What is being analysed (``'building'``, ``'vehicle'``).
+        asset: What is being analyzed (``'building'``, ``'vehicle'``).
         imagery: ``'aerial'``, ``'street'`` or ``'multi-temporal street'``.
         objective: What the model must do, phrased after "Analyze each
             provided image and ..." (``'assign a CHS Level (0-4) to the
@@ -306,7 +306,7 @@ class PromptSpec:
     json_output: bool = False
 
     def __post_init__(self) -> None:
-        """Normalise strings and coerce nested dicts into dataclasses."""
+        """Normalize strings and coerce nested dicts into dataclasses."""
         self.asset = ' '.join(str(self.asset or 'building').split()) or 'building'
         self.imagery = str(self.imagery or 'aerial').strip().lower()
         if self.imagery not in IMAGERY_KINDS:
@@ -374,7 +374,7 @@ class PromptSpec:
         return cls(**_only_known(data, cls))
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialise to plain JSON-compatible data."""
+        """Serialize to plain JSON-compatible data."""
         return asdict(self)
 
     def primary_field(self) -> OutputField | None:
@@ -592,7 +592,7 @@ def _role_phrase(persona: str) -> str:
 
 
 def _sentence(text: str) -> str:
-    """Capitalise and terminate a sentence fragment."""
+    """Capitalize and terminate a sentence fragment."""
     text = text.strip()
     if not text:
         return text
@@ -726,7 +726,7 @@ SAMPLE_SPEC = PromptSpec(
 
 # ============================================================== assistant
 _SPEC_SCHEMA = """{
-  "asset": "what is analysed, e.g. building",
+  "asset": "what is analyzed, e.g. building",
   "imagery": "aerial | street | multi-temporal street",
   "objective": "what to do, phrased after 'Analyze each provided image and ...'",
   "persona": "expertise the model should adopt",
@@ -941,7 +941,7 @@ class PromptAssistant:
 
         Args:
             spec (PromptSpec): The current specification (for asset, imagery
-                and neighbouring classes).
+                and neighboring classes).
             class_value (str): The option value to describe.
 
         Returns:
@@ -962,7 +962,7 @@ class PromptAssistant:
             f'Class to describe: {class_value}'
             + (f' ({existing.title}). {existing.description}' if existing else '')
             + '\n\nList 3 to 6 key visual indicators that distinguish this class from '
-            'its neighbours in this kind of imagery. Each indicator is one short, '
+            'its neighbors in this kind of imagery. Each indicator is one short, '
             'concrete sentence about something visible in the image. Return ONLY a '
             'JSON array of strings.'
         )

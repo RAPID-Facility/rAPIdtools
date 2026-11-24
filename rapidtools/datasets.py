@@ -296,7 +296,7 @@ def download_dataset(
 
         finally:
             # Cleanup: Remove corrupted temporary file if download
-            # failed/cancelled:
+            # failed/canceled:
             if temp_path.exists():
                 temp_path.unlink()
                 logger.debug(f'Cleaned up incomplete temporary file: {temp_path}')

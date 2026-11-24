@@ -49,7 +49,7 @@ files and prints the interface definition::
     rapidtools-job steps [--format json|rst]
 
 Exit status of ``run``: 0 when the job finished, 1 when a step failed, 2 when
-the job file is invalid, 3 when the job was cancelled (Ctrl+C or SIGTERM).
+the job file is invalid, 3 when the job was canceled (Ctrl+C or SIGTERM).
 """
 
 from __future__ import annotations
@@ -74,7 +74,7 @@ from .schema import JobError
 EXIT_OK = 0
 EXIT_FAILED = 1
 EXIT_INVALID = 2
-EXIT_CANCELLED = 3
+EXIT_CANCELED = 3
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -121,7 +121,7 @@ def _parser() -> argparse.ArgumentParser:
         help='Which document to describe (default: job).',
     )
 
-    steps = commands.add_parser('steps', help='Print the catalogue of step types.')
+    steps = commands.add_parser('steps', help='Print the catalog of step types.')
     steps.add_argument(
         '--format',
         default='json',
@@ -145,7 +145,7 @@ def _run(args: argparse.Namespace) -> int:
 
     def stop(_signum: int, _frame: Any) -> None:
         """Cancel cooperatively on the first signal, hard on the second."""
-        print('Cancelling: the current batch will finish first.', file=sys.stderr)
+        print('Canceling: the current batch will finish first.', file=sys.stderr)
         signal.signal(signal.SIGINT, signal.SIG_DFL)
         signal.signal(signal.SIGTERM, signal.SIG_DFL)
         runner.cancel()
@@ -167,8 +167,8 @@ def _run(args: argparse.Namespace) -> int:
         print(f'Result file: {result.result_file}', file=stream)
     if result.ok:
         return EXIT_OK
-    if result.status == 'cancelled':
-        return EXIT_CANCELLED
+    if result.status == 'canceled':
+        return EXIT_CANCELED
     started = any(step.started_at for step in result.steps)
     if isinstance(result.exception, JobError) and not started:
         return EXIT_INVALID

@@ -41,10 +41,10 @@
 Generic wrapper for OpenAI-compatible chat-completions APIs.
 
 Several providers expose the same ``POST /chat/completions`` schema that
-OpenAI popularised: OpenAI itself, Meta's Model API (Muse Spark) and Alibaba
+OpenAI popularized: OpenAI itself, Meta's Model API (Muse Spark) and Alibaba
 Cloud Model Studio (Qwen). :class:`BaseOpenAICompatibleInference` implements
 that schema once; provider classes only override a handful of class
-attributes (base URL, environment variable, model catalogue, quirks).
+attributes (base URL, environment variable, model catalog, quirks).
 
 Example:
     >>> from rapidtools.models.openai_compat import BaseOpenAICompatibleInference
@@ -143,7 +143,7 @@ class BaseOpenAICompatibleInference(BaseAPIInferenceModel):
         base_url: str | None = None,
     ):
         """
-        Initialise the client and validate the chosen model.
+        Initialize the client and validate the chosen model.
 
         Args:
             api_key: Key string, path to a key file, or ``None`` to read the
@@ -182,14 +182,14 @@ class BaseOpenAICompatibleInference(BaseAPIInferenceModel):
         )
         self._validate_model()
 
-    # ----------------------------------------------------------- catalogue
+    # ----------------------------------------------------------- catalog
     @classmethod
     def list_available_models(cls, api_key: str | Path | None = None) -> list[str]:
         """
         List the model IDs accessible with ``api_key``.
 
         Without a key (or when the API cannot be reached) the curated
-        catalogue is returned instead.
+        catalog is returned instead.
 
         Args:
             api_key: Key string, key-file path, or ``None`` for the env var.

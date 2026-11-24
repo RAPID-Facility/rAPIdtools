@@ -75,7 +75,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, TypedDict
 
-from rapidtools.core import OperationCancelled, PhysicalAssetCollection
+from rapidtools.core import OperationCanceled, PhysicalAssetCollection
 from rapidtools.gui.prompt_builder import ASSIST_ACTIONS, PromptAssistant
 
 logger = logging.getLogger(__name__)
@@ -126,7 +126,7 @@ MODEL_BACKENDS: dict[str, dict[str, Any]] = {
     if info.kind in ('api', 'local')
 }
 
-# Convenience constants kept for backwards compatibility with earlier GUIs.
+# Convenience constants kept for backward compatibility with earlier GUIs.
 DEFAULT_GEMINI_MODEL_ID = MODEL_BACKENDS['gemini']['default_model']
 DEFAULT_CLAUDE_MODEL_ID = MODEL_BACKENDS['claude']['default_model']
 DEFAULT_OPENAI_MODEL_ID = MODEL_BACKENDS['openai']['default_model']
@@ -141,7 +141,7 @@ BASEMAP_PROVIDERS: dict[str, dict[str, Any]] = {
 }
 DETECTION_BASEMAPS = ('bing', 'google', 'recon')
 
-# Where the crops analysed by the model come from, in the order the GUI shows.
+# Where the crops analyzed by the model come from, in the order the GUI shows.
 IMAGERY_SOURCES: dict[str, dict[str, Any]] = {
     'aerial': {
         'label': 'Aerial crops from the loaded image',
@@ -191,7 +191,7 @@ def list_available_models(backend: str, api_key: str = '') -> list[str]:
 
     Cloud backends query the provider with ``api_key``; local backends return
     the curated list of Hugging Face repositories. Falls back to the static
-    catalogue when the provider cannot be reached.
+    catalog when the provider cannot be reached.
     """
     spec = MODEL_BACKENDS.get(backend)
     if spec is None:
@@ -225,8 +225,24 @@ def list_available_models(backend: str, api_key: str = '') -> list[str]:
     return ordered
 
 
-class WorkflowCancelled(OperationCancelled):
-    """Raised when a workflow run is cancelled by the user."""
+class WorkflowCanceled(OperationCanceled):
+    """
+    Raised when a workflow run is canceled by the user.
+
+    Spelled ``WorkflowCancelled`` before 0.3.0; that name still works and
+    emits a :class:`DeprecationWarning`.
+    """
+
+
+#: Spelling used before 0.3.0, mapped to the name that replaced it.
+RENAMED = {'WorkflowCancelled': 'WorkflowCanceled'}
+
+
+def __getattr__(attr: str) -> Any:
+    """Keep the pre-0.3.0 spelling importable from this module."""
+    from rapidtools.core.cancellation import renamed_attribute
+
+    return renamed_attribute(__name__, attr, RENAMED, globals())
 
 
 def slugify(text: str) -> str:
@@ -336,7 +352,7 @@ class InferenceSettings:
     outline_color: str = 'red'
     image_prefix: str = 'aerial'
     only_analyze_inference_crops: bool = True
-    # Where the analysed crops come from (an IMAGERY_SOURCES key) and the
+    # Where the analyzed crops come from (an IMAGERY_SOURCES key) and the
     # options of the street-level extractors:
     imagery: str = 'aerial'
     min_footprint_coverage: float | None = None
@@ -416,7 +432,7 @@ class InferenceSettings:
         AerialImageryExtractor._parse_outline_buffer(self.outline_buffer)
         AerialImageryExtractor._parse_outline_width(self.outline_width)
         if not str(self.outline_color).strip():
-            raise ValueError('An outline colour is required.')
+            raise ValueError('An outline color is required.')
         from PIL import ImageColor
 
         ImageColor.getrgb(str(self.outline_color))
@@ -690,16 +706,16 @@ class AssetAnalysisWorkflow:
 
     # ------------------------------------------------------------------ utils
     def cancel(self) -> None:
-        """Request cancellation. Honoured at the next stage boundary."""
+        """Request cancellation. Honored at the next stage boundary."""
         self._cancel_event.set()
 
     def reset(self) -> None:
         """Clear any pending cancellation request."""
         self._cancel_event.clear()
 
-    def _check_cancelled(self) -> None:
+    def _check_canceled(self) -> None:
         if self._cancel_event.is_set():
-            raise WorkflowCancelled('Workflow cancelled by user.')
+            raise WorkflowCanceled('Workflow canceled by user.')
 
     def _progress(self, message: str) -> None:
         logger.info(message)
@@ -728,11 +744,11 @@ class AssetAnalysisWorkflow:
         output_dir.mkdir(parents=True, exist_ok=True)
         try:
             return self._detect(settings, raster_path, output_dir)
-        except WorkflowCancelled:
+        except WorkflowCanceled:
             raise
-        except OperationCancelled as exc:
-            self._progress('Detection cancelled.')
-            raise WorkflowCancelled(str(exc)) from exc
+        except OperationCanceled as exc:
+            self._progress('Detection canceled.')
+            raise WorkflowCanceled(str(exc)) from exc
 
     def _detect(
         self, settings: DetectionSettings, raster_path: Path, output_dir: Path
@@ -774,7 +790,7 @@ class AssetAnalysisWorkflow:
                 detection_raster = Path(
                     extractor(region=region, output_path=detection_raster)
                 )
-        self._check_cancelled()
+        self._check_canceled()
 
         # 2. Load SAM 3 once and reuse it for every asset prompt.
         self._progress('Loading SAM 3 (first run downloads ~3.4 GB of weights)...')
@@ -794,7 +810,7 @@ class AssetAnalysisWorkflow:
         per_asset_geojson: dict[str, Path] = {}
 
         for asset_name in settings.assets:
-            self._check_cancelled()
+            self._check_canceled()
             slug = slugify(asset_name)
             self._progress(f"Scanning for '{asset_name}'...")
             sam_extractor.prompt = asset_name
@@ -928,17 +944,17 @@ class AssetAnalysisWorkflow:
         self._progress(f'Running inference on {len(collection)} assets...')
         try:
             processed = pipeline.run(collection)
-        except OperationCancelled as exc:
+        except OperationCanceled as exc:
             # Keep whatever was analyzed before the user pressed cancel.
             partial = collection.filter_empty()
             partial_path = output_dir / 'assets_inferred_partial.geojson'
             partial.to_geojson(partial_path, ignore_properties=['image_assets'])
             self._progress(
-                f'Inference cancelled. Partial results for {len(partial)} assets '
+                f'Inference canceled. Partial results for {len(partial)} assets '
                 f'written to {partial_path.name}'
             )
-            raise WorkflowCancelled(str(exc)) from exc
-        self._check_cancelled()
+            raise WorkflowCanceled(str(exc)) from exc
+        self._check_canceled()
 
         analyzed = processed.filter_empty()
         n_analyzed = sum(
@@ -1177,11 +1193,11 @@ class AssetAnalysisWorkflow:
         )
         try:
             path = Path(extractor(region=region, output_path=output_path))
-        except WorkflowCancelled:
+        except WorkflowCanceled:
             raise
-        except OperationCancelled as exc:
-            raise WorkflowCancelled(str(exc)) from exc
-        self._check_cancelled()
+        except OperationCanceled as exc:
+            raise WorkflowCanceled(str(exc)) from exc
+        self._check_canceled()
         self._progress(f'{label} imagery written to {path.name}')
         return path
 
@@ -1211,7 +1227,7 @@ class AssetAnalysisWorkflow:
 
         Raises:
             FileNotFoundError: If ``raster_path`` is given but missing.
-            WorkflowCancelled: If cancelled.
+            WorkflowCanceled: If canceled.
         """
         from rapidtools import BoundingBox, MapillaryFeatureExtractor
 
@@ -1250,12 +1266,12 @@ class AssetAnalysisWorkflow:
         )
         try:
             collection = extractor()
-        except WorkflowCancelled:
+        except WorkflowCanceled:
             raise
-        except OperationCancelled as exc:
-            self._progress('Street discovery cancelled.')
-            raise WorkflowCancelled(str(exc)) from exc
-        self._check_cancelled()
+        except OperationCanceled as exc:
+            self._progress('Street discovery canceled.')
+            raise WorkflowCanceled(str(exc)) from exc
+        self._check_canceled()
 
         geojson_path: Path | None = None
         n_images = sum(len(a.image_assets) for a in collection)
@@ -1308,7 +1324,7 @@ class AssetAnalysisWorkflow:
             spec=settings.spec,
             context=settings.context,
         )
-        self._check_cancelled()
+        self._check_canceled()
         self._progress(f'{label} answered.')
         return result
 

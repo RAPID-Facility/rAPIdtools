@@ -44,7 +44,7 @@ Llama 4 Scout/Maverick are natively multimodal mixture-of-experts models
 (``Llama4ForConditionalGeneration``); Llama 3.2 Vision uses the cross-attention
 ``Mllama`` architecture. Both are loaded through the Transformers multimodal
 auto class so the same wrapper serves every generation. Downloading the
-weights requires accepting Meta's licence on Hugging Face.
+weights requires accepting Meta's license on Hugging Face.
 
 Example:
     >>> from rapidtools.models import LlamaVisionInference
@@ -150,7 +150,7 @@ class LlamaVisionInference(BaseLocalInferenceModel):
         """
         Return the curated Llama vision checkpoints.
 
-        Downloading them from the Hub requires accepting Meta's licence.
+        Downloading them from the Hub requires accepting Meta's license.
 
         Args:
             auth_key: Unused; present for signature parity with API wrappers.

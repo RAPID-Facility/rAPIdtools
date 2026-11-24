@@ -22,8 +22,8 @@ minor releases may change public APIs.
   track-and-triangulate method is one keyword away (`localization_method`).
 - **Building footprints from a street survey.** `'buildings'` come back as
   polygons outlined from the survey's structure-from-motion point cloud, with
-  `frontage_m`, `depth_m` and `height_m`. On a 1 km neighbourhood of Spokane,
-  78 % of the 346 OpenStreetMap footprints near the route were found, with a
+  `frontage_m`, `depth_m` and `height_m`. On a 1 km neighborhood of Spokane,
+  78% of the 346 OpenStreetMap footprints near the route were found, with a
   median intersection over union of 0.38.
 - **Screening detections with a model.** `MapillaryObjectImageExtractor`
   crops each discovered object, and a new `VERIFY` pipeline stage sits
@@ -53,7 +53,7 @@ minor releases may change public APIs.
 - `PhysicalAssetCollection.filter(predicate)`,
   `to_geojson(include_images=False)` and a one-line `repr`.
 - Error messages name the arguments a wrapper accepts, the closest match to
-  a misspelt option, or the pipeline step at fault.
+  a misspelled option, or the pipeline step at fault.
 - **GUI rebuilt around a map.** The interface opens on a satellite map with
   RAPID's street-level survey routes and an address search. Drawing an area
   downloads Bing or Google imagery for it or starts street discovery
@@ -93,6 +93,15 @@ minor releases may change public APIs.
   `from_shapefile` keeps assets with invalid geometry.
 - `numpy` and `scipy` are declared dependencies.
 - CI runs `ruff` and `mypy`; the package type-checks clean.
+- **US English throughout.** Documentation, messages and the interface use
+  US spelling. A job or step that was stopped has the status `canceled`.
+
+### Deprecated
+
+- `OperationCancelled`, `raise_if_cancelled`, `is_cancelled` and
+  `rapidtools.gui.WorkflowCancelled` are now `OperationCanceled`,
+  `raise_if_canceled`, `is_canceled` and `WorkflowCanceled`. The old names
+  still work and warn.
 
 ### Removed
 
@@ -199,7 +208,7 @@ minor releases may change public APIs.
 - `AerialImageryExtractor` accepts a folder or list of rasters and opens each
   raster once.
 - `MapillaryImageExtractor` culls occluded views by ray casting against
-  neighbouring footprints and can check Mapillary's semantic labels before
+  neighboring footprints and can check Mapillary's semantic labels before
   downloading (`strict_content_filter`, `MapillaryLabelMapper`).
 - `BuildingRegularizer` runs a second, lower-threshold pass on dropped assets
   to rescue shadowed buildings.

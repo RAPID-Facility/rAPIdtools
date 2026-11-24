@@ -133,7 +133,7 @@ def test_objective_lead_in_is_stripped_and_roles_get_articles():
     )
     street = PromptSpec(
         imagery='street',
-        objective='analyse the provided street-level images to grade the facade',
+        objective='analyze the provided street-level images to grade the facade',
     )
     assert street.objective == 'grade the facade'
     assert _role_phrase('an insurance adjuster.') == 'an insurance adjuster'

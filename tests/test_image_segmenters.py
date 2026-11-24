@@ -48,7 +48,7 @@ from shapely.geometry import Point
 
 from rapidtools.core import (
     ImageAsset,
-    OperationCancelled,
+    OperationCanceled,
     PhysicalAsset,
     PhysicalAssetCollection,
 )
@@ -346,22 +346,22 @@ def test_call_success_logs_info(fake_sam, collection, caplog):
 # ==========================================
 
 
-def test_call_cancelled_before_first_batch(fake_sam, collection):
+def test_call_canceled_before_first_batch(fake_sam, collection):
     """A pre-set cancel event aborts before any inference."""
     event = threading.Event()
     event.set()
     seg = SAM3ImageSegmenter(prompt='building', cancel_event=event)
-    with pytest.raises(OperationCancelled, match='SAM 3 segmentation'):
+    with pytest.raises(OperationCanceled, match='SAM 3 segmentation'):
         seg(collection)
     assert fake_sam['instance'].calls == []
 
 
-def test_call_cancelled_between_batches(fake_sam, collection):
+def test_call_canceled_between_batches(fake_sam, collection):
     """Cancellation set during batch one stops batch two from running."""
     event = threading.Event()
     seg = SAM3ImageSegmenter(prompt='building', batch_size=1, cancel_event=event)
     fake_sam['instance'].on_call = event.set
-    with pytest.raises(OperationCancelled):
+    with pytest.raises(OperationCanceled):
         seg(collection)
     assert len(fake_sam['instance'].calls) == 1
 

@@ -577,7 +577,7 @@
             <div class="field"><label>Outline shape</label><select class="input" id="outline-shape"><option value="geometry">Asset geometry</option><option value="bbox">Bounding box</option><option value="rotated_bbox">Rotated bounding box</option><option value="convex_hull">Convex hull</option><option value="corners">Corner brackets</option></select></div>
             <div class="field"><label>Outline buffer</label><input class="input" type="text" id="outline-buffer" value="0" placeholder="e.g. 2 m, 10 ft, 10%, 12 px"></div>
             <div class="field"><label>Outline width</label><input class="input" type="text" id="outline-width" value="6" placeholder="pixels or % of image"></div>
-            <div class="field"><label>Outline colour</label><input class="input" type="text" id="outline-color" value="red" placeholder="red, #00ffff, ..."></div>
+            <div class="field"><label>Outline color</label><input class="input" type="text" id="outline-color" value="red" placeholder="red, #00ffff, ..."></div>
           </div>
         </div>
           </div>
@@ -651,7 +651,7 @@
     <!-- ========================= STEP 3 ========================= -->
     <section class="panel" id="panel-3">
       <h1>Results</h1>
-      <p class="lead">Hover over an asset to see its attributes, click it to open the images the model analyzed, or colour the overlay by any attribute using the menu above the image.</p>
+      <p class="lead">Hover over an asset to see its attributes, click it to open the images the model analyzed, or color the overlay by any attribute using the menu above the image.</p>
       <div class="tiles">
         <div class="tile"><div class="v" id="tile-count">–</div><div class="k">assets</div></div>
         <div class="tile"><div class="v" id="tile-analyzed">–</div><div class="k">with inference results</div></div>
@@ -682,7 +682,7 @@
       </div>
       <span class="tools raster-only">
         <label class="check" id="basemap-wrap" style="margin:0 0 0 8px;display:none" title="View the stitched basemap the detection ran on instead of the loaded image"><input type="checkbox" id="basemap-check"> <span id="basemap-label">Stitched basemap</span></label>
-        <span class="label" style="margin-left:8px">Colour by</span>
+        <span class="label" style="margin-left:8px">Color by</span>
         <select id="color-by"><option value="">Outline only</option></select>
         <label class="check" style="margin:0 0 0 8px"><input type="checkbox" id="show-overlay" checked> Show assets</label>
         <label class="check" style="margin:0"><input type="checkbox" id="show-labels"> Labels</label>
@@ -779,7 +779,7 @@
           </div>
           <div class="field"><label>Objective</label><textarea id="b-objective" placeholder="assign a CHS Level (0–4) to the primary building structure based on the index below"></textarea><div class="hint">Completes "Analyze each provided image and …".</div></div>
           <div class="field"><label>Expert role</label><input class="input" id="b-persona" placeholder="an expert in forensic engineering and wildfire damage assessment"></div>
-          <div class="field"><label>Scope and things to ignore</label><textarea id="b-focus" placeholder="Do not focus on non-combustible materials. Ignore neighbouring structures."></textarea></div>
+          <div class="field"><label>Scope and things to ignore</label><textarea id="b-focus" placeholder="Do not focus on non-combustible materials. Ignore neighboring structures."></textarea></div>
           <div class="field"><label>How the asset is marked</label><div class="row"><input class="input grow" id="b-marking" placeholder="roughly marked with a red outline"><label class="check" style="margin:0" title="Fill from the outline settings of the analysis imagery"><input type="checkbox" id="b-marking-auto" checked> from settings</label></div></div>
         </div>
 
@@ -818,7 +818,7 @@
             <button class="chip" data-edge="Assign &quot;No Data-Footprint Unclear&quot; if the image does not show a single mostly complete asset, for example when several complete footprints are visible.">Footprint unclear / several assets</button>
             <button class="chip" data-edge="Assign &quot;Unclear&quot; if the asset is hidden by vegetation, vehicles, shadows or clouds and its condition cannot be assessed.">Occluded view</button>
             <button class="chip" data-edge="Assign &quot;Unclear&quot; if the image is too blurry, dark or low-resolution to judge the indicators.">Poor image quality</button>
-            <button class="chip" data-edge="If the marked outline does not match any structure, judge the structure closest to the centre of the image.">Outline mismatch</button>
+            <button class="chip" data-edge="If the marked outline does not match any structure, judge the structure closest to the center of the image.">Outline mismatch</button>
             <button class="chip" data-edge="Do not confuse foreground barriers such as fences, gates and walls with the primary asset; judge the structure behind them.">Foreground barriers</button>
           </div>
         </div>
@@ -2034,7 +2034,7 @@ Justification: [2-3 sentences citing visual evidence]`;
     const lc = M.layer, key = layerKey();
     if (!lc || lc.W !== W || lc.H !== H) { renderLayer(); ctx.drawImage(M.layer.canvas, 0, 0, W, H); return; }
     const s = Math.pow(2, M.z - lc.z);
-    // Where the cached view's centre lands on the current screen:
+    // Where the cached view's center lands on the current screen:
     const dx = (lc.cx * s - M.cx) * MTILE + W / 2, dy = (lc.cy * s - M.cy) * MTILE + H / 2;
     ctx.drawImage(lc.canvas, dx - W / 2 * s, dy - H / 2 * s, W * s, H * s);
     const moved = Math.abs(dx - W / 2) > 1 || Math.abs(dy - H / 2) > 1 || s !== 1;
@@ -2130,7 +2130,7 @@ Justification: [2-3 sentences citing visual evidence]`;
       if (b[2] - b[0] >= minU || b[3] - b[1] >= minU) lines.push(db.uv[n]);
     }
     if (M.z < 6) glowDots(ctx, visible, s, W, H, heat);
-    // Vertices sit about a metre apart; skip the ones that fall on the same pixel.
+    // Vertices sit about a meter apart; skip the ones that fall on the same pixel.
     const step = 2 * Math.max(1, Math.floor(Math.pow(2, 13 - M.z)));
     // The wide heat-map glow pass is what the dots already show at country scale.
     for (let pass = M.z < 6 ? passes - 1 : 0; pass < passes; pass++) { strokeStyle(ctx, heat, pass); ctx.beginPath();
