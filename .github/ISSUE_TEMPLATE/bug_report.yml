@@ -19,7 +19,7 @@ body:
     attributes:
       label: rapidtools version
       description: Output of `python -c "import rapidtools; print(rapidtools.__version__)"`, or the commit hash for a source install.
-      placeholder: "0.2.1"
+      placeholder: "0.3.0"
     validations:
       required: true
   - type: dropdown

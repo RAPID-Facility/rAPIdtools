@@ -176,7 +176,7 @@ Parameters:
     Default: latest
     AllowedPattern: '^[A-Za-z0-9_][A-Za-z0-9_.-]*$'
     Description: >-
-      Tag of ghcr.io/rapid-facility/rapidtools-gui to run (latest, 0.2.1, ...;
+      Tag of ghcr.io/rapid-facility/rapidtools-gui to run (latest, 0.3.0, ...;
       "-cpu" is added on machines without a GPU). If that image is not
       published the machine builds it from the Git reference below. "build"
       always builds.

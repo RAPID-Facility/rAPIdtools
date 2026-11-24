@@ -50,7 +50,7 @@ application; call :func:`configure_logging` to see progress messages, and
 Example:
     >>> import rapidtools
     >>> rapidtools.__version__
-    '0.2.1'
+    '0.3.0'
     >>> rapidtools.configure_logging()  # doctest: +ELLIPSIS
     <Logger rapidtools (INFO)>
     >>> rapidtools.GeminiInference  # imported on first access
@@ -97,7 +97,7 @@ from .datasets import download_dataset, list_datasets
 
 # Package metadata:
 name = 'rapidtools'
-__version__ = '0.2.1'
+__version__ = '0.3.0'
 __copyright__ = 'Copyright (c) 2025, The University of Washington'
 __license__ = 'BSD 3-Clause License'
 

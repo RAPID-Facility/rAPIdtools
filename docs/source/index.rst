@@ -95,7 +95,7 @@ is archived on Zenodo with a DOI.
      author  = {Cetiner, Barbaros and {NSF NHERI RAPID Facility}},
      title   = {rAPIdtools: AI inference and localization for post-disaster geospatial datasets},
      year    = {2026},
-     version = {0.2.1},
+     version = {0.3.0},
      url     = {https://github.com/RAPID-Facility/rAPIdtools}
    }
 

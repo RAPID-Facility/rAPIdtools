@@ -150,7 +150,7 @@ A job file is one JSON object.
    * - ``created_by``
      - no
      - Free-form object naming the client, e.g.
-       ``{"client": "rapidtools-gui", "version": "0.2.1"}``.
+       ``{"client": "rapidtools-gui", "version": "0.3.0"}``.
    * - ``metadata``
      - no
      - Free-form object for the client's own bookkeeping (ticket numbers,
@@ -286,7 +286,7 @@ reader always sees a complete document: polling it is safe.
      "updated_at": "2026-11-24T15:49:54Z",
      "finished_at": "2026-11-24T15:49:54Z",
      "duration_s": 1.646,
-     "rapidtools_version": "0.2.1",
+     "rapidtools_version": "0.3.0",
      "steps": [
        {
          "id": "basemap",

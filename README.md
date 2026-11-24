@@ -71,6 +71,8 @@ Designed for flexibility and scale, `rapidtools` utilizes a cleanly decoupled ar
 * `rapidtools.data_sources`: Clients for fetching raw data from external APIs and massive local files (e.g., `MapillaryClient`, `GoogleStreetViewClient`, `OrthomosaicReader`, `BingAerialImageExtractor`, `GoogleAerialImageExtractor`).
 * `rapidtools.models`: Base wrappers and handlers for executing ML models natively or via cloud APIs (`Gemma4Inference`, `SAM3Inference`, `GeminiInference`, `MuseSparkInference`, `QwenInference`, ...). See the table below.
 * `rapidtools.processing`: High-level workflow components (Extractors, Segmenters, Analyzers, and Regularizers) designed to snap together effortlessly into the `Pipeline` engine.
+* `rapidtools.gui`: The browser-based application (`rapidtools-gui`) and the headless workflow behind it.
+* `rapidtools.jobs`: The JSON job interface (`rapidtools-job`): a workflow written as a file that the GUI, a scheduler or another system hands to `rapidtools` to run.
 
 ## The rAPIdtools API in Five Lines
 
@@ -178,6 +180,57 @@ The image panel streams the original pixels when you zoom in (toggle *Full resol
 
 Bounding boxes can be drawn on a satellite map that also shows where the RAPID street survey has images. Progress and log output stream into the page while the heavy lifting runs on a background thread, and **Cancel** stops detection or inference at the next tile or batch, keeping any results produced so far. Long runs offer to send an email or webhook message (or a browser alert) when they finish, and the tab can be closed and reopened in the meantime. The same workflow is available headlessly through `rapidtools.gui.AssetAnalysisWorkflow` for scripting, and the prompt builder through `rapidtools.gui.PromptSpec`, `assemble_prompt` and `PromptAssistant`.
 
+## Job Files: Run a Workflow From JSON
+
+A whole workflow can be written down as a JSON *job file*: an ordered list of steps, where a later step can use what an earlier one produced. The graphical interface works this way itself (every run it starts is a job file under `<output folder>/jobs`), so the same work can be rerun from a terminal, queued by a scheduler or submitted by another system.
+
+```json
+{
+  "schema": "rapidtools.job",
+  "schema_version": "1.0",
+  "output_dir": "output/eaton",
+  "steps": [
+    {"id": "sample", "type": "data.download", "params": {"dataset": "eaton_patch1"}},
+    {
+      "id": "detect",
+      "type": "detect.aerial",
+      "inputs": {"raster": {"step": "sample", "output": "file"}},
+      "params": {"assets": ["building"], "basemap": "bing"}
+    },
+    {
+      "id": "grade",
+      "type": "analyze.vlm",
+      "inputs": {
+        "raster": {"step": "sample", "output": "file"},
+        "assets": {"step": "detect", "output": "assets"}
+      },
+      "params": {
+        "prompt": "Damage: [none, minor, major, destroyed]",
+        "backend": "gemini",
+        "api_key": {"$env": "GEMINI_API_KEY"}
+      }
+    }
+  ]
+}
+```
+
+```bash
+rapidtools-job run job.json        # console script installed with the package
+rapidtools-job validate job.json   # check a job without running it
+rapidtools-job steps               # the step types and their options, as JSON
+python -m rapidtools.jobs run job.json   # equivalent to the console script
+```
+
+Or from Python:
+
+```python
+from rapidtools.jobs import run_job
+
+run_job('job.json').raise_for_status()
+```
+
+Every step is checked before the first one runs, and a result file (`job.result.json`, next to the job file) is rewritten at every change of state with each step's status, output files and summary. `run` exits with 0 when the job finished, 1 when a step failed, 2 when the job file is invalid and 3 when it was cancelled. API keys stay out of job files: write `{"$env": "VARIABLE"}`, or `{"$secret": "name"}` with a separate `--secrets` file. The [JSON job interface](https://rapid-facility.github.io/rAPIdtools/json_interface.html) page is the full specification, with JSON Schemas for the three file types, and `examples/jobs` has jobs ready to run.
+
 ## Supported Models
 
 Every wrapper exposes `list_known_models()` (the curated catalogue below, no network) and `list_available_models(api_key)` (live listing from the provider where one exists). Pass any listed ID as `model_id`; the default is marked in bold.
@@ -253,7 +306,7 @@ entries; each release is also archived on Zenodo with a DOI.
   author  = {Cetiner, Barbaros and {NSF NHERI RAPID Facility}},
   title   = {rAPIdtools: AI inference and localization for post-disaster geospatial datasets},
   year    = {2026},
-  version = {0.2.1},
+  version = {0.3.0},
   url     = {https://github.com/RAPID-Facility/rAPIdtools}
 }
 ```

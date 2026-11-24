@@ -114,9 +114,9 @@ no account.
      - Contents
    * - ``ghcr.io/rapid-facility/rapidtools-gui:latest``
      - CUDA build on the PyTorch runtime base; also tagged with the
-       version (``0.2.1``, ``0.2``)
+       version (``0.3.0``, ``0.3``)
    * - ``ghcr.io/rapid-facility/rapidtools-gui:latest-cpu``
-     - CPU-only build (``0.2.1-cpu``, ``0.2-cpu``)
+     - CPU-only build (``0.3.0-cpu``, ``0.3-cpu``)
 
 ``RAPIDTOOLS_IMAGE`` in ``deploy/.env`` selects the image. Pin a version
 tag there to decide yourself when the server moves to a new release, and

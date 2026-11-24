@@ -411,7 +411,7 @@ class Job:
         name (str): Human-readable name shown in logs and results.
         created_at (str): UTC creation time (ISO 8601).
         created_by (dict[str, Any]): Who wrote the file, e.g.
-            ``{'client': 'rapidtools-gui', 'version': '0.2.1'}``.
+            ``{'client': 'rapidtools-gui', 'version': '0.3.0'}``.
         metadata (dict[str, Any]): Free-form notes; never interpreted.
         schema_version (str): Interface version the file declares.
         base_dir (Path): Folder relative paths are resolved against: the
