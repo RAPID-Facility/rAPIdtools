@@ -15,11 +15,29 @@ out
 *.html
 !rapidtools/gui/static/index.html
 *.geojson
-*.ipynb_checkpoints
-__pycache__
-*.egg-info
 build
 dist
 htmlcov
+.coverage
 .pytest_cache
 .ruff_cache
+.mypy_cache
+.claude
+.vscode
+.idea
+venv
+.conda
+
+# A pattern without a slash only matches at the top of the context, so the
+# folders that appear at any depth need the ** prefix.
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info
+**/.ipynb_checkpoints
+
+# Credentials git already ignores: example API keys and tokens, and the
+# filled-in deployment settings. They must never be copied into an image.
+examples/api_key.txt
+examples/*token*.txt
+**/.env
+**/*.env
