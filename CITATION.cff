@@ -1,5 +1,5 @@
 # Citation metadata for rAPIdtools. GitHub reads this file to show the
-# "Cite this repository" button; Zenodo reads it when archiving a release.
+# "Cite this repository" button. Zenodo takes its metadata from .zenodo.json.
 # Keep `version` and `date-released` in step with pyproject.toml and CHANGELOG.md.
 cff-version: 1.2.0
 message: "If you use rAPIdtools in your research, please cite it as below."
@@ -33,9 +33,9 @@ keywords:
   - vision-language models
   - computer vision
   - GIS
-# Uncomment and fill in after the first Zenodo archive (use the concept DOI,
-# which always resolves to the latest version):
-# identifiers:
-#   - type: doi
-#     value: 10.5281/zenodo.XXXXXXX
-#     description: "Concept DOI for all versions of rAPIdtools"
+# The concept DOI, which always resolves to the latest version archived on
+# Zenodo. It stays the same for every release.
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.24542491
+    description: "Concept DOI for all versions of rAPIdtools"
