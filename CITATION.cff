@@ -19,7 +19,7 @@ authors:
   - name: "RAPID Facility"
     website: "https://www.uwrapid.org/"
 version: 0.3.0
-date-released: 2026-11-24
+date-released: 2026-11-25
 license: BSD-3-Clause
 repository-code: "https://github.com/RAPID-Facility/rAPIdtools"
 url: "https://rapid-facility.github.io/rAPIdtools/"

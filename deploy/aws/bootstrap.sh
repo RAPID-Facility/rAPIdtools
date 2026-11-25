@@ -336,10 +336,10 @@ fetch_source() {  # check out RT_GIT_REF (branch, tag or full commit id) into $R
   if [ ! -f "$src/deploy/Dockerfile" ]; then  # refs older than the deploy/ folder
     mkdir -p "$src/deploy"
     cat >"$src/deploy/Dockerfile" <<'EOF'
-ARG BASE_IMAGE=pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime
+ARG BASE_IMAGE=pytorch/pytorch:2.15.0-cuda13.2-cudnn9-runtime
 FROM ${BASE_IMAGE}
 ARG TORCH_INDEX=""
-ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 HF_HOME=/cache/huggingface RAPIDTOOLS_GUI_NO_BROWSER=1
+ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_BREAK_SYSTEM_PACKAGES=1 HF_HOME=/cache/huggingface RAPIDTOOLS_GUI_NO_BROWSER=1
 RUN apt-get update && apt-get install -y --no-install-recommends git curl && rm -rf /var/lib/apt/lists/*
 RUN if [ -n "$TORCH_INDEX" ]; then pip install torch torchvision --index-url "$TORCH_INDEX"; fi
 WORKDIR /src
@@ -356,7 +356,7 @@ EOF
 
 choose_image() {  # sets IMAGE, BASE_IMAGE, TORCH_INDEX and the .use-gpu / .use-build markers
   local suffix="" force="${1:-0}"
-  BASE_IMAGE="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime"
+  BASE_IMAGE="pytorch/pytorch:2.15.0-cuda13.2-cudnn9-runtime"
   TORCH_INDEX=""
   if has_gpu; then
     touch "$RT_HOME/.use-gpu"

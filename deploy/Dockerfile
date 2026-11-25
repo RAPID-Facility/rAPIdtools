@@ -5,17 +5,23 @@
 # (CUDA: <version>, latest; CPU: <version>-cpu, latest-cpu). To build locally:
 #
 # GPU (default): a PyTorch CUDA runtime base, so SAM 3 and the local models
-# (Gemma 4, Qwen, Llama) run on the card the host passes through.
+# (Gemma 4, Qwen, Llama) run on the card the host passes through. The base
+# carries CUDA 13, which needs NVIDIA driver 580 or newer on the host.
 #   docker build -t rapidtools-gui -f deploy/Dockerfile .
 # CPU only (cloud model APIs, slow SAM 3):
 #   docker build -t rapidtools-gui -f deploy/Dockerfile \
 #       --build-arg BASE_IMAGE=python:3.11-slim --build-arg TORCH_INDEX=https://download.pytorch.org/whl/cpu .
-ARG BASE_IMAGE=pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime
+ARG BASE_IMAGE=pytorch/pytorch:2.15.0-cuda13.2-cudnn9-runtime
 FROM ${BASE_IMAGE}
 ARG TORCH_INDEX=""
 
+# The PyTorch base installs its packages with the system Python of Ubuntu,
+# which refuses further pip installs unless PIP_BREAK_SYSTEM_PACKAGES is set.
+# The image holds nothing but this application, so installing next to them is
+# what is wanted; the setting has no effect on the CPU base.
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
     HF_HOME=/cache/huggingface \
     RAPIDTOOLS_GUI_NO_BROWSER=1
 

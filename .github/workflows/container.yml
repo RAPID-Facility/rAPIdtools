@@ -7,6 +7,8 @@ name: Container image
 #   <version>-cpu, <major.minor>-cpu, latest-cpu  CPU-only build
 # The repository is public, so the images are free to store and to pull
 # without logging in. Building needs no GPU; an ordinary runner is enough.
+# Each image is then pulled on a fresh runner and started, to check that it
+# answers the way a deployment expects.
 on:
   push:
     tags: [ "v*" ]
@@ -28,7 +30,7 @@ jobs:
       matrix:
         include:
           - variant: cuda
-            base_image: pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime
+            base_image: pytorch/pytorch:2.15.0-cuda13.2-cudnn9-runtime
             torch_index: ""
             suffix: ""
           - variant: cpu
@@ -96,3 +98,89 @@ jobs:
             TORCH_INDEX=${{ matrix.torch_index }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  # Starts each image that was just pushed and checks what a deployment relies
+  # on: the installed versions, the job command, the health check and the
+  # access token. No model weights are downloaded and no GPU is needed.
+  smoke:
+    name: smoke test (${{ matrix.variant }})
+    needs: publish
+    runs-on: ubuntu-latest
+    # Naming the shell turns on pipefail, so a failing command in front of a
+    # pipe fails its step.
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: cuda
+            suffix: ""
+          - variant: cpu
+            suffix: -cpu
+
+    steps:
+      - name: Free disk space on the runner
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune -af
+          df -h /
+
+      - name: Log in to the GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # A tag v0.3.0 was pushed as 0.3.0, a manual run on main as main.
+      - name: Pull the image
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          REF="$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]'):${TAG}${{ matrix.suffix }}"
+          echo "REF=$REF" >> "$GITHUB_ENV"
+          docker pull "$REF"
+
+      # torchvision.ops.nms fails when torch and torchvision come from
+      # different builds, which an import alone does not show.
+      - name: Check the installed packages
+        run: |
+          docker run --rm "$REF" python -c "
+          import sys, torch, torchvision, transformers, rapidtools
+          print('python', sys.version.split()[0], '| rapidtools', rapidtools.__version__,
+                '| torch', torch.__version__, '| torchvision', torchvision.__version__,
+                '| transformers', transformers.__version__)
+          boxes = torch.tensor([[0.0, 0.0, 1.0, 1.0], [0.0, 0.0, 1.0, 1.0]])
+          assert torchvision.ops.nms(boxes, torch.tensor([0.9, 0.8]), 0.5).tolist() == [0]
+          " | tee versions.txt
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            grep -q "rapidtools ${GITHUB_REF_NAME#v} " versions.txt
+          fi
+
+      - name: Check the job command
+        run: |
+          docker run --rm "$REF" rapidtools-job steps > steps.json
+          python3 -c "import json; print(len(json.load(open('steps.json'))), 'step types')"
+          docker run --rm "$REF" rapidtools-job validate /src/examples/jobs/basemap_download.json
+
+      - name: Start the server and wait for its health check
+        run: |
+          docker run -d --name gui -p 8765:8765 -e RAPIDTOOLS_GUI_TOKEN=smoke-test "$REF"
+          STATUS=starting
+          for _ in $(seq 1 60); do
+            STATUS="$(docker inspect -f '{{.State.Health.Status}}' gui)"
+            if [ "$STATUS" != starting ]; then break; fi
+            sleep 5
+          done
+          docker logs gui
+          echo "health: $STATUS"
+          test "$STATUS" = healthy
+
+      - name: Check the access token
+        run: |
+          CODE="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/api/state)"
+          echo "without the token: $CODE"
+          test "$CODE" = 401
+          curl -fsS -H "X-Rapidtools-Token: smoke-test" http://127.0.0.1:8765/api/state \
+            | python3 -c "import json, sys; print(sorted(json.load(sys.stdin))[:8])"

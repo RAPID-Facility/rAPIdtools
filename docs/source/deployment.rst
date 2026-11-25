@@ -13,7 +13,8 @@ What you need
 
 - A Linux machine with Docker and the Docker Compose plugin. For local
   models (Gemma 4, Qwen, Llama) and fast SAM 3 detection it needs an NVIDIA
-  GPU with at least 16 GB of memory, the NVIDIA driver and the `NVIDIA
+  GPU with at least 16 GB of memory, NVIDIA driver 580 or newer (the image
+  carries CUDA 13) and the `NVIDIA
   Container Toolkit <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html>`_.
   Without a GPU the cloud model backends (Gemini, Claude, OpenAI, Qwen and
   Muse Spark through their APIs) still work and SAM 3 runs slowly on the
@@ -113,8 +114,8 @@ no account.
    * - Image
      - Contents
    * - ``ghcr.io/rapid-facility/rapidtools-gui:latest``
-     - CUDA build on the PyTorch runtime base; also tagged with the
-       version (``0.3.0``, ``0.3``)
+     - CUDA build on the PyTorch 2.15 runtime base (CUDA 13.2); also
+       tagged with the version (``0.3.0``, ``0.3``)
    * - ``ghcr.io/rapid-facility/rapidtools-gui:latest-cpu``
      - CPU-only build (``0.3.0-cpu``, ``0.3-cpu``)
 

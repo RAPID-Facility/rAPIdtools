@@ -7,7 +7,7 @@ minor releases may change public APIs.
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-11-24
+## [0.3.0] - 2026-11-25
 
 ### Added
 
@@ -65,7 +65,9 @@ minor releases may change public APIs.
   webhook message or a browser alert when they end.
 - **Shared-server deployment.** `deploy/` holds a Docker and Caddy setup for
   a token-protected GUI server, with CUDA and CPU images published to
-  `ghcr.io/rapid-facility/rapidtools-gui` for every release, and
+  `ghcr.io/rapid-facility/rapidtools-gui` for every release (the CUDA image
+  builds on PyTorch 2.15 with CUDA 13.2 and needs NVIDIA driver 580 or newer
+  on the host), and
   `deploy/aws/` adds a CloudFormation template with launch and teardown
   scripts.
 - New examples for street-level vehicles, building footprints, detection

@@ -12,7 +12,7 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
       args:
-        BASE_IMAGE: ${BASE_IMAGE:-pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime}
+        BASE_IMAGE: ${BASE_IMAGE:-pytorch/pytorch:2.15.0-cuda13.2-cudnn9-runtime}
         TORCH_INDEX: ${TORCH_INDEX:-}
     restart: unless-stopped
     env_file: .env
