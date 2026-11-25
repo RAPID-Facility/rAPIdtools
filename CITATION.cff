@@ -4,20 +4,27 @@
 cff-version: 1.2.0
 message: "If you use rAPIdtools in your research, please cite it as below."
 type: software
-title: "rAPIdtools: AI inference and localization for post-disaster geospatial datasets"
+title: "rAPIdtools: A high-performance toolkit for performing large-scale AI inference and localization on post-disaster geospatial datasets"
 abstract: >-
-  rAPIdtools is a Python toolkit that connects post-disaster orthomosaics,
-  basemaps and street-level imagery with vision-language models. It crops
-  imagery around every physical asset visible in imagery, runs the crops
-  through hosted or local models, discovers and regularizes asset geometries
-  with SAM 3, and writes the results back to GeoJSON or Shapefile.
+  The UW RAPID Facility collects terabytes of perishable, hyper-resolution
+  data in the aftermath of natural disasters. As remote sensing technology has
+  evolved, the core challenge in natural hazards engineering has shifted: the
+  primary bottleneck is no longer data collection, but turning that raw data
+  into actionable intelligence.
+
+
+  rapidtools is a high-performance Python package designed to eliminate this
+  bottleneck. It delivers a seamless, object-oriented pipeline that connects
+  raw spatial datasets with state-of-the-art Large Vision-Language Models
+  (VLMs). Whether analyzing ten damaged homes or one hundred thousand regional
+  assets, rapidtools equips researchers with the tools to automate complex
+  feature extraction, pinpoint structural damage, and unlock
+  engineering-grade insights at unprecedented speed.
 authors:
   - family-names: Cetiner
     given-names: Barbaros
     orcid: "https://orcid.org/0000-0002-9726-8120"
     affiliation: "RAPID Facility, University of Washington"
-  - name: "RAPID Facility"
-    website: "https://www.uwrapid.org/"
 version: 0.3.0
 date-released: 2026-11-25
 license: BSD-3-Clause

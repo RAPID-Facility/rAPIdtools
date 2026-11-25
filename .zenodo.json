@@ -1,17 +1,20 @@
 {
-  "title": "rAPIdtools: A high-performance toolkit for performing large-scale AI inference and localization on post-disaster geospatial datasets.",
-  "description": "<p>The UW RAPID Facility collects terabytes of perishable, hyper-resolution data in the aftermath of natural disasters. As remote sensing technology has evolved, the core challenge in natural hazards engineering has shifted: the primary bottleneck is no longer data collection, but turning that raw data into actionable intelligence.</p><p><code>rapidtools</code> is a high-performance Python package designed to eliminate this bottleneck. It delivers a seamless, object-oriented pipeline that connects raw spatial datasets with state-of-the-art Large Vision-Language Models (VLMs). Whether analyzing ten damaged homes or one hundred thousand regional assets, <code>rapidtools</code> equips researchers with the tools to automate complex feature extraction, pinpoint structural damage, and unlock engineering-grade insights at unprecedented speed.</p>",
+  "title": "rAPIdtools: A high-performance toolkit for performing large-scale AI inference and localization on post-disaster geospatial datasets",
+  "description": "<p>The UW RAPID Facility collects terabytes of perishable, hyper-resolution data in the aftermath of natural disasters. As remote sensing technology has evolved, the core challenge in natural hazards engineering has shifted: the primary bottleneck is no longer data collection, but turning that raw data into actionable intelligence.</p>\n<p><code>rapidtools</code>&nbsp;is a high-performance Python package designed to eliminate this bottleneck. It delivers a seamless, object-oriented pipeline that connects raw spatial datasets with state-of-the-art Large Vision-Language Models (VLMs). Whether analyzing ten damaged homes or one hundred thousand regional assets,&nbsp;<code>rapidtools</code> equips researchers with the tools to automate complex feature extraction, pinpoint structural damage, and unlock engineering-grade insights at unprecedented speed.</p>",
   "upload_type": "software",
   "access_right": "open",
   "license": "BSD-3-Clause",
   "creators": [
     {
       "name": "Cetiner, Barbaros",
-      "affiliation": "University of Washington",
+      "affiliation": "RAPID Facility, University of Washington",
       "orcid": "0000-0002-9726-8120"
-    },
+    }
+  ],
+  "contributors": [
     {
       "name": "RAPID Facility",
+      "type": "HostingInstitution",
       "affiliation": "University of Washington"
     }
   ],

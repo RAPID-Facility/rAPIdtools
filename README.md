@@ -303,10 +303,11 @@ entries; each release is also archived on Zenodo with a DOI.
 
 ```bibtex
 @software{rapidtools,
-  author  = {Cetiner, Barbaros and {NSF NHERI RAPID Facility}},
-  title   = {rAPIdtools: AI inference and localization for post-disaster geospatial datasets},
+  author  = {Cetiner, Barbaros},
+  title   = {rAPIdtools: A high-performance toolkit for performing large-scale AI inference and localization on post-disaster geospatial datasets},
   year    = {2026},
   version = {0.3.0},
+  doi     = {10.5281/zenodo.24542491},
   url     = {https://github.com/RAPID-Facility/rAPIdtools}
 }
 ```
