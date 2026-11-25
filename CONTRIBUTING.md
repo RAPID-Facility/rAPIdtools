@@ -164,9 +164,10 @@ stays offline in more detail.
 
 Maintainers cut releases by moving the `Unreleased` entries in `CHANGELOG.md`
 under a new version heading, setting the same version in `pyproject.toml` and
-`CITATION.cff`, and pushing a `v<version>` tag. The `Release` workflow creates
-the GitHub Release from the changelog section and refuses a tag that does not
-match `pyproject.toml`.
+`CITATION.cff` (with the heading's date as `date-released`), and pushing a
+`v<version>` tag. The `Release` workflow creates the GitHub Release from the
+changelog section. It refuses a tag that does not match `pyproject.toml`, and
+a `CITATION.cff` whose version or date differs from the other two files.
 
 ## License
 

@@ -25,6 +25,48 @@ jobs:
             exit 1
           fi
 
+      # CITATION.cff feeds GitHub's "Cite this repository" button and is
+      # edited by hand for every release: its version must be the package
+      # version and its date the one in the changelog heading.
+      - name: Check that CITATION.cff matches the version and release date
+        run: |
+          python - <<'EOF'
+          import re
+          import sys
+          import tomllib
+          from pathlib import Path
+
+          version = tomllib.loads(Path('pyproject.toml').read_text())['project']['version']
+          cff = Path('CITATION.cff').read_text()
+          changelog = Path('CHANGELOG.md').read_text()
+
+
+          def cff_field(name):
+              match = re.search(rf'^{name}:\s*["\']?([^"\'\s#]+)', cff, re.MULTILINE)
+              return match.group(1) if match else None
+
+
+          heading = re.search(
+              rf'^## \[{re.escape(version)}\] - (\S+)', changelog, re.MULTILINE
+          )
+          problems = []
+          if cff_field('version') != version:
+              problems.append(
+                  f"CITATION.cff version is {cff_field('version')}, "
+                  f'pyproject.toml has {version}'
+              )
+          if heading is None:
+              problems.append(f'CHANGELOG.md has no dated heading for {version}')
+          elif cff_field('date-released') != heading.group(1):
+              problems.append(
+                  f"CITATION.cff date-released is {cff_field('date-released')}, "
+                  f'CHANGELOG.md has {heading.group(1)}'
+              )
+          for problem in problems:
+              print(problem, file=sys.stderr)
+          sys.exit(1 if problems else 0)
+          EOF
+
       - name: Extract this version's changelog section
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
