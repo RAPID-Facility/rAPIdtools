@@ -190,21 +190,47 @@ Every step is checked before the first one runs, and a result file (`job.result.
 
 ## Supported Models
 
-Every wrapper exposes `list_known_models()` (the curated catalog below, no network) and `list_available_models(api_key)` (live listing from the provider where one exists). Pass any listed ID as `model_id`; the default is marked in bold.
+Pass the name in the second column to `rt.load()` or `rt.AssetAnalyzer()`, and any model ID as `model_id`. `rt.catalog('gemini')` returns every curated ID for a provider without a network call; a wrapper's `list_available_models(api_key)` asks the provider what your key can reach.
 
-| Provider / family | `load()` name · wrapper | Key (env var) | Models |
+**Hosted models** (the key is read from the environment variable shown, or passed as `api_key=`)
+
+| Provider | Name | Key | Default model | Also available |
+|---|---|---|---|---|
+| Google Gemini | `gemini` | `GOOGLE_API_KEY` | `gemini-3.8-flash` | Gemini 4 (Neon, Carbon, Argon, Hydrogen), Gemini 3.x Flash, Flash-Lite and Pro |
+| Anthropic Claude | `claude` | `ANTHROPIC_API_KEY` | `claude-opus-5` | Fable 5.x, Opus 5.5 and 4.x, Sonnet, Haiku 4.5 |
+| OpenAI | `openai` | `OPENAI_API_KEY` | `gpt-5.5` | GPT-6.x, GPT-5.x, o3, GPT-4.x |
+| Meta Muse | `muse_spark` | `MODEL_API_KEY` | `muse-spark-1.3` | Muse Wonder 1.0, earlier Muse Spark |
+| Alibaba Qwen | `qwen` | `DASHSCOPE_API_KEY` | `qwen3.8-max` | Qwen 3.x Plus, Qwen-VL |
+
+`AssetAnalyzer('gemini')` uses `gemini-3.5-flash-lite` unless you pass a `model_id`.
+
+**Local models** (weights download from Hugging Face on first use)
+
+| Family | Name | Default model | Also available |
 |---|---|---|---|
-| Google Gemini (API) | `'gemini'` · `GeminiInference` | `GOOGLE_API_KEY` | gemini-4-neon, gemini-4-carbon, gemini-4-argon, gemini-4-hydrogen, **gemini-3.8-flash**, gemini-3.7-flash, gemini-3.6-flash, gemini-3.5-flash, gemini-3.5-flash-lite (analyzer default), gemini-3.1-pro-preview, gemini-3.1-flash-lite, gemini-3.1-flash-image, gemini-3.1-flash-lite-image, gemini-3-flash-preview, gemini-3-pro-image, gemini-omni-1.1-flash |
-| Anthropic Claude (API) | `'claude'` · `ClaudeInference` | `ANTHROPIC_API_KEY` | claude-fable-5-2, claude-fable-5-1, claude-fable-5, claude-opus-5-5, **claude-opus-5**, claude-opus-4-8, claude-opus-4-7, claude-opus-4-6, claude-sonnet-5-5, claude-sonnet-5, claude-sonnet-4-6, claude-haiku-4-5 |
-| OpenAI (API) | `'openai'` · `OpenAIInference` | `OPENAI_API_KEY` | gpt-6.2-astra, gpt-6.2-sol, gpt-6.1-sol, gpt-6.1-terra, gpt-6-astra, gpt-6-sol, gpt-6-luna, gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, **gpt-5.5**, gpt-5.5-pro, gpt-5.4, gpt-5.4-pro, gpt-5.4-mini, gpt-5.4-nano, gpt-5.2, gpt-5.1, o3, o3-pro, gpt-4.1, gpt-4.1-mini, gpt-4o, gpt-4o-mini |
-| Meta Muse Spark / Muse Wonder (API) | `'muse_spark'` · `MuseSparkInference` | `MODEL_API_KEY` | muse-wonder-1.0, **muse-spark-1.3**, muse-spark-1.3-contributor, muse-spark-1.2, muse-spark-1.2-contributor, muse-spark-1.1 |
-| Alibaba Qwen (API, Model Studio) | `'qwen'` · `QwenInference` | `DASHSCOPE_API_KEY` | **qwen3.8-max**, qwen3.8-omni-flash, qwen3.7-plus, qwen3.6-plus, qwen3.5-plus, qwen3-vl-plus, qwen3-vl-flash, qwen-vl-max, qwen-vl-plus |
-| Google Gemma 4 (local) | `'gemma4'` · `Gemma4Inference` | — | google/gemma-4-31B-it, google/gemma-4-26B-A4B-it, google/gemma-4-12B-it, google/gemma-4-E4B-it, **google/gemma-4-E2B-it** |
-| Meta Llama (local) | `'llama'` · `LlamaVisionInference` | — (gated download) | meta-llama/Llama-4-Scout-17B-16E-Instruct, meta-llama/Llama-4-Maverick-17B-128E-Instruct, **meta-llama/Llama-3.2-11B-Vision-Instruct**, meta-llama/Llama-3.2-90B-Vision-Instruct |
-| Meta Muse Glimmer (local) | `'muse_glimmer'` · `MuseGlimmerInference` | — | **meta-models/Muse-Glimmer-30B** (4-bit fits a 24 GB GPU; needs `transformers>=5.15`) |
-| Alibaba Qwen (local) | `'qwen_vl'` · `QwenVisionInference` | — | Qwen/Qwen3.8-27B, Qwen/Qwen3.8-Flash-Next, Qwen/Qwen3.6-27B, Qwen/Qwen3.6-35B-A3B, Qwen/Qwen3.5-{397B-A17B, 122B-A10B, 35B-A3B, 27B, 9B, **4B**, 2B, 0.8B}, Qwen/Qwen3-VL-{235B-A22B, 32B, 30B-A3B, 8B, 4B, 2B}-Instruct, Qwen/Qwen2.5-VL-{72B, 32B, 7B, 3B}-Instruct, Qwen/Qwen2-VL-{7B, 2B}-Instruct |
-| Any Hugging Face VLM (local) | `'hf'` · `HFVisionInference` | — | Curated list (`OPEN_VLM_CATALOG`, including zai-org/GLM-4.6V-Flash, zai-org/GLM-5.3-Flash, mistralai/Mistral-Large-4-1T-A52B and meta-models/Muse-Spark-Open-816B-A42B) plus any repo with a chat template; default **Qwen/Qwen3.5-4B** |
-| Meta SAM 3 (local segmentation) | `'sam3'` · `SAM3Inference` (used by `SAM3ImageSegmenter`, `SAM3OrthoFeatureExtractor`) | — | **facebook/sam3** |
+| Google Gemma 4 | `gemma4` | `google/gemma-4-E2B-it` | E4B, 12B, 26B-A4B, 31B |
+| Meta Llama | `llama` | `meta-llama/Llama-3.2-11B-Vision-Instruct` | Llama 3.2 90B, Llama 4 Scout and Maverick (gated downloads) |
+| Meta Muse Glimmer | `muse_glimmer` | `meta-models/Muse-Glimmer-30B` | 4-bit loading fits a 24 GB GPU |
+| Alibaba Qwen | `qwen_vl` | `Qwen/Qwen3.5-4B` | Qwen 3.8, 3.6 and 3.5 (0.8B to 397B), Qwen3-VL, Qwen2.5-VL, Qwen2-VL |
+| Other open models | `hf` | `zai-org/GLM-4.6V-Flash` | GLM 5.3 Flash, Mistral Large 4, Muse Spark Open, Gemma 3, InternVL, LLaVA, Pixtral, Granite Vision, or any Hugging Face repository with a chat template |
+| Meta SAM 3 (segmentation) | `sam3` | `facebook/sam3` | |
+
+<details>
+<summary>Every model ID in the catalogs (defaults in bold)</summary>
+
+- **Google Gemini (API)** (`GeminiInference`): gemini-4-neon, gemini-4-carbon, gemini-4-argon, gemini-4-hydrogen, **gemini-3.8-flash**, gemini-3.7-flash, gemini-3.6-flash, gemini-3.5-flash, gemini-3.5-flash-lite (analyzer default), gemini-3.1-pro-preview, gemini-3.1-flash-lite, gemini-3.1-flash-image, gemini-3.1-flash-lite-image, gemini-3-flash-preview, gemini-3-pro-image, gemini-omni-1.1-flash
+- **Anthropic Claude (API)** (`ClaudeInference`): claude-fable-5-2, claude-fable-5-1, claude-fable-5, claude-opus-5-5, **claude-opus-5**, claude-opus-4-8, claude-opus-4-7, claude-opus-4-6, claude-sonnet-5-5, claude-sonnet-5, claude-sonnet-4-6, claude-haiku-4-5
+- **OpenAI (API)** (`OpenAIInference`): gpt-6.2-astra, gpt-6.2-sol, gpt-6.1-sol, gpt-6.1-terra, gpt-6-astra, gpt-6-sol, gpt-6-luna, gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, **gpt-5.5**, gpt-5.5-pro, gpt-5.4, gpt-5.4-pro, gpt-5.4-mini, gpt-5.4-nano, gpt-5.2, gpt-5.1, o3, o3-pro, gpt-4.1, gpt-4.1-mini, gpt-4o, gpt-4o-mini
+- **Meta Muse Spark / Muse Wonder (API)** (`MuseSparkInference`): muse-wonder-1.0, **muse-spark-1.3**, muse-spark-1.3-contributor, muse-spark-1.2, muse-spark-1.2-contributor, muse-spark-1.1
+- **Alibaba Qwen (API, Model Studio)** (`QwenInference`): **qwen3.8-max**, qwen3.8-omni-flash, qwen3.7-plus, qwen3.6-plus, qwen3.5-plus, qwen3-vl-plus, qwen3-vl-flash, qwen-vl-max, qwen-vl-plus
+- **Google Gemma 4 (local)** (`Gemma4Inference`): google/gemma-4-31B-it, google/gemma-4-26B-A4B-it, google/gemma-4-12B-it, google/gemma-4-E4B-it, **google/gemma-4-E2B-it**
+- **Meta Llama (local)** (`LlamaVisionInference`): meta-llama/Llama-4-Scout-17B-16E-Instruct, meta-llama/Llama-4-Maverick-17B-128E-Instruct, **meta-llama/Llama-3.2-11B-Vision-Instruct**, meta-llama/Llama-3.2-90B-Vision-Instruct
+- **Meta Muse Glimmer (local)** (`MuseGlimmerInference`): **meta-models/Muse-Glimmer-30B** (4-bit fits a 24 GB GPU; needs `transformers>=5.15`)
+- **Alibaba Qwen (local)** (`QwenVisionInference`): Qwen/Qwen3.8-27B, Qwen/Qwen3.8-Flash-Next, Qwen/Qwen3.6-27B, Qwen/Qwen3.6-35B-A3B, Qwen/Qwen3.5-{397B-A17B, 122B-A10B, 35B-A3B, 27B, 9B, **4B**, 2B, 0.8B}, Qwen/Qwen3-VL-{235B-A22B, 32B, 30B-A3B, 8B, 4B, 2B}-Instruct, Qwen/Qwen2.5-VL-{72B, 32B, 7B, 3B}-Instruct, Qwen/Qwen2-VL-{7B, 2B}-Instruct
+- **Any Hugging Face VLM (local)** (`HFVisionInference`): Curated list (`OPEN_VLM_CATALOG`, including **zai-org/GLM-4.6V-Flash**, zai-org/GLM-5.3-Flash, mistralai/Mistral-Large-4-1T-A52B and meta-models/Muse-Spark-Open-816B-A42B) plus any repo with a chat template
+- **Meta SAM 3 (local segmentation)** (`SAM3Inference`, used by `SAM3ImageSegmenter` and `SAM3OrthoFeatureExtractor`): **facebook/sam3**
+
+</details>
 
 ```python
 import rapidtools as rt

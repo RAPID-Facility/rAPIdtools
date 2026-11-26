@@ -117,6 +117,36 @@ def transformers_at_least(minimum: str) -> bool:
     return Version(transformers_version()) >= Version(minimum)
 
 
+def split_reasoning(text: str) -> tuple[str, bool]:
+    """
+    Separate a model's answer from its ``<think>...</think>`` reasoning.
+
+    Reasoning models such as GLM-4.6V write their reasoning first and the
+    answer after the closing tag. Text without the tags is returned unchanged.
+
+    Args:
+        text: Decoded model output.
+
+    Returns:
+        tuple[str, bool]: The answer, and ``True`` when the reasoning was
+        still open at the end of the output (the output limit was reached
+        before any answer was written; the answer is then empty).
+
+    Example:
+        >>> split_reasoning('<think>Two roofs, one burned.</think>{"damaged": 1}')
+        ('{"damaged": 1}', False)
+        >>> split_reasoning('<think>Let me count the')
+        ('', True)
+        >>> split_reasoning('ready')
+        ('ready', False)
+    """
+    if '</think>' in text:
+        return text.rsplit('</think>', 1)[1].strip(), False
+    if text.lstrip().startswith('<think>'):
+        return '', True
+    return text, False
+
+
 def _load_multimodal_model(model_id: str, **kwargs: Any):
     """
     Load a checkpoint with whichever multimodal auto class Transformers has.
@@ -370,7 +400,12 @@ class HFVisionInference(BaseLocalInferenceModel):
     def _generate(
         self, messages_batch: list[list[dict[str, Any]]], kwargs: dict[str, Any]
     ) -> list[str]:
-        """Tokenize one or more conversations, generate, and decode new tokens."""
+        """
+        Tokenize one or more conversations, generate, and decode new tokens.
+
+        The text is returned as generated, reasoning included;
+        :meth:`_to_output` separates the answer.
+        """
         inputs = self.processor.apply_chat_template(
             messages_batch if len(messages_batch) > 1 else messages_batch[0],
             tokenize=True,
@@ -386,6 +421,21 @@ class HFVisionInference(BaseLocalInferenceModel):
             self.processor.decode(row[input_len:], skip_special_tokens=True).strip()
             for row in outputs
         ]
+
+    def _to_output(self, generated: str, kwargs: dict[str, Any]) -> ModelOutput:
+        """Wrap generated text, keeping any reasoning out of the answer."""
+        raw = {'generated_text': generated}
+        answer, cut_off = split_reasoning(generated)
+        if cut_off:
+            limit = self._generation_kwargs(kwargs)['max_new_tokens']
+            reason = (
+                f'The output limit of {limit} tokens was used up before the '
+                'model wrote an answer (its reasoning counts against it). '
+                'Raise max_tokens.'
+            )
+            logger.warning(f'{self.model_id}: {reason}')
+            return ModelOutput.failure(reason, raw_response=raw)
+        return ModelOutput(text=answer, raw_response=raw)
 
     # ---------------------------------------------------------- inference
     def run_inference(
@@ -406,7 +456,11 @@ class HFVisionInference(BaseLocalInferenceModel):
 
         Returns:
             ModelOutput | None: Generated text, or ``None`` when every image
-            failed to load or generation raised.
+            failed to load or generation raised. The reasoning of models
+            that write a ``<think>`` block is left out of ``text`` (the full
+            output stays in ``raw_response``); when the output limit is
+            reached before the answer, the output is a failure whose
+            ``error`` says to raise ``max_tokens``.
 
         Example:
             >>> from rapidtools.models import HFVisionInference
@@ -428,7 +482,7 @@ class HFVisionInference(BaseLocalInferenceModel):
         except Exception as exc:  # noqa: BLE001 - surfaced as a failed asset
             logger.error(f'Inference failed for {self.model_id}: {exc}')
             return None
-        return ModelOutput(text=text, raw_response={'generated_text': text})
+        return self._to_output(text, kwargs)
 
     def run_inference_batch(
         self,
@@ -483,5 +537,5 @@ class HFVisionInference(BaseLocalInferenceModel):
                     )
             return results
         for i, text in zip(valid, texts, strict=True):
-            results[i] = ModelOutput(text=text, raw_response={'generated_text': text})
+            results[i] = self._to_output(text, kwargs)
         return results

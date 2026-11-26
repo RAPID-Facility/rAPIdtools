@@ -463,7 +463,9 @@ OPEN_VLM_CATALOG: list[dict[str, str]] = [
     },
 ]
 
-DEFAULT_OPEN_VLM = 'Qwen/Qwen3.5-4B'
+# Default of the generic ``hf`` provider. A 10B model: about 20 GB of weights,
+# so pass ``load_in_4bit=True`` on GPUs with less than 24 GB.
+DEFAULT_OPEN_VLM = 'zai-org/GLM-4.6V-Flash'
 
 
 # --- sam3

@@ -17,7 +17,7 @@ minor releases may change public APIs.
   `zai-org/GLM-5.3-Flash`, `mistralai/Mistral-Large-4-1T-A52B` and
   `meta-models/Muse-Spark-Open-816B-A42B`. Only GLM-4.6V-Flash fits a single
   24 GB GPU; the others need a multi-GPU server. Default models are
-  unchanged.
+  unchanged, apart from the `hf` provider (see Changed).
 - **Per-model defaults.** Hosted wrappers built without `max_tokens` use
   the default of their model: 2,048 as before, 32,768 for Gemini 4, whose
   thinking counts against the limit. `set_model_defaults()` and
@@ -32,6 +32,20 @@ minor releases may change public APIs.
   its whole limit on thinking used to come back as an empty success; it
   is now a failure that says to raise `max_tokens`, and a partly written
   answer logs a truncation warning.
+
+### Changed
+
+- **New default for other open models.** `load('hf')`, `HFVisionInference()`
+  and *Other open models* in the GUI now default to `zai-org/GLM-4.6V-Flash`
+  (10B) instead of `Qwen/Qwen3.5-4B`. Its weights are about 20 GB; pass
+  `load_in_4bit=True` on GPUs with less than 24 GB (the GUI does so by
+  default). Pass `model_id='Qwen/Qwen3.5-4B'` to keep the old model.
+- **Reasoning is kept out of local answers.** Models that write a
+  `<think>...</think>` block before answering, GLM-4.6V among them, used to
+  return it as part of the answer. `HFVisionInference` and the wrappers
+  built on it now return only the answer in `text` (the full output stays
+  in `raw_response`), and report a failure that says to raise `max_tokens`
+  when the limit is reached before the answer.
 
 ## [0.3.0] - 2026-11-25
 

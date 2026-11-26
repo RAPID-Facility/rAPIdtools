@@ -66,9 +66,10 @@ Choosing a model
    * - Any Hugging Face VLM
      - ``hf``
      - local
-     - Any repo with a chat template (Gemma 3, LLaVA, InternVL, Pixtral,
-       Granite Vision, ...). The catalog also lists GLM-4.6V Flash, which
-       fits a 24 GB GPU, and GLM 5.3 Flash, Qwen3.8 Flash Next,
+     - ``zai-org/GLM-4.6V-Flash`` (10B; pass ``load_in_4bit=True`` on
+       GPUs with less than 24 GB), or any repo with a chat template
+       (Gemma 3, LLaVA, InternVL, Pixtral, Granite Vision, ...). The
+       catalog also lists GLM 5.3 Flash, Qwen3.8 Flash Next,
        Mistral Large 4 and Muse Spark Open, which need a multi-GPU server.
    * - Meta SAM 3
      - ``sam3``
@@ -142,6 +143,12 @@ download automatically once you are logged in to the Hugging Face Hub (see
 .. code-block:: python
 
    model = load('qwen_vl', model_id='Qwen/Qwen3.5-9B', load_in_4bit=True, device='cuda')
+
+Some open models, GLM-4.6V among them, write their reasoning in a
+``<think>`` block before the answer. The wrappers return only the answer in
+``text`` and keep the full output in ``raw_response``. The reasoning counts
+against ``max_tokens`` (512 by default for local models): when the limit is
+reached before the answer, the output is a failure that says to raise it.
 
 Single images
 -------------

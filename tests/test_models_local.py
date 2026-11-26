@@ -444,6 +444,35 @@ def test_hf_vision_batch_length_mismatch(fake_hf, image):
         model.run_inference_batch([[image]], ['a', 'b'])
 
 
+def test_hf_vision_default_and_reasoning_split():
+    """The generic default is GLM-4.6V Flash; reasoning is split from answers."""
+    assert hf_mod.DEFAULT_OPEN_VLM == 'zai-org/GLM-4.6V-Flash'
+    assert hf_mod.DEFAULT_OPEN_VLM in HFVisionInference.list_available_models()
+    split = hf_mod.split_reasoning
+    assert split('<think>two roofs</think>\n{"n": 2}') == ('{"n": 2}', False)
+    assert split('<think>a</think>x<think>b</think> y') == ('y', False)
+    assert split('  <think>still counting') == ('', True)
+    assert split('plain answer') == ('plain answer', False)
+
+
+def test_hf_vision_keeps_reasoning_out_of_answers(fake_hf, image, monkeypatch):
+    """Answers lose the reasoning block; a cut-off one is a failure."""
+    model = HFVisionInference('org/m', max_tokens=64)
+    replies = ['<think>one house, burned</think>```json\n{"level": 4}\n```']
+    monkeypatch.setattr(model, '_generate', lambda messages, kwargs: list(replies))
+
+    out = model.run_inference(image, 'Rate it.')
+    assert out.text == '```json\n{"level": 4}\n```'
+    assert out.raw_response['generated_text'] == replies[0]
+
+    replies[:] = ['<think>one house,', 'fine']
+    cut, plain = model.run_inference_batch([[image], [image]], ['a', 'b'])
+    assert cut.failed and not cut.has_text
+    assert '64 tokens' in cut.error and 'max_tokens' in cut.error
+    assert cut.raw_response['generated_text'] == '<think>one house,'
+    assert plain.text == 'fine' and not plain.failed
+
+
 def test_search_hub_models(monkeypatch):
     """Hub results are appended after the curated list; failures degrade."""
     import huggingface_hub
