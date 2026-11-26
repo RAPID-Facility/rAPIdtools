@@ -44,8 +44,9 @@ Any model that Transformers exposes through its multimodal auto class
 (``AutoModelForMultimodalLM`` / ``AutoModelForImageTextToText``) and that
 ships a chat template can be used: Qwen3.8 / Qwen3.6 / Qwen3.5 / Qwen3-VL /
 Qwen2.5-VL, Meta Muse Glimmer, Llama 4 and Llama 3.2 Vision, Gemma 3 and
-Gemma 3n, InternVL3.5 / InternVL3, LLaVA-NeXT / LLaVA-OneVision, Pixtral,
-Granite Vision and many more.
+Gemma 3n, GLM-4.6V / GLM-5.3, Mistral Large 4, Muse Spark Open, InternVL3.5 /
+InternVL3, LLaVA-NeXT / LLaVA-OneVision, Pixtral, Granite Vision and many
+more.
 
 :class:`HFVisionInference` is also the base class of the family-specific
 wrappers :class:`~rapidtools.models.QwenVisionInference` and
@@ -55,7 +56,7 @@ default checkpoint and catalog.
 Example:
     >>> from rapidtools.models import HFVisionInference
     >>> HFVisionInference.list_available_models()[:2]
-    ['Qwen/Qwen3.8-27B', 'Qwen/Qwen3.6-27B']
+    ['Qwen/Qwen3.8-27B', 'Qwen/Qwen3.8-Flash-Next']
     >>> model = HFVisionInference('Qwen/Qwen2.5-VL-3B-Instruct', load_in_4bit=True)
     >>> out = model.run_inference('roof.jpg', 'Describe the roof damage.')
     >>> print(out.text)

@@ -65,13 +65,13 @@ class OpenAIInference(BaseOpenAICompatibleInference):
     OpenAI Chat Completions client for image + text prompts.
 
     The key is read from ``api_key`` (string or key-file path) or the
-    ``OPENAI_API_KEY`` environment variable. Reasoning models (GPT-5.x, GPT-6,
+    ``OPENAI_API_KEY`` environment variable. Reasoning models (GPT-5.x, GPT-6.x,
     o-series) do not accept ``temperature``; it is omitted automatically.
 
     Example:
         >>> from rapidtools.models import OpenAIInference
         >>> OpenAIInference.list_known_models()[:2]
-        ['gpt-6-astra', 'gpt-6-sol']
+        ['gpt-6.2-astra', 'gpt-6.2-sol']
         >>> model = OpenAIInference(api_key='sk-...')
         >>> for asset_id, status, out in model.run_batch(
         ...     [('b1', ['b1.jpg']), ('b2', ['b2.jpg'])], 'Rate the damage 0-5.'

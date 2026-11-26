@@ -677,7 +677,7 @@ class BaseAPIAssetAnalyzer(AssetAnalyzer):
         cooldown_duration: int | None = 30,
         system_instruction: str | None = None,
         temperature: float = 0.4,
-        max_tokens: int = 2048,
+        max_tokens: int | None = None,
         image_filter: Callable[[ImageAsset], bool] | None = None,
         cancel_event: threading.Event | None = None,
     ):
@@ -693,7 +693,8 @@ class BaseAPIAssetAnalyzer(AssetAnalyzer):
             cooldown_duration: Base seconds to wait on rate limit. Defaults to 30.
             system_instruction: Optional model persona/constraints.
             temperature: Randomness (0.0 to 2.0).
-            max_tokens: Maximum output length.
+            max_tokens: Maximum output length; ``None`` uses the model's
+                default (2,048 for most models).
             image_filter: Optional function to filter ImageAssets.
             cancel_event: Optional ``threading.Event``; when set, the analyzer
                 stops submitting requests and raises ``OperationCanceled``.

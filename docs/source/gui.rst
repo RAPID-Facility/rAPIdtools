@@ -52,7 +52,10 @@ The three steps
    Llama Vision, Muse Glimmer and Qwen locally; and any Hugging Face
    vision-language checkpoint with optional 4-bit loading. *Fetch models*
    lists the IDs your key can reach. Temperature, output length and JSON
-   mode live under *Advanced options*. The prompt can come from a file, from
+   mode live under *Advanced options*. The output length follows the
+   selected model (2,048 tokens for most, 32,768 for Gemini 4, whose
+   thinking counts against the limit) until you type your own value. The
+   prompt can come from a file, from
    the sample library (aerial CHS, street-level CHS, street-level recovery)
    or from the prompt builder described below.
 3. **Results.** Hover over an asset to see its attributes, click one to view

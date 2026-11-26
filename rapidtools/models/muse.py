@@ -38,11 +38,12 @@
 # 09-22-2026
 
 """
-Meta Muse models: the hosted Muse Spark API and the open-weight Muse Glimmer.
+Meta Muse models: the hosted Muse Spark / Muse Wonder API and Muse Glimmer.
 
 * :class:`MuseSparkInference` calls Meta's Model API
   (``https://api.meta.ai/v1``), which is OpenAI-compatible. Keys are read from
-  ``MODEL_API_KEY`` (Meta's documented name) or ``META_API_KEY``.
+  ``MODEL_API_KEY`` (Meta's documented name) or ``META_API_KEY``. The same
+  class serves Muse Wonder: pass ``model_id='muse-wonder-1.0'``.
 * :class:`MuseGlimmerInference` runs ``meta-models/Muse-Glimmer-30B`` locally
   through Hugging Face Transformers (>= 5.15). The 30B dense model fits a
   24 GB GPU with ``load_in_4bit=True``.
@@ -72,15 +73,15 @@ META_BASE_URL = 'https://api.meta.ai/v1'
 
 class MuseSparkInference(BaseOpenAICompatibleInference):
     """
-    Meta Model API client for the Muse Spark family.
+    Meta Model API client for the Muse Spark family and Muse Wonder.
 
     Uses the OpenAI-compatible ``/chat/completions`` endpoint with Bearer
     authentication. Images are sent inline as Base64 data URIs.
 
     Example:
         >>> from rapidtools.models import MuseSparkInference
-        >>> MuseSparkInference.list_known_models()[0]
-        'muse-spark-1.3'
+        >>> MuseSparkInference.list_known_models()[:2]
+        ['muse-wonder-1.0', 'muse-spark-1.3']
         >>> model = MuseSparkInference(api_key='...', model_id='muse-spark-1.3')
         >>> out = model.run_inference(['a.jpg', 'b.jpg'], 'Which house is damaged?')
         >>> print(out.text)

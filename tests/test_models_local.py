@@ -288,6 +288,15 @@ def test_catalogs_are_consistent():
     )
     assert MuseGlimmerInference.DEFAULT_MODEL == 'meta-models/Muse-Glimmer-30B'
     assert 'Qwen/Qwen3.8-27B' in QwenVisionInference.list_available_models()
+    assert 'Qwen/Qwen3.8-Flash-Next' in QwenVisionInference.list_available_models()
+    for model_id in (
+        'Qwen/Qwen3.8-Flash-Next',
+        'meta-models/Muse-Spark-Open-816B-A42B',
+        'mistralai/Mistral-Large-4-1T-A52B',
+        'zai-org/GLM-5.3-Flash',
+        'zai-org/GLM-4.6V-Flash',
+    ):
+        assert model_id in HFVisionInference.list_available_models()
     assert (
         'meta-llama/Llama-4-Scout-17B-16E-Instruct'
         in LlamaVisionInference.list_available_models()

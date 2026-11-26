@@ -346,9 +346,9 @@ analyze.vlm
      - ``0.4``
      - Sampling temperature. Must be at least 0.
    * - ``max_tokens``
-     - integer
-     - ``2048``
-     - Longest answer the model may give, in tokens. Must be at least 1.
+     - integer or null
+     - ``null``
+     - Longest answer the model may give, in tokens. null uses the default of the chosen model: 2048 for most, 32768 for Gemini 4, whose thinking counts against the limit. Must be at least 1.
    * - ``json_mode``
      - boolean
      - ``false``

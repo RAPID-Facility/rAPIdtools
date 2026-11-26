@@ -162,6 +162,8 @@ to a :class:`ModelInfo` record and is always importable without PyTorch.
    load
    list_providers
    catalog
+   model_defaults
+   set_model_defaults
    get_model_class
    ModelInfo
    GenerationConfig

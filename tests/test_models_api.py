@@ -176,6 +176,13 @@ def test_latest_models_are_present():
     assert 'gemini-3.1-pro-preview' in GeminiInference.list_known_models()
     assert 'muse-spark-1.3' in MuseSparkInference.list_known_models()
     assert 'qwen3.8-max' in QwenInference.list_known_models()
+    for model_id in ('gpt-6.2-astra', 'gpt-6.2-sol', 'gpt-6.1-sol', 'gpt-6.1-terra'):
+        assert model_id in OpenAIInference.list_known_models()
+    for model_id in ('claude-fable-5-2', 'claude-opus-5-5', 'claude-sonnet-5-5'):
+        assert model_id in ClaudeInference.list_known_models()
+    for element in ('neon', 'carbon', 'argon', 'hydrogen'):
+        assert f'gemini-4-{element}' in GeminiInference.list_known_models()
+    assert 'muse-wonder-1.0' in MuseSparkInference.list_known_models()
 
 
 def test_base_api_model_mime_and_encoding(image, requests_mock):
@@ -569,6 +576,8 @@ def test_claude_supports_temperature():
     assert ClaudeInference.supports_temperature('claude-opus-5') is False
     assert ClaudeInference.supports_temperature('claude-fable-5-1') is False
     assert ClaudeInference.supports_temperature('claude-sonnet-5') is False
+    for model_id in ('claude-fable-5-2', 'claude-opus-5-5', 'claude-sonnet-5-5'):
+        assert ClaudeInference.supports_temperature(model_id) is False
     assert ClaudeInference.supports_temperature('claude-opus-4-6') is True
     assert ClaudeInference.supports_temperature('claude-haiku-4-5') is True
 
@@ -894,3 +903,93 @@ def test_gemini_none_images(requests_mock):
         json=_gemini_response('hi'),
     )
     assert GeminiInference(api_key='k').run_inference(None, 'p').text == 'hi'
+
+
+# ==========================================
+# Per-model defaults
+# ==========================================
+
+
+def test_model_defaults_table():
+    """Exact IDs beat prefixes, longer prefixes beat shorter, None removes."""
+    from rapidtools.models import MODEL_DEFAULTS, model_defaults, set_model_defaults
+    from rapidtools.models.catalogs import resolve_model_default
+
+    assert model_defaults('gemini-4-neon') == {'max_tokens': 32768}
+    assert model_defaults('gemini-3.8-flash') == {}
+    assert resolve_model_default('gemini-4-argon', 'max_tokens', None, 2048) == 32768
+    assert resolve_model_default('gemini-4-argon', 'max_tokens', 512, 2048) == 512
+    assert resolve_model_default('gpt-5.5', 'max_tokens', None, 2048) == 2048
+
+    before = {key: dict(value) for key, value in MODEL_DEFAULTS.items()}
+    try:
+        set_model_defaults('demo-*', max_tokens=100, temperature=0.1)
+        set_model_defaults('demo-pro-*', max_tokens=200)
+        set_model_defaults('demo-pro-1', max_tokens=300)
+        assert model_defaults('demo-lite') == {'max_tokens': 100, 'temperature': 0.1}
+        assert model_defaults('demo-pro-2')['max_tokens'] == 200
+        assert model_defaults('demo-pro-1') == {'max_tokens': 300, 'temperature': 0.1}
+        set_model_defaults('demo-pro-1', max_tokens=None)
+        assert 'demo-pro-1' not in MODEL_DEFAULTS
+        set_model_defaults('demo-*', temperature=None)
+        assert MODEL_DEFAULTS['demo-*'] == {'max_tokens': 100}
+    finally:
+        MODEL_DEFAULTS.clear()
+        MODEL_DEFAULTS.update(before)
+
+
+def test_wrappers_use_model_default_output_limit(requests_mock, image):
+    """An unset max_tokens resolves per model; an explicit value always wins."""
+    from rapidtools.models import MODEL_DEFAULTS, set_model_defaults
+
+    requests_mock.get(f'{GEMINI_BASE_URL}/models', json={'models': []})
+    requests_mock.get(f'{ANTHROPIC_BASE_URL}/models', json={'data': []})
+    requests_mock.get(f'{OPENAI_BASE_URL}/models', json={'data': []})
+    assert GeminiInference(api_key='k').max_tokens == 2048
+    assert (
+        GeminiInference(
+            api_key='k', model_id='gemini-4-neon', max_tokens=900
+        ).max_tokens
+        == 900
+    )
+    assert ClaudeInference(api_key='k').max_tokens == 2048
+    assert OpenAIInference(api_key='k').max_tokens == 2048
+
+    post = requests_mock.post(
+        f'{GEMINI_BASE_URL}/models/gemini-4-argon:generateContent',
+        json=_gemini_response('ok'),
+    )
+    model = GeminiInference(api_key='k', model_id='models/gemini-4-argon')
+    assert model.max_tokens == 32768
+    model.run_inference(image, 'p')
+    assert post.last_request.json()['generationConfig']['maxOutputTokens'] == 32768
+
+    before = {key: dict(value) for key, value in MODEL_DEFAULTS.items()}
+    try:
+        set_model_defaults('claude-opus-5-5', max_tokens=8192)
+        set_model_defaults('gpt-6.2-*', max_tokens=16000)
+        assert (
+            ClaudeInference(api_key='k', model_id='claude-opus-5-5').max_tokens == 8192
+        )
+        assert OpenAIInference(api_key='k', model_id='gpt-6.2-sol').max_tokens == 16000
+        assert QwenInference(api_key='k').max_tokens == 2048
+    finally:
+        MODEL_DEFAULTS.clear()
+        MODEL_DEFAULTS.update(before)
+
+
+def test_gemini_reports_answer_cut_off_by_output_limit(requests_mock, image, caplog):
+    """A limit spent on thinking fails clearly; partial text is kept with a warning."""
+    requests_mock.get(f'{GEMINI_BASE_URL}/models', json={'models': []})
+    url = f'{GEMINI_BASE_URL}/models/gemini-4-neon:generateContent'
+    model = GeminiInference(api_key='k', model_id='gemini-4-neon', max_tokens=256)
+
+    requests_mock.post(url, json=_gemini_response('', finish='MAX_TOKENS'))
+    spent = model.run_inference(image, 'p')
+    assert spent.failed and not spent.retryable
+    assert 'output limit of 256 tokens' in spent.error and 'max_tokens' in spent.error
+
+    requests_mock.post(url, json=_gemini_response('{"level": 2', finish='MAX_TOKENS'))
+    partial = model.run_inference(image, 'p')
+    assert partial.text == '{"level": 2' and not partial.failed
+    assert 'truncated due to max_tokens' in caplog.text

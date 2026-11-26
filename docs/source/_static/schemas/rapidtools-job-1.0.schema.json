@@ -724,10 +724,13 @@
               "default": 0.4
             },
             "max_tokens": {
-              "type": "integer",
+              "type": [
+                "integer",
+                "null"
+              ],
               "minimum": 1,
-              "description": "Longest answer the model may give, in tokens.",
-              "default": 2048
+              "description": "Longest answer the model may give, in tokens. null uses the default of the chosen model: 2048 for most, 32768 for Gemini 4, whose thinking counts against the limit.",
+              "default": null
             },
             "json_mode": {
               "type": "boolean",

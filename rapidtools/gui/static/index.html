@@ -1038,7 +1038,27 @@ Justification: [2-3 sentences citing visual evidence]`;
     if (custom) $('model-id-custom').value = custom;
   }
   function modelId() { const v = $('model-id').value; return v === '__custom__' ? $('model-id-custom').value.trim() : v; }
-  $('model-id').addEventListener('change', () => { $('model-id-custom').style.display = $('model-id').value === '__custom__' ? '' : 'none'; if ($('model-id').value === '__custom__') $('model-id-custom').focus(); });
+  // The output-token limit follows the default of the chosen model (some need far
+  // more than 2048) until the user types a limit of their own.
+  function modelMaxTokens(m) {
+    const table = (S.state && S.state.options.model_defaults) || {};
+    let best = 2048, bestLen = -1;
+    for (const [key, v] of Object.entries(table)) {
+      if (v.max_tokens == null) continue;
+      const len = key === m ? Infinity : (key.endsWith('*') && m.startsWith(key.slice(0, -1)) ? key.length : -1);
+      if (len > bestLen) { best = v.max_tokens; bestLen = len; }
+    }
+    return best;
+  }
+  let tokensModel = null;
+  function syncMaxTokens() {
+    const m = modelId(), el = $('max-tokens');
+    const prior = tokensModel === null ? 2048 : modelMaxTokens(tokensModel);
+    if (Number(el.value) === prior) el.value = modelMaxTokens(m);
+    tokensModel = m;
+  }
+  $('model-id').addEventListener('change', () => { $('model-id-custom').style.display = $('model-id').value === '__custom__' ? '' : 'none'; if ($('model-id').value === '__custom__') $('model-id-custom').focus(); syncMaxTokens(); });
+  $('model-id-custom').addEventListener('change', syncMaxTokens);
   function buildBackendCards() {
     const specs = S.state.options.backends || {};
     $('backend').innerHTML = Object.entries(specs).map(([key, sp]) =>
@@ -1061,6 +1081,7 @@ Justification: [2-3 sentences citing visual evidence]`;
     const list = modelLists[b] || sp.models;
     const want = $('model-id').dataset.want || modelId(); delete $('model-id').dataset.want;
     fillModelSelect(list, list.includes(want) ? want : sp.default_model);
+    syncMaxTokens();
     $('model-hint').textContent = isApi ? `Default: ${sp.default_model}. Fetch models lists what your key can access.` : `Hugging Face repository. Default: ${sp.default_model}.`;
     saveForm();
   }
@@ -1069,6 +1090,7 @@ Justification: [2-3 sentences citing visual evidence]`;
     const r = await api('/api/models', { backend, api_key: $('api-key').value });
     modelLists[backend] = r.models;
     fillModelSelect(r.models, modelId());
+    syncMaxTokens();
     $('model-hint').textContent = `${r.models.length} model(s) available for ${sp.label}. Pick one from the list.`;
     if (sp.kind === 'api' && !$('api-key').value.trim()) toast('No API key given, showing the built-in list only.');
     else toast(`${r.models.length} models listed.`, 'ok');

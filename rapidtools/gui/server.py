@@ -118,6 +118,7 @@ from rapidtools.gui.workflow import (
 )
 from rapidtools.jobs import Job, JobError, JobRunner, Secrets, StepResult, new_job
 from rapidtools.jobs.schema import write_json_atomic
+from rapidtools.models.catalogs import MODEL_DEFAULTS
 
 logger = logging.getLogger(__name__)
 
@@ -785,6 +786,7 @@ class AppState:
                     'gemini_model': DEFAULT_GEMINI_MODEL_ID,
                     'gemma_models': list(GEMMA4_MODEL_IDS),
                     'backends': MODEL_BACKENDS,
+                    'model_defaults': MODEL_DEFAULTS,
                     'basemaps': BASEMAP_PROVIDERS,
                     'imagery_sources': IMAGERY_SOURCES,
                     'street_classes': list(STREET_CLASS_EXAMPLES),
@@ -1513,7 +1515,11 @@ class Api:
                 'max_workers': int(body.get('max_workers', 5)),
                 'batch_size': int(body.get('batch_size', 4)),
                 'temperature': float(body.get('temperature', 0.4)),
-                'max_tokens': int(body.get('max_tokens', 2048)),
+                'max_tokens': (
+                    int(body['max_tokens'])
+                    if body.get('max_tokens') not in (None, '')
+                    else None
+                ),
                 'json_mode': bool(body.get('json_mode', False)),
                 'load_in_4bit': bool(body.get('load_in_4bit', True)),
                 'overlay_asset_outline': bool(body.get('overlay_outline', True)),

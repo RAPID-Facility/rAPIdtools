@@ -79,6 +79,7 @@ from .api_base import (
     resolve_api_key,
 )
 from .base import GenerationConfig, ModelOutput
+from .catalogs import resolve_model_default
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +139,7 @@ class BaseOpenAICompatibleInference(BaseAPIInferenceModel):
         max_retries: int = 3,
         system_instruction: str | None = None,
         temperature: float = 0.4,
-        max_tokens: int = 2048,
+        max_tokens: int | None = None,
         timeout: float = API_REQUEST_TIMEOUT,
         base_url: str | None = None,
     ):
@@ -154,7 +155,9 @@ class BaseOpenAICompatibleInference(BaseAPIInferenceModel):
             system_instruction: Optional system prompt sent with every call.
             temperature: Sampling temperature (ignored for models that do not
                 accept it).
-            max_tokens: Maximum tokens generated per response.
+            max_tokens: Maximum tokens generated per response. ``None``
+                uses the model's default
+                (:func:`~rapidtools.models.model_defaults`) or 2,048.
             timeout: Seconds to wait for each response (default 60).
             base_url: Override the provider root URL (e.g. a regional
                 endpoint or a proxy).
@@ -170,7 +173,9 @@ class BaseOpenAICompatibleInference(BaseAPIInferenceModel):
         self.model_id = model_id or self.DEFAULT_MODEL
         self.system_instruction = system_instruction
         self.temperature = temperature
-        self.max_tokens = max_tokens
+        self.max_tokens = resolve_model_default(
+            self.model_id, 'max_tokens', max_tokens, 2048
+        )
         self.base_url = (base_url or self.BASE_URL).rstrip('/')
 
         self.session.headers.update(

@@ -7,6 +7,32 @@ minor releases may change public APIs.
 
 ## [Unreleased]
 
+### Added
+
+- **Newer models in the catalogs.** Hosted: Gemini 4 (`gemini-4-neon`,
+  `gemini-4-carbon`, `gemini-4-argon`, `gemini-4-hydrogen`), GPT-6.2 Astra
+  and Sol, GPT-6.1 Sol and Terra, Claude Fable 5.2, Opus 5.5 and Sonnet 5.5,
+  and Muse Wonder (`muse-wonder-1.0`, through `MuseSparkInference`). Open
+  weights: `Qwen/Qwen3.8-Flash-Next`, `zai-org/GLM-4.6V-Flash`,
+  `zai-org/GLM-5.3-Flash`, `mistralai/Mistral-Large-4-1T-A52B` and
+  `meta-models/Muse-Spark-Open-816B-A42B`. Only GLM-4.6V-Flash fits a single
+  24 GB GPU; the others need a multi-GPU server. Default models are
+  unchanged.
+- **Per-model defaults.** Hosted wrappers built without `max_tokens` use
+  the default of their model: 2,048 as before, 32,768 for Gemini 4, whose
+  thinking counts against the limit. `set_model_defaults()` and
+  `model_defaults()` in `rapidtools.models` change and show them. The
+  `max_tokens` of the `analyze` job step now defaults to `null` (the
+  model's default), and the GUI field follows the selected model until
+  you type a limit.
+
+### Fixed
+
+- **Gemini answers cut off by the output limit.** A response that spent
+  its whole limit on thinking used to come back as an empty success; it
+  is now a failure that says to raise `max_tokens`, and a partly written
+  answer logs a truncation warning.
+
 ## [0.3.0] - 2026-11-25
 
 ### Added

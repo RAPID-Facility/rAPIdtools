@@ -81,6 +81,7 @@ from .catalogs import (
     GEMINI_MODEL_CATALOG,
     GEMMA4_MODEL_CATALOG,
     LLAMA_MODEL_CATALOG,
+    MODEL_DEFAULTS,
     MUSE_GLIMMER_MODEL_CATALOG,
     MUSE_SPARK_MODEL_CATALOG,
     OPEN_VLM_CATALOG,
@@ -91,6 +92,8 @@ from .catalogs import (
     SAM3_MODEL_CATALOG,
     ModelInfo,
     catalog_ids,
+    model_defaults,
+    set_model_defaults,
 )
 
 # Wrapper class name -> registry key, for lazy attribute access.
@@ -177,7 +180,7 @@ def catalog(provider: str) -> list[dict[str, str]]:
     Example:
         >>> from rapidtools.models import catalog
         >>> catalog('openai')[0]['model_id']
-        'gpt-6-astra'
+        'gpt-6.2-astra'
     """
     return list(PROVIDERS[provider].catalog)
 
@@ -236,6 +239,7 @@ __all__ = [
     'HFVisionInference',
     'LLAMA_MODEL_CATALOG',
     'LlamaVisionInference',
+    'MODEL_DEFAULTS',
     'MODEL_REGISTRY',
     'MUSE_GLIMMER_MODEL_CATALOG',
     'MUSE_SPARK_MODEL_CATALOG',
@@ -259,6 +263,8 @@ __all__ = [
     'get_model_class',
     'list_providers',
     'load',
+    'model_defaults',
+    'set_model_defaults',
 ]
 
 

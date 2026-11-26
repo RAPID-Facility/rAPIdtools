@@ -70,6 +70,7 @@ from .catalogs import (
     GEMINI_DEFAULT_MODEL,
     GEMINI_MODEL_CATALOG,
     PROVIDERS,
+    resolve_model_default,
 )
 
 logger = logging.getLogger(__name__)
@@ -133,7 +134,7 @@ class GeminiInference(BaseAPIInferenceModel):
         max_retries: int = 3,
         system_instruction: str | None = None,
         temperature: float = 0.4,
-        max_tokens: int = 2048,
+        max_tokens: int | None = None,
         timeout: float = API_REQUEST_TIMEOUT,
     ):
         """
@@ -148,7 +149,10 @@ class GeminiInference(BaseAPIInferenceModel):
             max_retries: Retries for transient HTTP failures.
             system_instruction: Optional system prompt.
             temperature: Sampling temperature.
-            max_tokens: Maximum output tokens per response.
+            max_tokens: Maximum output tokens per response. ``None`` uses
+                the model's default (:func:`~rapidtools.models.model_defaults`:
+                32,768 for Gemini 4, whose thinking counts against the
+                limit) or 2,048.
             timeout: Seconds to wait for each response (default 60).
 
         Raises:
@@ -163,7 +167,9 @@ class GeminiInference(BaseAPIInferenceModel):
         self.model_id = model_id.replace('models/', '')
         self.system_instruction = system_instruction
         self.temperature = temperature
-        self.max_tokens = max_tokens
+        self.max_tokens = resolve_model_default(
+            self.model_id, 'max_tokens', max_tokens, 2048
+        )
 
         self.session.headers.update({'x-goog-api-key': self.api_key})
         self._validate_model()
@@ -293,7 +299,11 @@ class GeminiInference(BaseAPIInferenceModel):
         Returns:
             ModelOutput | None: The response text and raw JSON, or ``None``
             when the request failed, was blocked by safety filters, or
-            nothing could be sent.
+            nothing could be sent. When the output limit is used up before
+            any answer is written (thinking counts against it on Gemini 4),
+            the output is a failure whose ``error`` says to raise
+            ``max_tokens``; an answer cut off partway is returned with a
+            logged warning.
 
         Example:
             >>> from rapidtools.models import GeminiInference
@@ -353,6 +363,21 @@ class GeminiInference(BaseAPIInferenceModel):
 
             extracted_text = self._extract_text(result_json)
             if extracted_text is not None:
+                first = (result_json.get('candidates') or [{}])[0]
+                if first.get('finishReason') == 'MAX_TOKENS':
+                    # Thinking tokens count against maxOutputTokens, so a
+                    # small limit can be spent before any answer is written.
+                    if not extracted_text.strip():
+                        reason = (
+                            f'The output limit of {gen.max_tokens} tokens was '
+                            'used up before the model wrote an answer (thinking '
+                            'counts against it). Raise max_tokens.'
+                        )
+                        logger.warning(f'{log_ctx} {reason}')
+                        return ModelOutput.failure(reason, raw_response=result_json)
+                    logger.warning(
+                        f'{log_ctx} Response truncated due to max_tokens limit.'
+                    )
                 return ModelOutput(text=extracted_text, raw_response=result_json)
 
             block_reason = result_json.get('promptFeedback', {}).get('blockReason')

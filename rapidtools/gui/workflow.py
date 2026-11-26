@@ -342,7 +342,8 @@ class InferenceSettings:
     max_workers: int = 5
     batch_size: int = 4
     temperature: float = 0.4
-    max_tokens: int = 2048
+    #: ``None`` uses the default of the chosen model (2048 for most).
+    max_tokens: int | None = None
     json_mode: bool = False
     load_in_4bit: bool = True
     overlay_asset_outline: bool = True
@@ -1055,16 +1056,24 @@ class AssetAnalysisWorkflow:
         api_key: str,
         load_in_4bit: bool,
         temperature: float,
-        max_tokens: int,
+        max_tokens: int | None,
         max_workers: int,
     ) -> dict[str, Any]:
-        """Keyword arguments for :func:`rapidtools.models.load` of ``backend``."""
+        """
+        Keyword arguments for :func:`rapidtools.models.load` of ``backend``.
+
+        ``max_tokens=None`` lets a hosted wrapper pick the default of its
+        model; local backends keep the 2048 the GUI has always used.
+        """
         info = PROVIDERS[backend]
         kwargs: dict[str, Any] = {
             'model_id': model_id or MODEL_BACKENDS[backend]['default_model'],
             'temperature': temperature,
-            'max_tokens': max_tokens,
         }
+        if max_tokens is not None:
+            kwargs['max_tokens'] = max_tokens
+        elif not info.is_api:
+            kwargs['max_tokens'] = 2048
         if info.is_api:
             kwargs['api_key'] = api_key.strip()
             kwargs['max_workers'] = max_workers

@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 09-22-2026
+# 11-25-2026
 
 """
 Model catalogs and provider metadata for every rapidtools model backend.
@@ -43,7 +43,9 @@ Model catalogs and provider metadata for every rapidtools model backend.
 This module has no heavy dependencies (no PyTorch, no Transformers) so the
 GUI and other front ends can list providers and model IDs instantly. The
 wrapper classes import their defaults from here, and :data:`PROVIDERS` is the
-single place to register a new backend.
+single place to register a new backend. :data:`MODEL_DEFAULTS` holds
+settings that differ by model (such as the larger output limit of Gemini 4);
+:func:`model_defaults` and :func:`set_model_defaults` read and change it.
 
 Example:
     >>> from rapidtools.models.catalogs import PROVIDERS, catalog_ids
@@ -56,6 +58,7 @@ Example:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 
 def catalog_ids(catalog: list[dict[str, str]]) -> list[str]:
@@ -74,8 +77,25 @@ GEMINI_DEFAULT_MODEL = 'gemini-3.8-flash'
 
 GEMINI_DEFAULT_LITE_MODEL = 'gemini-3.5-flash-lite'
 
-# Gemini models that accept image input, newest first.
+# Gemini models that accept image input, newest first. Gemini 4 models
+# ignore `temperature` and count thinking tokens against the output limit.
 GEMINI_MODEL_CATALOG: list[dict[str, str]] = [
+    {'model_id': 'gemini-4-neon', 'family': 'Gemini 4', 'notes': 'frontier'},
+    {
+        'model_id': 'gemini-4-carbon',
+        'family': 'Gemini 4',
+        'notes': 'strongest reasoning',
+    },
+    {
+        'model_id': 'gemini-4-argon',
+        'family': 'Gemini 4',
+        'notes': 'efficient reasoning, no free tier',
+    },
+    {
+        'model_id': 'gemini-4-hydrogen',
+        'family': 'Gemini 4',
+        'notes': 'everyday coding and agentic work',
+    },
     {'model_id': 'gemini-3.8-flash', 'family': 'Gemini 3.8', 'notes': 'latest stable'},
     {'model_id': 'gemini-3.7-flash', 'family': 'Gemini 3.7', 'notes': 'stable'},
     {'model_id': 'gemini-3.6-flash', 'family': 'Gemini 3.6', 'notes': 'stable'},
@@ -112,12 +132,19 @@ ANTHROPIC_DEFAULT_MODEL = 'claude-opus-5'
 
 # Vision-capable Claude models, newest first.
 ANTHROPIC_MODEL_CATALOG: list[dict[str, str]] = [
-    {'model_id': 'claude-fable-5-1', 'family': 'Fable 5.1', 'notes': 'most capable'},
+    {'model_id': 'claude-fable-5-2', 'family': 'Fable 5.2', 'notes': 'most capable'},
+    {'model_id': 'claude-fable-5-1', 'family': 'Fable 5.1', 'notes': ''},
     {'model_id': 'claude-fable-5', 'family': 'Fable 5', 'notes': ''},
+    {'model_id': 'claude-opus-5-5', 'family': 'Opus 5.5', 'notes': 'current Opus'},
     {'model_id': 'claude-opus-5', 'family': 'Opus 5', 'notes': 'recommended default'},
     {'model_id': 'claude-opus-4-8', 'family': 'Opus 4.8', 'notes': ''},
     {'model_id': 'claude-opus-4-7', 'family': 'Opus 4.7', 'notes': ''},
     {'model_id': 'claude-opus-4-6', 'family': 'Opus 4.6', 'notes': ''},
+    {
+        'model_id': 'claude-sonnet-5-5',
+        'family': 'Sonnet 5.5',
+        'notes': 'current Sonnet, fast, lower cost',
+    },
     {'model_id': 'claude-sonnet-5', 'family': 'Sonnet 5', 'notes': 'fast, lower cost'},
     {'model_id': 'claude-sonnet-4-6', 'family': 'Sonnet 4.6', 'notes': ''},
     {'model_id': 'claude-haiku-4-5', 'family': 'Haiku 4.5', 'notes': 'smallest'},
@@ -141,6 +168,10 @@ OPENAI_DEFAULT_MODEL = 'gpt-5.5'
 # Vision-capable OpenAI models, newest generation first. GPT-5.x/GPT-6 and the
 # o-series are reasoning models: they accept images but reject `temperature`.
 OPENAI_MODEL_CATALOG: list[dict[str, str]] = [
+    {'model_id': 'gpt-6.2-astra', 'family': 'GPT-6.2', 'notes': 'frontier reasoning'},
+    {'model_id': 'gpt-6.2-sol', 'family': 'GPT-6.2', 'notes': 'efficient, everyday'},
+    {'model_id': 'gpt-6.1-sol', 'family': 'GPT-6.1', 'notes': ''},
+    {'model_id': 'gpt-6.1-terra', 'family': 'GPT-6.1', 'notes': 'balanced'},
     {'model_id': 'gpt-6-astra', 'family': 'GPT-6', 'notes': 'flagship reasoning'},
     {'model_id': 'gpt-6-sol', 'family': 'GPT-6', 'notes': 'balanced, 1M context'},
     {'model_id': 'gpt-6-luna', 'family': 'GPT-6', 'notes': 'cost-efficient'},
@@ -167,8 +198,14 @@ OPENAI_MODEL_CATALOG: list[dict[str, str]] = [
 # --- muse
 MUSE_SPARK_DEFAULT_MODEL = 'muse-spark-1.3'
 
-# Hosted Muse Spark models (text/image/video/PDF input, 1M-token context).
+# Models hosted on Meta's Model API (text/image/video/PDF input, 1M-token
+# context): Muse Wonder and the Muse Spark family.
 MUSE_SPARK_MODEL_CATALOG: list[dict[str, str]] = [
+    {
+        'model_id': 'muse-wonder-1.0',
+        'family': 'Muse Wonder',
+        'notes': 'preview, most capable',
+    },
     {'model_id': 'muse-spark-1.3', 'family': 'Muse Spark', 'notes': 'latest'},
     {
         'model_id': 'muse-spark-1.3-contributor',
@@ -220,6 +257,12 @@ QWEN_VL_DEFAULT_MODEL = 'Qwen/Qwen3.5-4B'
 QWEN_VL_MODEL_CATALOG: list[dict[str, str]] = [
     {'model_id': 'Qwen/Qwen3.8-27B', 'family': 'Qwen3.8', 'size': '27B'},
     {'model_id': 'Qwen/Qwen3.8-27B-FP8', 'family': 'Qwen3.8', 'size': '27B FP8'},
+    {
+        'model_id': 'Qwen/Qwen3.8-Flash-Next',
+        'family': 'Qwen3.8',
+        'size': '125B MoE (6B active) + 51B embeddings',
+        'notes': 'gated download; multi-GPU server',
+    },
     {'model_id': 'Qwen/Qwen3.6-35B-A3B', 'family': 'Qwen3.6', 'size': '35B MoE'},
     {'model_id': 'Qwen/Qwen3.6-27B', 'family': 'Qwen3.6', 'size': '27B'},
     {'model_id': 'Qwen/Qwen3.5-397B-A17B', 'family': 'Qwen3.5', 'size': '397B MoE'},
@@ -324,8 +367,17 @@ LLAMA_MODEL_CATALOG: list[dict[str, str]] = [
 # Curated open vision-language models known to work through the generic
 # Transformers multimodal interface, newest first.
 # Keys: model_id, family, size, optional min_transformers, optional notes.
+# Kimi K3 / K2.6 and MiMo V2.6 are left out on purpose: their repositories
+# only expose custom-code ``AutoModelForCausalLM`` classes, which the
+# multimodal auto classes used by ``HFVisionInference`` cannot load.
 OPEN_VLM_CATALOG: list[dict[str, str]] = [
     {'model_id': 'Qwen/Qwen3.8-27B', 'family': 'Qwen3.8', 'size': '27B'},
+    {
+        'model_id': 'Qwen/Qwen3.8-Flash-Next',
+        'family': 'Qwen3.8',
+        'size': '125B MoE (6B active) + 51B embeddings',
+        'notes': 'gated download; multi-GPU server',
+    },
     {'model_id': 'Qwen/Qwen3.6-27B', 'family': 'Qwen3.6', 'size': '27B'},
     {'model_id': 'Qwen/Qwen3.6-35B-A3B', 'family': 'Qwen3.6', 'size': '35B MoE'},
     {'model_id': 'Qwen/Qwen3.5-27B', 'family': 'Qwen3.5', 'size': '27B'},
@@ -339,10 +391,36 @@ OPEN_VLM_CATALOG: list[dict[str, str]] = [
     {'model_id': 'Qwen/Qwen2.5-VL-3B-Instruct', 'family': 'Qwen2.5-VL', 'size': '3B'},
     {'model_id': 'Qwen/Qwen2-VL-2B-Instruct', 'family': 'Qwen2-VL', 'size': '2B'},
     {
+        'model_id': 'meta-models/Muse-Spark-Open-816B-A42B',
+        'family': 'Muse Spark Open',
+        'size': '816B MoE (42B active)',
+        'notes': 'gated (manual approval); multi-node GPU cluster',
+    },
+    {
         'model_id': 'meta-models/Muse-Glimmer-30B',
         'family': 'Muse Glimmer',
         'size': '30B',
         'min_transformers': '5.15.0',
+    },
+    {
+        'model_id': 'mistralai/Mistral-Large-4-1T-A52B',
+        'family': 'Mistral Large 4',
+        'size': '1T MoE (52B active)',
+        'min_transformers': '5.21.0',
+        'notes': 'multi-node GPU cluster',
+    },
+    {
+        'model_id': 'zai-org/GLM-5.3-Flash',
+        'family': 'GLM-5.3',
+        'size': '320B MoE (18B active)',
+        'min_transformers': '5.16.0',
+        'notes': 'multi-GPU server',
+    },
+    {
+        'model_id': 'zai-org/GLM-4.6V-Flash',
+        'family': 'GLM-4.6V',
+        'size': '10B',
+        'notes': 'fits 24 GB GPUs in 4-bit',
     },
     {
         'model_id': 'meta-llama/Llama-4-Scout-17B-16E-Instruct',
@@ -399,6 +477,107 @@ SAM3_MODEL_CATALOG: list[dict[str, str]] = [
         'notes': 'promptable concept segmentation (text prompts)',
     },
 ]
+
+
+# --- per-model defaults
+# Generation settings used when the caller leaves them unset (``None``). A key
+# is an exact model ID or a prefix ending in ``*``; an exact ID wins over a
+# prefix and a longer prefix over a shorter one. A value given by the caller
+# always wins over this table.
+MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
+    # Gemini 4 counts thinking tokens against the output limit, so the 2,048
+    # used elsewhere can leave no room for the answer. Google recommends at
+    # least 32,768, which is also the ceiling of Argon and Carbon.
+    'gemini-4-*': {'max_tokens': 32768},
+}
+
+
+def model_defaults(model_id: str) -> dict[str, Any]:
+    """
+    Return the per-model default settings that apply to ``model_id``.
+
+    Prefix entries are merged from shortest to longest and an exact entry is
+    applied last, so the most specific value of each setting wins.
+
+    Args:
+        model_id: Model ID as passed to a wrapper, e.g. ``'gemini-4-neon'``.
+
+    Returns:
+        dict[str, Any]: Setting name to default value; empty when the model
+        has no defaults of its own and the wrapper's general default applies.
+
+    Example:
+        >>> model_defaults('gemini-4-neon')
+        {'max_tokens': 32768}
+        >>> model_defaults('gemini-3.8-flash')
+        {}
+    """
+    merged: dict[str, Any] = {}
+    prefixes = sorted((key for key in MODEL_DEFAULTS if key.endswith('*')), key=len)
+    for key in prefixes:
+        if model_id.startswith(key[:-1]):
+            merged.update(MODEL_DEFAULTS[key])
+    merged.update(MODEL_DEFAULTS.get(model_id, {}))
+    return merged
+
+
+def set_model_defaults(model_id: str, **settings: Any) -> None:
+    """
+    Set default settings for a model ID (or a prefix ending in ``*``).
+
+    A setting of ``None`` removes that default. Wrappers read the table when
+    they are created, so call this before building the model.
+
+    Args:
+        model_id: Exact model ID such as ``'claude-opus-5-5'``, or a prefix
+            such as ``'gpt-6.2-*'``.
+        **settings: Defaults to store; ``max_tokens`` is the one the hosted
+            wrappers read.
+
+    Example:
+        >>> set_model_defaults('claude-opus-5-5', max_tokens=8192)
+        >>> model_defaults('claude-opus-5-5')
+        {'max_tokens': 8192}
+        >>> set_model_defaults('claude-opus-5-5', max_tokens=None)
+        >>> model_defaults('claude-opus-5-5')
+        {}
+    """
+    entry = dict(MODEL_DEFAULTS.get(model_id, {}))
+    for name, value in settings.items():
+        if value is None:
+            entry.pop(name, None)
+        else:
+            entry[name] = value
+    if entry:
+        MODEL_DEFAULTS[model_id] = entry
+    else:
+        MODEL_DEFAULTS.pop(model_id, None)
+
+
+def resolve_model_default(model_id: str, name: str, value: Any, fallback: Any) -> Any:
+    """
+    Pick a setting: the caller's value, else the model's default, else ``fallback``.
+
+    Args:
+        model_id: Model ID the setting is for.
+        name: Setting name, e.g. ``'max_tokens'``.
+        value: What the caller passed; ``None`` means "not given".
+        fallback: Value used when neither the caller nor the table has one.
+
+    Returns:
+        Any: The setting to use.
+
+    Example:
+        >>> resolve_model_default('gemini-4-argon', 'max_tokens', None, 2048)
+        32768
+        >>> resolve_model_default('gemini-4-argon', 'max_tokens', 512, 2048)
+        512
+        >>> resolve_model_default('gemini-3.8-flash', 'max_tokens', None, 2048)
+        2048
+    """
+    if value is not None:
+        return value
+    return model_defaults(model_id).get(name, fallback)
 
 
 @dataclass(frozen=True)

@@ -29,20 +29,20 @@ Choosing a model
    * - Google Gemini
      - ``gemini``
      - API
-     - ``gemini-3.8-flash``. Also Gemini 3.x Flash, Flash-Lite and Pro
+     - ``gemini-3.8-flash``. Also Gemini 4 (Neon, Carbon, Argon, Hydrogen), Gemini 3.x Flash, Flash-Lite and Pro
        previews.
    * - Anthropic Claude
      - ``claude``
      - API
-     - ``claude-opus-5``. Also Fable 5.1, Sonnet 5, Haiku 4.5 and earlier.
+     - ``claude-opus-5``. Also Fable 5.2, Opus 5.5, Sonnet 5.5, Haiku 4.5 and earlier.
    * - OpenAI
      - ``openai``
      - API
-     - ``gpt-5.5``. Also GPT-6, GPT-5.x, o3 and GPT-4.x models.
+     - ``gpt-5.5``. Also GPT-6.2, GPT-6.1, GPT-6, GPT-5.x, o3 and GPT-4.x models.
    * - Meta Muse Spark
      - ``muse_spark``
      - API
-     - ``muse-spark-1.3``.
+     - ``muse-spark-1.3``. Also ``muse-wonder-1.0``.
    * - Alibaba Qwen (Model Studio)
      - ``qwen``
      - API
@@ -67,7 +67,9 @@ Choosing a model
      - ``hf``
      - local
      - Any repo with a chat template (Gemma 3, LLaVA, InternVL, Pixtral,
-       Granite Vision, ...).
+       Granite Vision, ...). The catalog also lists GLM-4.6V Flash, which
+       fits a 24 GB GPU, and GLM 5.3 Flash, Qwen3.8 Flash Next,
+       Mistral Large 4 and Muse Spark Open, which need a multi-GPU server.
    * - Meta SAM 3
      - ``sam3``
      - local
@@ -113,6 +115,14 @@ the prompt to the model and writes the answer to the asset's attributes.
 - **Generation options** in :class:`~rapidtools.models.GenerationConfig`
   (``temperature``, ``max_tokens``, ``json_mode``, ``system_instruction``)
   apply per call and map to the native flags of each provider.
+- **Per-model defaults.** A hosted wrapper built without ``max_tokens``
+  uses the default of its model: 2,048 for most, 32,768 for Gemini 4,
+  whose thinking tokens count against the limit. A value you pass always
+  wins. Set your own with
+  ``rapidtools.models.set_model_defaults('claude-opus-5-5', max_tokens=8192)``
+  (a trailing ``*`` matches a family, as in ``'gpt-6.2-*'``) before
+  building the model; :func:`~rapidtools.models.model_defaults` shows what
+  applies to a model ID.
 
 The provider-specific classes such as ``GeminiAssetAnalyzer`` and
 ``Gemma4AssetAnalyzer`` still work but are deprecated in favor of

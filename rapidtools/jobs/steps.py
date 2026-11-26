@@ -1266,8 +1266,11 @@ register_step(
             Param(
                 'max_tokens',
                 'integer',
-                'Longest answer the model may give, in tokens.',
-                default=2048,
+                'Longest answer the model may give, in tokens. null uses '
+                'the default of the chosen model: 2048 for most, 32768 for '
+                'Gemini 4, whose thinking counts against the limit.',
+                default=None,
+                nullable=True,
                 minimum=1,
             ),
             Param(

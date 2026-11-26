@@ -71,6 +71,7 @@ from .catalogs import (
     ANTHROPIC_MODEL_CATALOG,
     ANTHROPIC_NO_TEMPERATURE_PREFIXES,
     PROVIDERS,
+    resolve_model_default,
 )
 
 logger = logging.getLogger(__name__)
@@ -91,7 +92,7 @@ class ClaudeInference(BaseAPIInferenceModel):
     Example:
         >>> from rapidtools.models import ClaudeInference
         >>> ClaudeInference.list_known_models()[:3]
-        ['claude-fable-5-1', 'claude-fable-5', 'claude-opus-5']
+        ['claude-fable-5-2', 'claude-fable-5-1', 'claude-fable-5']
         >>> model = ClaudeInference(api_key='sk-ant-...')
         >>> out = model.run_inference(
         ...     ['front.jpg', 'back.jpg'],
@@ -125,7 +126,7 @@ class ClaudeInference(BaseAPIInferenceModel):
         max_retries: int = 3,
         system_instruction: str | None = None,
         temperature: float = 0.4,
-        max_tokens: int = 2048,  # Anthropic REQUIRES this field in the payload
+        max_tokens: int | None = None,  # resolved below: the API requires it
         timeout: float = API_REQUEST_TIMEOUT,
     ):
         """
@@ -141,7 +142,8 @@ class ClaudeInference(BaseAPIInferenceModel):
             temperature: Sampling temperature; only sent to models that
                 accept it (Opus/Sonnet 4.6, Haiku 4.5 and older).
             max_tokens: Maximum tokens generated per response (required by
-                the Messages API).
+                the Messages API). ``None`` uses the model's default
+                (:func:`~rapidtools.models.model_defaults`) or 2,048.
             timeout: Seconds to wait for each response (default 60).
 
         Raises:
@@ -155,7 +157,9 @@ class ClaudeInference(BaseAPIInferenceModel):
         self.model_id = model_id
         self.system_instruction = system_instruction
         self.temperature = temperature
-        self.max_tokens = max_tokens
+        self.max_tokens = resolve_model_default(
+            self.model_id, 'max_tokens', max_tokens, 2048
+        )
 
         # Anthropic requires specific versioning headers
         self.session.headers.update(

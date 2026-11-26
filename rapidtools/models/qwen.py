@@ -106,7 +106,7 @@ class QwenInference(BaseOpenAICompatibleInference):
         max_retries: int = 3,
         system_instruction: str | None = None,
         temperature: float = 0.4,
-        max_tokens: int = 2048,
+        max_tokens: int | None = None,
         region: str = 'intl',
         base_url: str | None = None,
         timeout: float = API_REQUEST_TIMEOUT,
@@ -122,7 +122,8 @@ class QwenInference(BaseOpenAICompatibleInference):
             max_retries: Retries for transient HTTP failures.
             system_instruction: Optional system prompt.
             temperature: Sampling temperature.
-            max_tokens: Maximum tokens generated per response.
+            max_tokens: Maximum tokens generated per response; ``None``
+                uses the model's default or 2,048.
             region: ``'intl'`` (Singapore) or ``'cn'`` (Beijing) endpoint.
             base_url: Explicit endpoint root; overrides ``region``.
             timeout: Seconds to wait for each response (default 60).
