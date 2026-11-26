@@ -19,29 +19,29 @@ The UW RAPID Facility collects terabytes of perishable, hyper-resolution data in
 
 `rapidtools` is a high-performance Python package designed to eliminate this bottleneck. It delivers a seamless, object-oriented pipeline that connects raw spatial datasets with state-of-the-art Large Vision-Language Models (VLMs). Whether analyzing ten damaged homes or one hundred thousand regional assets, `rapidtools` equips researchers with the tools to automate complex feature extraction, pinpoint structural damage, and unlock engineering-grade insights at unprecedented speed.
 
-## High-Level Impact & Key Features
+## Key Features
 
-**Large-scale geospatial ingestion**
-Seamlessly fuse massive local orthomosaics, regional shapefiles, and street-view vector tiles. The `PhysicalAssetCollection` engine provides fast lookups, spatial filtering, and native conversions between GeoJSON, ESRI Shapefiles, and Pandas DataFrames.
+**Geospatial data in and out**
+`PhysicalAssetCollection` holds the assets you are studying together with their geometry, attributes and images. It reads and writes GeoJSON and ESRI Shapefiles, converts to and from pandas DataFrames, and supports fast lookups and spatial filtering. Local orthomosaics, regional footprint files and street-level vector tiles all feed into it.
 
-**Scalable AI Inference (Local & Cloud)**
-Run deployments tailored to your resources. Deploy powerful local vision-language models directly on consumer hardware: Google's Gemma-4 (E2B to 31B), Meta's Llama 4 and Llama 3.2 Vision, Meta's open-weight Muse Glimmer, Alibaba's Qwen3.8 / Qwen3.6 / Qwen3.5 / Qwen3-VL, or any Hugging Face checkpoint (Gemma 3, LLaVA, InternVL, Pixtral, Granite Vision, ...) through `HFVisionAssetAnalyzer`, using dynamic batching, automated tensor precision scaling, and strict VRAM garbage collection to prevent Out-Of-Memory (OOM) crashes. Alternatively, scale instantly using built-in integrations for enterprise APIs (OpenAI GPT-5.x/GPT-6, Google Gemini 3.x, Anthropic Claude Opus 5 / Fable 5.1, Meta Muse Spark, Alibaba Qwen via Model Studio), which feature thread-safe global cooldowns and exponential backoff to handle rate limits automatically.
+**Local and hosted models, same code**
+Run a vision-language model on your own hardware or call one through an API. Local options are Google's Gemma 4 (E2B to 31B), Meta's Llama 4 and Llama 3.2 Vision, Meta's Muse Glimmer, Alibaba's Qwen 3.x and Qwen3-VL, and any Hugging Face checkpoint with a chat template (Gemma 3, LLaVA, InternVL, Pixtral, Granite Vision, ...). Local runs batch the images, choose tensor precision for the hardware and release GPU memory between batches, which keeps long jobs from running out of memory. Hosted options are Google Gemini, Anthropic Claude, OpenAI, Meta Muse Spark and Alibaba Qwen. Hosted runs are threaded, pause together after a rate-limit error and go back for the assets that failed. The full list is under [Supported Models](#supported-models).
 
-**Keyless Aerial and Street-Level Imagery**
-Pull imagery for any footprint without provider API keys. `GoogleAerialImageExtractor` and `BingAerialImageExtractor` stitch satellite tiles for GeoJSON polygons (or yield raw tiles for ML pipelines), `GoogleOrthomosaicExtractor` / `BingOrthomosaicExtractor` synthesize georeferenced GeoTIFFs for a region, and `GoogleStreetViewImageExtractor` locates the nearest Google Street View panorama for each asset, downloads it, crops the field of view that covers the asset footprint (optionally with the decoded depth map) and attaches the result to the asset. Mapillary street-level imagery remains available through `MapillaryImageExtractor`.
+**Aerial and street-level imagery without API keys**
+`GoogleAerialImageExtractor` and `BingAerialImageExtractor` stitch satellite tiles for GeoJSON polygons, or yield the raw tiles for ML pipelines. `GoogleOrthomosaicExtractor` and `BingOrthomosaicExtractor` build a georeferenced GeoTIFF for a region. `GoogleStreetViewImageExtractor` finds the nearest Google Street View panorama for each asset, downloads it, crops the field of view that covers the footprint (optionally with the decoded depth map) and attaches the result to the asset. Mapillary street-level imagery is available through `MapillaryImageExtractor`, with a Mapillary access token.
 
-**Street-Level Object Discovery**
-Build an inventory from the survey itself. `MapillaryFeatureExtractor` reads Mapillary's segmentation detections as metadata (no image downloads), drops the survey vehicle, places every sighting from the camera geometry and triangulates objects seen from several positions; `MapillaryObjectImageExtractor` then crops the closest views of each object for a vision-language model. Classes outside Mapillary's vocabulary fall back to SAM 3 on thumbnails.
+**Object discovery from street-level surveys**
+An inventory can come from the survey itself. `MapillaryFeatureExtractor` reads Mapillary's segmentation detections as metadata (no image downloads), drops the survey vehicle, places every sighting from the camera geometry and triangulates objects seen from several positions. `MapillaryObjectImageExtractor` then crops the closest views of each object for a vision-language model. Classes outside Mapillary's vocabulary fall back to SAM 3 on thumbnails.
 
-**Intelligent Feature Regularization**
-Move beyond raw AI pixel masks. The toolkit includes sophisticated geometric regularizers that instantly translate semantic segmentations into usable, GIS-ready asset geometries.
+**Cleaner footprints from segmentation masks**
+Raw masks are jagged, sometimes merge two neighbors and occasionally invent a building. `BuildingRegularizer` runs SAM 3 again on a high-resolution crop around each preliminary footprint, keeps a mask only when it agrees with its seed, splits merged footprints and bridges fragments. `RoadwayRegularizer` does the same job for roads, turning raw road polygons into centerlines and rebuilt polygons. The result is geometry you can load straight into a GIS.
 
-**Advanced Line-of-Sight Localization**
-Automate the extraction of the perfect viewing angle. Using KD-Trees, STRtrees, and ray-casting math, `rapidtools` can dynamically calculate asset principal axes and cull occluded perspectives (e.g., ignoring images where a target building is blocked by a neighboring structure) to guarantee your AI only analyzes the right data.
+**Views that actually show the asset**
+When `rapidtools` picks street-level images of an asset, it checks that the asset is visible in them. It casts rays from each candidate camera toward the asset, using KD-trees and STR-trees to keep this fast, and rejects views in which a neighboring structure blocks the target. It then keeps one view per viewing direction, along the principal axes of the footprint.
 
 ## Installation
 
-You can install the latest stable release directly via pip:
+Install the latest release from PyPI (Python 3.11 or newer):
 
 ```bash
 pip install rapidtools
@@ -49,9 +49,9 @@ pip install rapidtools
 
 ## Documentation
 
-The published documentation lives at [rapid-facility.github.io/rAPIdtools](https://rapid-facility.github.io/rAPIdtools/).
-It is built with Sphinx and the Book theme. Install the docs
-extra once, then build:
+The user guide, worked examples and API reference are at [rapid-facility.github.io/rAPIdtools](https://rapid-facility.github.io/rAPIdtools/). If you would rather not write code, start with the [graphical interface](https://rapid-facility.github.io/rAPIdtools/gui.html) page: `rapidtools-gui` opens a browser app that runs the same detect, extract and analyze workflow for aerial imagery and street-level surveys.
+
+To build the documentation yourself, install the docs extra and run Sphinx:
 
 ```bash
 pip install -e ".[docs]"
@@ -59,24 +59,22 @@ cd docs
 make html
 ```
 
-Open `docs/build/html/index.html` in your browser for the user guide, the
-worked examples and the API reference (one page per class, generated from
-the docstrings).
+The pages are written to `docs/build/html`; open `index.html` there.
 
 ## Project Structure
 
-Designed for flexibility and scale, `rapidtools` utilizes a cleanly decoupled architecture that makes extending workflows and managing complex data pipelines effortless:
+The package is split into six subpackages, each with one job:
 
-* `rapidtools.core`: Domain models representing your data (`PhysicalAsset`, `PhysicalAssetCollection`, `ImageAsset`, `BoundingBox`).
-* `rapidtools.data_sources`: Clients for fetching raw data from external APIs and massive local files (e.g., `MapillaryClient`, `GoogleStreetViewClient`, `OrthomosaicReader`, `BingAerialImageExtractor`, `GoogleAerialImageExtractor`).
-* `rapidtools.models`: Base wrappers and handlers for executing ML models natively or via cloud APIs (`Gemma4Inference`, `SAM3Inference`, `GeminiInference`, `MuseSparkInference`, `QwenInference`, ...). See the table below.
-* `rapidtools.processing`: High-level workflow components (Extractors, Segmenters, Analyzers, and Regularizers) designed to snap together effortlessly into the `Pipeline` engine.
-* `rapidtools.gui`: The browser-based application (`rapidtools-gui`) and the headless workflow behind it.
+* `rapidtools.core`: The objects that represent your data (`PhysicalAsset`, `PhysicalAssetCollection`, `ImageAsset`, `BoundingBox`).
+* `rapidtools.data_sources`: Clients that fetch data from external services and read large local files (e.g., `MapillaryClient`, `GoogleStreetViewClient`, `OrthomosaicReader`, `BingAerialImageExtractor`, `GoogleAerialImageExtractor`).
+* `rapidtools.models`: Wrappers that run a model locally or through a hosted API (`Gemma4Inference`, `SAM3Inference`, `GeminiInference`, `MuseSparkInference`, `QwenInference`, ...). See the table below.
+* `rapidtools.processing`: The workflow steps (extractors, segmenters, analyzers and regularizers) that you chain together in a `Pipeline`.
+* `rapidtools.gui`: The browser application (`rapidtools-gui`) and the scriptable workflow behind it.
 * `rapidtools.jobs`: The JSON job interface (`rapidtools-job`): a workflow written as a file that the GUI, a scheduler or another system hands to `rapidtools` to run.
 
 ## The rAPIdtools API in Five Lines
 
-Every model is created through one factory and every analysis step is the same class, so switching providers is a one-word change:
+Every model is built by the same function and every analysis step is the same class, so switching providers means changing one word:
 
 ```python
 import rapidtools as rt
@@ -99,7 +97,7 @@ buildings = pipeline.run(buildings)
 
 ## Quick Start: Aerial Damage Detection Pipeline
 
-Run state-of-the-art damage assessments completely offline. This example demonstrates how to download `rapidtools` sample datasets, extract building-specific image patches from a local drone orthomosaic, and analyze them using a local Gemma-4 vision model that does not require paid API usage or cloud tokens.
+This example runs the model on your own machine, so it needs no API key and no paid service. It downloads the `rapidtools` sample datasets, crops a drone orthomosaic around each building footprint and analyzes every crop with a local Gemma 4 model.
 
 ```python
 import rapidtools as rt
@@ -139,50 +137,9 @@ print(buildings)   # one line: how many assets, of which types
 buildings.to_geojson('eaton_footprints_CHS_with_gemma4.geojson', include_images=False)
 ```
 
-## Graphical Interface: Detect Assets and Run Inference Without Code
-
-`rapidtools` ships with a local web application that wraps the end-to-end detect / extract / analyze workflow, for aerial imagery and for street-level surveys. It runs on the Python standard library (no extra dependencies) and opens in your browser.
-
-```bash
-rapidtools-gui            # console script installed with the package
-python -m rapidtools.gui  # equivalent; add --port/--output-dir/--no-browser as needed
-```
-
-Or from Python:
-
-```python
-from rapidtools.gui import launch_asset_analysis_app
-
-launch_asset_analysis_app()
-```
-
-The app walks through three steps while the aerial image stays on screen and is updated with every result:
-
-1. **Imagery**: find the place on the map (satellite basemap, RAPID survey coverage, address search) and draw a box, then stitch a Bing or Google basemap over it (no API key), load a GeoTIFF from your computer, download a UW RAPID sample, or (coming soon) fetch it from TACC. Street-level discovery can start from the box alone.
-2. **Detect & analyze**: find the assets, choose where their imagery comes from, and pick the model and prompt.
-   - *Assets*: detect them in the image with SAM 3 (on a Bing or Google basemap, or the image itself, with an option to keep every instance of countable objects such as vehicles separate), **discover objects along a Mapillary street survey** (`vehicles, utility poles, fire hydrants` are located from Mapillary's own detections within the image extent, with the survey vehicle removed and sightings triangulated), or load a file with their locations.
-   - *Imagery for analysis*: aerial crops from the loaded image (with edge handling), Google Street View panoramas cropped to each footprint (no key), Mapillary panoramas of each footprint, or the closest Mapillary views of each discovered object. The asset can be marked on every crop with an outline, bounding box or corner brackets.
-   - *Model*: every analysis model in `rapidtools` is available: Google Gemini, Anthropic Claude, OpenAI, Meta Muse Spark, and Qwen through their APIs; Gemma-4, Llama Vision, Muse Glimmer, and Qwen locally; and, under *Other open models*, any Hugging Face vision-language checkpoint with optional 4-bit loading. *Fetch models* lists the model IDs your API key can access. Temperature, output length and JSON mode live under *Advanced options*.
-   - *Prompt*: load one of the sample prompts (aerial CHS, street-level CHS, street-level recovery), a file, or open the **prompt builder**. The builder walks through task and role, output fields (which become the asset attributes), visual indicators for every class, analysis steps and edge cases, and assembles a prompt in the layout of the sample prompts. Its **assistant** uses any of the same model backends (the analysis model, or a local Gemma-4 / Qwen) to draft the whole specification from a one-line description, refine it on request, suggest indicators for a class, review the finished prompt, or import an existing prompt into the builder.
-3. **Results**: hover over assets to inspect their attributes, click one to see the exact image crops the model analyzed, color the overlay by any inferred attribute, browse the attribute table, and download the GeoJSON outputs.
-
-### Sharing the app
-
-Run the server on the machine that has the GPU and the imagery, bind it to the network, and protect it with an access token:
-
-```bash
-rapidtools-gui --host 0.0.0.0 --token auto --data-root /data/eaton --no-browser
-```
-
-The terminal prints a share link of the form `http://<host>:8765/?token=...`. Anyone opening that link (or entering the token on the sign-in page) can use the app; everyone else gets the sign-in page. `--data-root` limits the file browser and every file path to one directory, and `RAPIDTOOLS_GUI_TOKEN` can supply the token instead of the flag. Everyone connected shares one workspace and one job queue, so this suits a small team taking turns rather than many simultaneous users. Keep the server on your institution's network or a VPN; the token protects the app, not the transport, which is plain HTTP.
-
-The image panel streams the original pixels when you zoom in (toggle *Full resolution* to fall back to the lightweight preview), so multi-gigabyte orthomosaics can be inspected at native resolution without loading them into the browser.
-
-Bounding boxes can be drawn on a satellite map that also shows where the RAPID street survey has images. Progress and log output stream into the page while the heavy lifting runs on a background thread, and **Cancel** stops detection or inference at the next tile or batch, keeping any results produced so far. Long runs offer to send an email or webhook message (or a browser alert) when they finish, and the tab can be closed and reopened in the meantime. The same workflow is available headlessly through `rapidtools.gui.AssetAnalysisWorkflow` for scripting, and the prompt builder through `rapidtools.gui.PromptSpec`, `assemble_prompt` and `PromptAssistant`.
-
 ## Job Files: Run a Workflow From JSON
 
-A whole workflow can be written down as a JSON *job file*: an ordered list of steps, where a later step can use what an earlier one produced. The graphical interface works this way itself (every run it starts is a job file under `<output folder>/jobs`), so the same work can be rerun from a terminal, queued by a scheduler or submitted by another system.
+A whole workflow can be written down as a JSON *job file*: an ordered list of steps, where a later step can use what an earlier one produced. The graphical interface works this way too: every run it starts is saved as a job file under `<output folder>/jobs`. The same work can therefore be rerun from a terminal, queued by a scheduler or submitted by another system.
 
 ```json
 {
@@ -262,44 +219,6 @@ A hosted model built without `max_tokens` uses the default of its model:
 limit. `rapidtools.models.set_model_defaults('gemini-4-*', max_tokens=16384)`
 changes it for a model or a family.
 
-## Contributing, Security and Accessibility
-
-Bug reports, documentation fixes and code are welcome; see
-[CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and the checks a
-pull request must pass, and the [wiki](https://github.com/RAPID-Facility/rAPIdtools/wiki)
-for how the pieces fit together. Participation is governed by the
-[Code of Conduct](CODE_OF_CONDUCT.md). Our
-[Accessibility Statement](ACCESSIBILITY.md) describes what we know about
-using the package, documentation and GUI with assistive technology and how
-to report barriers.
-
-### Feedback without a GitHub account
-
-Email is all you need: [uwrapid@uwrapid.org](mailto:uwrapid@uwrapid.org?subject=rAPIdtools%20feedback).
-Send feedback, a question, a bug or a feature idea; say what you were doing,
-what you expected and what happened, with the rapidtools version and your
-operating system when it is a bug. A maintainer will answer and, with your
-agreement, turn the message into a GitHub issue so others can follow it.
-Leave API keys and access tokens out of the message.
-
-### Feedback with a GitHub account
-
-The three forms below open an issue on this repository, where other users
-can see it, add to it and follow the fix; each asks only for what we need to
-act on it. **They need a GitHub account**: clicking a link asks you to sign
-in first, and GitHub offers to create a free account on that page. If you
-would rather not, use the email route above.
-
-| I want to... | Open |
-|---|---|
-| Ask for a capability that is missing | [Feature request](https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=feature_request.yml) |
-| Report something that fails or gives a wrong result | [Bug report](https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=bug_report.yml) |
-| Ask a question, or say what worked and what did not | [Feedback or question](https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=feedback.yml) |
-
-Please report security problems privately as described in the
-[Security Policy](SECURITY.md), not in a public issue: through a GitHub
-security advisory, or by email with "security" in the subject.
-
 ## Citing rAPIdtools
 
 If rAPIdtools contributes to your research, please cite it. GitHub's
@@ -321,9 +240,6 @@ report results, cite the release you used instead: add its version number and
 use its own DOI, listed under *Versions* on the
 [Zenodo page](https://doi.org/10.5281/zenodo.24542491).
 
-rAPIdtools is developed at the NSF NHERI RAPID Facility, University of
-Washington, supported by the U.S. National Science Foundation.
+## Acknowledgments
 
-## License
-
-This project is licensed under the BSD-3-Clause License. See the `LICENSE` file for details.
+rAPIdtools is developed at the RAPID Facility at the University of Washington, part of the Natural Hazards Engineering Research Infrastructure (NHERI) network. The RAPID Facility is supported by the U.S. National Science Foundation under awards CMMI-1611820 and CMMI-2130997, and by the National Institutes of Health. Any opinions, findings, conclusions or recommendations expressed in this material are those of the authors and do not necessarily reflect the views of the funding agencies.
