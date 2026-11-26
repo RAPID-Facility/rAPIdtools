@@ -95,10 +95,14 @@ is archived on Zenodo with a DOI.
      author  = {Cetiner, Barbaros},
      title   = {rAPIdtools: A high-performance toolkit for performing large-scale AI inference and localization on post-disaster geospatial datasets},
      year    = {2026},
-     version = {0.3.0},
      doi     = {10.5281/zenodo.24542491},
      url     = {https://github.com/RAPID-Facility/rAPIdtools}
    }
+
+This DOI covers every version and always resolves to the latest one. When you
+report results, cite the release you used instead: add its version number and
+use its own DOI, listed under *Versions* on the
+`Zenodo page <https://doi.org/10.5281/zenodo.24542491>`_.
 
 .. toctree::
    :hidden:

@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/rapidtools.svg)](https://pypi.org/project/rapidtools/)
 [![Downloads](https://static.pepy.tech/badge/rapidtools/month)](https://pepy.tech/project/rapidtools)
 [![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
-[![DOI](https://zenodo.org/badge/1076506415.svg)](https://zenodo.org/badge/latestdoi/1076506415)<br>
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24542491.svg)](https://doi.org/10.5281/zenodo.24542491)<br>
 [![Tests](https://github.com/RAPID-Facility/rAPIdtools/actions/workflows/ci.yml/badge.svg)](https://github.com/RAPID-Facility/rAPIdtools/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/bacetiner/c890ae687368838a74c5e442b9ff5b94/raw/coverage.json)](https://github.com/RAPID-Facility/rAPIdtools/actions/workflows/ci.yml)
 [![Docs](https://github.com/RAPID-Facility/rAPIdtools/actions/workflows/docs.yml/badge.svg?branch=main)](https://rapid-facility.github.io/rAPIdtools/)
@@ -311,11 +311,15 @@ entries; each release is also archived on Zenodo with a DOI.
   author  = {Cetiner, Barbaros},
   title   = {rAPIdtools: A high-performance toolkit for performing large-scale AI inference and localization on post-disaster geospatial datasets},
   year    = {2026},
-  version = {0.3.0},
   doi     = {10.5281/zenodo.24542491},
   url     = {https://github.com/RAPID-Facility/rAPIdtools}
 }
 ```
+
+This DOI covers every version and always resolves to the latest one. When you
+report results, cite the release you used instead: add its version number and
+use its own DOI, listed under *Versions* on the
+[Zenodo page](https://doi.org/10.5281/zenodo.24542491).
 
 rAPIdtools is developed at the NSF NHERI RAPID Facility, University of
 Washington, supported by the U.S. National Science Foundation.
