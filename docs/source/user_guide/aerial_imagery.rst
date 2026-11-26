@@ -1,10 +1,11 @@
 Aerial imagery
 ==============
 
-Aerial workflows start from a georeferenced raster: a drone orthomosaic you
-already have, or a basemap that rAPIdtools stitches for you from Bing or
-Google tiles. :class:`~rapidtools.processing.AerialImageryExtractor` then
-crops one patch per asset from that raster and attaches it to the asset.
+Aerial workflows start from a georeferenced raster. That can be a drone
+orthomosaic you already have, or a basemap that rAPIdtools stitches together
+from Bing or Google tiles. :class:`~rapidtools.processing.AerialImageryExtractor`
+then cuts one patch per asset out of the raster and attaches it to the
+asset.
 
 Cropping an orthomosaic around each asset
 -----------------------------------------
@@ -24,28 +25,32 @@ Cropping an orthomosaic around each asset
    buildings = extractor(buildings)
    buildings['bldg_01'].image_assets[0].properties['wgs84_bounds']
 
-Each crop is saved as a JPEG named after the asset centroid and attached as
-an :class:`~rapidtools.core.ImageAsset` whose properties record the crop's
-WGS84 bounds and the source raster. When ``dataset`` is a folder, every
-raster is opened once and only the assets inside its extent are processed,
-so regional mosaics split across many files work without extra code.
+Each crop is saved as a JPEG named after the asset's centroid and attached
+as an :class:`~rapidtools.core.ImageAsset`. Its properties record the crop's
+WGS84 bounds and the raster it came from. If ``dataset`` is a folder, each
+raster in it is opened once and only the assets inside its extent are
+cropped from it, so a regional mosaic split across many files needs no extra
+code.
 
 Sizing the crop
 ~~~~~~~~~~~~~~~
 
-``buffer_asset`` accepts a percentage of the asset's extent (``'20%'``, the
-default), a real-world distance (``'10 m'``, ``'30 ft'``) or a bare number in
-the raster's units; ``buffer_m`` is a shortcut for meters. With
-``force_square_image=True`` every crop covers a square area on the ground,
-which keeps aspect ratios consistent for the model.
+``buffer_asset`` sets the margin around the asset. It takes a percentage of
+the asset's size (``'20%'``, the default), a distance on the ground
+(``'10 m'``, ``'30 ft'``) or a plain number in the raster's units.
+``buffer_m`` is a shortcut for meters. With ``force_square_image=True`` every
+crop covers a square on the ground, so the model always sees the same
+aspect ratio.
 
 Assets on the edge of the imagery
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Coverage is judged from the raster's own mask, so nodata values, alpha bands
-and internal masks all count. By default a crop is skipped when more than
-``max_missing_data_ratio`` (20%) of it is empty. For assets that straddle
-the edge of a flight, switch to a footprint-based test instead:
+The extractor reads the raster's own mask to tell imagery from empty space,
+so nodata values, alpha bands and internal masks are all respected. By
+default it skips a crop when more than 20% of it is empty
+(``max_missing_data_ratio``). That rule throws away buildings that straddle
+the edge of a flight, so for those, test how much of the footprint itself
+is covered instead:
 
 .. code-block:: python
 
@@ -58,10 +63,10 @@ the edge of a flight, switch to a footprint-based test instead:
 Outlining the target asset
 --------------------------
 
-Dense neighborhoods are where a model most often describes the wrong
-building. ``overlay_asset_outline=True`` draws the asset onto the crop so the
-prompt can refer to "the outlined building". The outline's shape, offset,
-stroke and color are configurable:
+In a dense neighborhood a crop shows several buildings, and the model may
+describe the wrong one. ``overlay_asset_outline=True`` draws the asset on the
+crop so the prompt can refer to "the outlined building". You can choose the
+outline's shape, offset, line width and color:
 
 .. code-block:: python
 
@@ -83,18 +88,18 @@ stroke and color are configurable:
    Bottom row: a convex hull with a thin yellow stroke, cyan corner brackets,
    and the footprint with a stroke scaled to the image.
 
-Corner brackets are worth trying for damage assessment: a closed line can
-hide exactly the roof edge the model needs to see. Point assets are drawn as
-a dot, or as a ring of radius ``outline_buffer`` when a buffer is set.
+For damage assessment, try corner brackets. A closed line can cover the very
+roof edge the model needs to see. Point assets are drawn as a dot, or as a
+ring of radius ``outline_buffer`` if you set a buffer.
 
 Basemaps without an API key
 ---------------------------
 
-When you have footprints but no flight, stitch a basemap for the area.
+If you have footprints but no flight, stitch a basemap of the area.
 :class:`~rapidtools.processing.BingOrthomosaicExtractor` and
-:class:`~rapidtools.processing.GoogleOrthomosaicExtractor` download tiles in
-parallel and write a georeferenced GeoTIFF that every other component reads
-like a drone orthomosaic:
+:class:`~rapidtools.processing.GoogleOrthomosaicExtractor` download the tiles
+in parallel and write a georeferenced GeoTIFF, which the rest of the library
+treats like any drone orthomosaic:
 
 .. code-block:: python
 
@@ -105,17 +110,18 @@ like a drone orthomosaic:
        region, output_path='eaton_bing.tiff'
    )
 
-Google's servers go up to about zoom 21 in urban areas and offer a hybrid
-layer with labels (``layer='y'``). These endpoints are the ones used by the
-Google Maps web app; they are unofficial and may change, and every request
-fails soft with a logged error.
+Google serves tiles up to about zoom 21 in cities, and also has a hybrid
+layer with labels (``layer='y'``). Both providers are reached through the
+endpoints their own web maps use. These are unofficial and can change
+without notice, so a failed request is logged and skipped rather than
+stopping the run.
 
 Per-polygon satellite crops
 ---------------------------
 
-For a quick set of training images without a raster in between,
-:class:`~rapidtools.data_sources.GoogleAerialImageExtractor` and
-:class:`~rapidtools.data_sources.BingAerialImageExtractor` crop tiles
+To get a quick set of training images without building a raster first, use
+:class:`~rapidtools.data_sources.GoogleAerialImageExtractor` or
+:class:`~rapidtools.data_sources.BingAerialImageExtractor`. They crop tiles
 directly for every polygon in a GeoJSON file:
 
 .. code-block:: python
@@ -131,10 +137,10 @@ directly for every polygon in a GeoJSON file:
 Reading rasters directly
 ------------------------
 
-:class:`~rapidtools.data_sources.OrthomosaicReader` is the low-level reader
-behind the extractor. It opens a GeoTIFF once, reports its WGS84 extent,
-crops a patch around any geometry with the same buffering rules, and slides a
-window over the whole raster, skipping empty tiles:
+Underneath the extractor is :class:`~rapidtools.data_sources.OrthomosaicReader`.
+It opens a GeoTIFF once and reports its WGS84 extent. It can crop a patch
+around any geometry, with the same margin rules as the extractor, or slide a
+window across the whole raster and skip the empty tiles:
 
 .. code-block:: python
 

@@ -1,7 +1,7 @@
 Installation
 ============
 
-rAPIdtools supports Python 3.11 and newer on Linux, macOS and Windows.
+rAPIdtools runs on Python 3.11 or newer, on Linux, macOS and Windows.
 
 .. tab-set::
 
@@ -27,31 +27,44 @@ rAPIdtools supports Python 3.11 and newer on Linux, macOS and Windows.
          cd rAPIdtools
          pip install -e ".[dev]"
 
-Importing the package is fast and side-effect free. Model wrappers, PyTorch
-and Transformers load the first time a model is used, so a script that only
-reads GeoJSON never pays for them.
+Importing the package is quick. PyTorch, Transformers and the model wrappers
+load only when you first use a model, so a script that just reads GeoJSON
+never waits for them.
 
 .. code-block:: python
 
    import rapidtools as rt
    print(rt.PhysicalAssetCollection)
 
-Hosted model credentials
-------------------------
+To check that everything is in place, list the model providers:
 
-Hosted models need an API key, passed as ``api_key=`` or read from the
-environment variable listed below.
+.. code-block:: python
+
+   >>> from rapidtools.models import list_providers
+   >>> list_providers(kind='api')
+   ['gemini', 'claude', 'openai', 'muse_spark', 'qwen']
+   >>> list_providers(kind='local')
+   ['gemma4', 'llama', 'muse_glimmer', 'qwen_vl', 'hf']
+   >>> list_providers(kind='segmentation')
+   ['sam3']
+
+Hosted models
+-------------
+
+Each hosted provider needs its own API key. Pass it as ``api_key=`` (the key
+itself or the path of a file that holds it), or set one of the environment
+variables below and leave the argument out.
 
 .. list-table::
    :header-rows: 1
-   :widths: 30 30 40
+   :widths: 30 20 50
 
    * - Provider
      - Registry key
      - Environment variable
    * - Google Gemini
      - ``'gemini'``
-     - ``GOOGLE_API_KEY``
+     - ``GOOGLE_API_KEY`` or ``GEMINI_API_KEY``
    * - Anthropic Claude
      - ``'claude'``
      - ``ANTHROPIC_API_KEY``
@@ -60,60 +73,50 @@ environment variable listed below.
      - ``OPENAI_API_KEY``
    * - Meta Muse Spark
      - ``'muse_spark'``
-     - ``MODEL_API_KEY``
+     - ``MODEL_API_KEY`` or ``META_API_KEY``
    * - Alibaba Qwen (Model Studio)
      - ``'qwen'``
-     - ``DASHSCOPE_API_KEY``
+     - ``DASHSCOPE_API_KEY`` or ``QWEN_API_KEY``
 
 Local models
 ------------
 
-Local vision-language models (Gemma 4, Llama Vision, Muse Glimmer, Qwen and
-any Hugging Face checkpoint) and SAM 3 run on your own GPU. A 24 GB card
-handles every default checkpoint, the larger ones with
-``load_in_4bit=True`` (off by default; Gemma 4 does not take it); the
-smallest, ``google/gemma-4-E2B-it``, also runs on consumer GPUs with far
-less memory.
+The local vision-language models (Gemma 4, Llama Vision, Muse Glimmer, Qwen
+and any Hugging Face checkpoint) and SAM 3 run on your own GPU. The smallest
+default, ``google/gemma-4-E2B-it``, runs on a consumer card with a few
+gigabytes of memory. A 24 GB card runs every default checkpoint, although
+the larger ones need ``load_in_4bit=True``. That option is off by default, and the
+Gemma 4 wrapper does not offer it.
 
-Gated repositories such as Gemma and Llama require a Hugging Face account.
-Log in once and the token is cached for future sessions:
+Gemma, Llama and SAM 3 sit in gated Hugging Face repositories, so you need a
+Hugging Face account that has accepted their licenses. Log in once and the
+token is cached:
 
 .. code-block:: python
 
    import rapidtools as rt
-   rt.login()            # uses a cached token if one exists
+   rt.login()            # uses a cached token if there is one
    rt.login('hf_...')    # or pass a token explicitly
 
-Local wrappers call :func:`~rapidtools.auth.ensure_huggingface_login`
-themselves before downloading weights, so this step is optional.
+You can skip this step. The local wrappers call
+:func:`~rapidtools.auth.ensure_huggingface_login` themselves before they
+download weights.
 
-Street-level imagery
---------------------
+Imagery sources
+---------------
 
-Google Street View and the Bing and Google aerial basemaps are fetched
-without any key. Mapillary needs a free access token from
-`mapillary.com <https://www.mapillary.com/developer>`_, passed to
-:class:`~rapidtools.processing.MapillaryImageExtractor` as ``access_token``.
-
-Verify the installation
------------------------
-
-.. code-block:: python
-
-   >>> import rapidtools as rt
-   >>> from rapidtools.models import list_providers
-   >>> list_providers(kind='api')
-   ['gemini', 'claude', 'openai', 'muse_spark', 'qwen']
-   >>> list_providers(kind='local')
-   ['gemma4', 'llama', 'muse_glimmer', 'qwen_vl', 'hf', 'sam3']
+Google Street View and the Bing and Google aerial basemaps need no key.
+Mapillary needs a free access token from `mapillary.com
+<https://www.mapillary.com/developer>`_. Pass it as ``access_token`` to the
+Mapillary components, or set ``MAPILLARY_ACCESS_TOKEN``.
 
 Sample data
 -----------
 
-Every example in this documentation downloads what it needs through
-:func:`~rapidtools.datasets.download_dataset`, which fetches files from the
-rAPIdtools registry into a directory of your choice and skips files that are
-already present:
+The examples in this documentation fetch their data with
+:func:`~rapidtools.datasets.download_dataset`. It downloads files from the
+rAPIdtools registry into a folder of your choice and skips any that are
+already there:
 
 .. code-block:: python
 
@@ -124,9 +127,21 @@ already present:
        output_dir='data',
    )
 
-Available names: ``eaton_patch1``, ``eaton_patch2`` (drone orthomosaics of
-Altadena, CA after the January 2025 Eaton Fire), ``altadena_sample_buildings``
-and ``eaton_patch1_bing_buildings`` (footprints), ``aerial_chs_prompts``,
-``street_chs_prompts`` and ``street_recovery_prompts`` (prompt files),
-``synthetic_landslide_image``, and the ``mapillary_token`` and ``hf_token``
-credential files used by the examples.
+.. list-table::
+   :header-rows: 1
+   :widths: 40 60
+
+   * - Name
+     - What it is
+   * - ``eaton_patch1``, ``eaton_patch2``
+     - Drone orthomosaics of Altadena, CA, flown after the January 2025
+       Eaton Fire
+   * - ``altadena_sample_buildings``, ``eaton_patch1_bing_buildings``
+     - Building footprints for those areas
+   * - ``aerial_chs_prompts``, ``street_chs_prompts``,
+       ``street_recovery_prompts``
+     - Prompt files for damage grading and recovery status
+   * - ``synthetic_landslide_image``
+     - A single test image
+   * - ``mapillary_token``, ``hf_token``
+     - The credential files the examples use

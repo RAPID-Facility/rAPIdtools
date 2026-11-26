@@ -1,9 +1,9 @@
 Building footprints from a Bing basemap
 =======================================
 
-No footprint inventory? Stitch a basemap of the area, let SAM 3 find the
-roofs, then refine the rough masks into clean footprints against the
-high-resolution drone imagery.
+If you have no footprint inventory, you can make one. This example stitches
+a basemap of the area, lets SAM 3 find the roofs, and then refines the rough
+masks into clean footprints.
 
 Source: ``examples/building_detection_from_bing.py``.
 
@@ -46,7 +46,8 @@ Source: ``examples/building_detection_from_bing.py``.
 Notes
 -----
 
-- Point ``AerialImageryExtractor`` at the drone raster instead of the Bing
-  TIFF in step 4 to regularize against post-event imagery.
-- ``examples/vegetation_detection_from_aerial.py`` uses the same extractor
-  with a ``'vegetation'`` prompt and low thresholds to map canopy.
+- To refine the footprints against the post-event drone imagery, point
+  ``AerialImageryExtractor`` at the drone raster instead of the Bing TIFF
+  in step 4.
+- ``examples/vegetation_detection_from_aerial.py`` maps tree canopy with the
+  same detector, a ``'vegetation'`` prompt and low thresholds.

@@ -1,9 +1,9 @@
 Single-image inference
 ======================
 
-Not every question needs a pipeline. Any model wrapper can be called directly
-on one image, which is handy for prototyping prompts before running them
-over an inventory.
+Not every question needs a pipeline. You can call any model directly on a
+single image, which is handy for trying out a prompt before you run it over
+a whole inventory.
 
 Source: ``examples/single_image_vlm_inference.py``.
 
@@ -21,8 +21,8 @@ Source: ``examples/single_image_vlm_inference.py``.
    )
    print(output.text)
 
-Ask for structured output with ``json_mode`` when you plan to turn the
-prompt into a pipeline attribute:
+If you plan to turn the answer into asset attributes later, ask for
+structured output with ``json_mode``:
 
 .. code-block:: python
 
@@ -31,6 +31,6 @@ prompt into a pipeline attribute:
        generation=GenerationConfig(json_mode=True, temperature=0.0),
    )
 
-``examples/label_mapping.py`` shows another direct use of a model: asking it
-to translate plain-English object names into Mapillary's label vocabulary
-through :class:`~rapidtools.processing.MapillaryLabelMapper`.
+``examples/label_mapping.py`` shows another way to use a model directly. It
+asks the model, through :class:`~rapidtools.processing.MapillaryLabelMapper`,
+to translate plain-English object names into Mapillary's label vocabulary.

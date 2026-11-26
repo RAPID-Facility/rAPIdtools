@@ -1,12 +1,12 @@
 JSON job interface
 ==================
 
-Everything rAPIdtools is asked to do can be written down as a JSON file. A
-client (the graphical interface, a scheduler, a partner system) writes a
-**job file** that lists the steps to run; rAPIdtools executes it and keeps a
-**result file** next to it up to date. No Python objects cross that boundary,
-so the client and rAPIdtools can run in different processes or on different
-machines, as long as both see the same files.
+Any work you give rAPIdtools can be written down as a JSON file. A client
+(the graphical interface, a scheduler, a partner's system) writes a **job
+file** that lists the steps to run. rAPIdtools runs it and keeps a **result
+file** next to it up to date. Only files cross that boundary, never Python
+objects, so the client and rAPIdtools can run in different processes or on
+different machines as long as both can reach the same files.
 
 .. code-block:: text
 
@@ -16,14 +16,14 @@ machines, as long as both see the same files.
    polls    job.result.json <---   rewrites it at every change of state
    reads    the output files       named in job.result.json
 
-The graphical interface works this way itself: every download, detection,
+The graphical interface works this way too. Every download, detection,
 inference and prompt-assistant request it starts is a job file under
-``<output folder>/jobs``, and any of those files reruns unchanged from a
+``<output folder>/jobs``, and you can rerun any of them unchanged from a
 terminal.
 
-This page is the specification of interface version **1.0**. The three
-document types have JSON Schemas (draft 2020-12) that can be used to validate
-files before they are submitted:
+This page specifies version **1.0** of the interface. Each of the three
+document types has a JSON Schema (draft 2020-12) you can use to validate
+files before submitting them:
 
 - :download:`rapidtools-job-1.0.schema.json <_static/schemas/rapidtools-job-1.0.schema.json>`
 - :download:`rapidtools-job-result-1.0.schema.json <_static/schemas/rapidtools-job-result-1.0.schema.json>`
@@ -44,9 +44,9 @@ From a terminal:
    rapidtools-job schema job           # print a JSON Schema: job | result | secrets
    rapidtools-job steps                # print the catalog of step types as JSON
 
-``python -m rapidtools.jobs`` is the same command for environments where the
-console script is not on the path. ``run`` prints progress to the console,
-writes the result file and exits with:
+Where the console script is not on the path, ``python -m rapidtools.jobs``
+does the same thing. ``run`` prints progress to the console, writes the
+result file and exits with one of these codes:
 
 .. list-table::
    :header-rows: 1
@@ -63,12 +63,12 @@ writes the result file and exits with:
    * - ``3``
      - The job was canceled.
 
-``SIGINT`` (Ctrl+C) or ``SIGTERM`` cancels cooperatively: the batch or tile
-being processed finishes, partial results are written, the result file is
+``SIGINT`` (Ctrl+C) or ``SIGTERM`` cancels the job gracefully. The batch or
+tile in progress finishes, partial results are written, the result file is
 marked ``canceled`` and the process exits with ``3``. A second signal ends
-the process immediately.
+the process at once.
 
-From Python, the same thing is one call:
+From Python it is a single call:
 
 .. code-block:: python
 
@@ -181,19 +181,19 @@ A job file is one JSON object.
      - no
      - Free-form object. Never interpreted.
 
-Any other field, at the top level, in a step, under ``inputs`` or under
-``params``, is an error. A misspelled option is reported with the closest
-valid name instead of being silently ignored.
+Any other field is an error, whether it is at the top level, in a step, or
+under ``inputs`` or ``params``. A misspelled option is reported along with
+the closest valid name, rather than silently ignored.
 
 Paths
 ~~~~~
 
-Every path in a job file (``output_dir`` and file inputs) is either absolute
-or **relative to the folder that holds the job file**; ``~`` is expanded.
-A job that uses relative paths can therefore be moved together with its data.
-The process that runs the job must be able to read the inputs and write the
-output folder: when the client and rAPIdtools run on different machines, the
-files have to be on storage both can reach.
+Every path in a job file (``output_dir`` and the file inputs) is either
+absolute or **relative to the folder that holds the job file**, and ``~`` is
+expanded. A job that uses relative paths can therefore move together with
+its data. The process that runs the job must be able to read the inputs and
+write to the output folder, so when the client and rAPIdtools run on
+different machines, the files have to be on storage both can reach.
 
 Inputs
 ~~~~~~
@@ -226,9 +226,9 @@ The box is ``[min_lon, min_lat, max_lon, max_lat]`` with longitudes in
 Secrets
 ~~~~~~~
 
-API keys and access tokens are parameters like any other (they are marked
-*secret* in the reference below), but they do not have to be written into
-the job file. A secret parameter accepts three forms:
+API keys and access tokens are parameters like any other (the reference
+below marks them *secret*), but you do not have to write them into the job
+file. A secret parameter accepts three forms:
 
 .. list-table::
    :header-rows: 1
@@ -266,11 +266,11 @@ The result file
 ---------------
 
 rAPIdtools writes ``<job file name without .json>.result.json`` next to the
-job file (or wherever ``--result`` points). It is rewritten when the job
-starts, when each step starts and ends, and when the job ends; a job started
-with ``rapidtools-job run`` or ``run_job`` also refreshes ``message`` on
-every progress line. Every write replaces the file in one atomic step, so a
-reader always sees a complete document: polling it is safe.
+job file, or wherever ``--result`` points. The file is rewritten when the job
+starts, when each step starts and ends, and when the job ends. A job started
+with ``rapidtools-job run`` or ``run_job`` also updates ``message`` with
+every progress line. Each write replaces the file in a single atomic step,
+so a reader always sees a complete document and polling it is safe.
 
 .. code-block:: json
 
@@ -430,35 +430,42 @@ release.
 How the graphical interface uses it
 -----------------------------------
 
-The GUI server is a client of this interface and nothing more.
+The GUI server is simply a client of this interface.
 
-- **Where the files are.** Each run writes
-  ``<output folder>/jobs/<UTC time>-<random>-<name>.json`` and the matching
-  ``.result.json``. The log pane prints the path when a job starts, and both
-  paths are in ``job.file`` and ``job.result_file`` of ``GET /api/state``.
-- **Steps.** *Detect only*, *Run inference*, a basemap download and a
-  prompt-assistant request are one-step jobs. *Detect + run inference* is
-  one job with two steps, the second reading the ``assets`` output of the
-  first.
-- **Assets between runs.** An inference started on its own reads the assets
-  from the file the previous run wrote (``assets_final.geojson``,
-  ``street_objects.geojson``, ``assets_inferred.geojson``) or the file the
-  user loaded. Running a second model therefore adds its attributes to the
-  first model's.
-- **Credentials.** Keys typed into the page are replaced by
-  ``{"$secret": ...}`` in the job file. The values go to a secrets file in a
-  private temporary folder outside the output folder, readable by the
-  server's user only and deleted when the job ends.
-- **What is not a job.** Loading a local image or an asset file for display,
-  map tiles, address search, survey coverage and the list of models a key
-  can access are answered by the GUI server directly; they prepare a request
-  rather than run an analysis.
+Where the files are
+   Each run writes ``<output folder>/jobs/<UTC time>-<random>-<name>.json``
+   and the matching ``.result.json``. The log pane prints the path when a job
+   starts, and ``GET /api/state`` lists both paths as ``job.file`` and
+   ``job.result_file``.
+
+How runs map to steps
+   *Detect only*, *Run inference*, a basemap download and a prompt-assistant
+   request are one-step jobs. *Detect + run inference* is one job with two
+   steps, the second reading the ``assets`` output of the first.
+
+Assets between runs
+   An inference started on its own reads the assets from the file the
+   previous run wrote (``assets_final.geojson``, ``street_objects.geojson``,
+   ``assets_inferred.geojson``) or from the file the user loaded. Running a
+   second model therefore adds its attributes next to the first model's.
+
+Credentials
+   Keys typed into the page are replaced by ``{"$secret": ...}`` in the job
+   file. The values go to a secrets file in a private temporary folder
+   outside the output folder. Only the server's user can read it, and it is
+   deleted when the job ends.
+
+What is not a job
+   The GUI server answers some requests itself: loading a local image or an
+   asset file for display, map tiles, address search, survey coverage and
+   the list of models a key can reach. These prepare a request rather than
+   run an analysis.
 
 Adding a step type
 ------------------
 
-The interface is extended by registering one record; the runner, the
-schemas, the catalog and the tables on this page follow from it.
+To add a step type, register one record. The runner, the schemas, the
+catalog and the tables on this page are all generated from it.
 
 .. code-block:: python
 
@@ -490,8 +497,8 @@ schemas, the catalog and the tables on this page follow from it.
 Limits of version 1.0
 ---------------------
 
-These are deliberate omissions rather than oversights; each has a place in
-the design where it can be added in a minor release.
+Version 1.0 leaves these out on purpose. Each can be added in a minor
+release without breaking existing files.
 
 - **Shared storage is assumed.** Inputs and outputs are paths. There is no
   upload, download or object-store URL scheme yet.

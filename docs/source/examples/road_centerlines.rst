@@ -1,8 +1,8 @@
 Road centerlines from an orthomosaic
 ====================================
 
-Extract paved roads from a drone orthomosaic and reduce the raw masks to a
-connected network of centerlines with widths.
+This example finds the paved roads in a drone orthomosaic and reduces the
+rough masks to a connected network of centerlines, each with a width.
 
 Source: ``examples/road_detection_from_aerial.py``.
 
@@ -26,6 +26,6 @@ Source: ``examples/road_detection_from_aerial.py``.
    centerlines.to_geojson('roads_centerlines.geojson')
    polygons.to_geojson('roads_polygons.geojson')
 
-Each centerline carries ``width_ft`` and ``azimuth_deg`` attributes.
-``min_width_ft`` enforces a floor on sampled widths and
-``min_network_length_ft`` drops disconnected stubs.
+Each centerline has ``width_ft`` and ``azimuth_deg`` attributes. Pass
+``min_width_ft`` to set a minimum road width, and ``min_network_length_ft``
+to choose how short a disconnected stub has to be before it is dropped.

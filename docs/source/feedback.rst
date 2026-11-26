@@ -1,16 +1,18 @@
 Feedback and feature requests
 =============================
 
-Everything about rAPIdtools, from the geometry rules of the street-level
-pipeline to the layout of the GUI, was shaped by people running it on real
-surveys and saying what did not fit. Short notes are as welcome as long
-ones. There are two ways to reach us, depending on whether you use GitHub.
+Much of rAPIdtools, from the geometry of the street-level pipeline to the
+layout of the GUI, came from people running it on real surveys and telling
+us what did not fit. A two-line note is as welcome as a long report. You can
+reach us by email or, if you have a GitHub account, through an issue.
 
-Without a GitHub account
-------------------------
+Please leave API keys, Mapillary tokens and Hugging Face tokens out of
+anything you send.
 
-Email is all you need. Use this route if you do not have a GitHub account or
-would rather not open an issue yourself.
+By email
+--------
+
+You do not need a GitHub account for this route.
 
 .. grid:: 1 1 1 1
    :gutter: 3
@@ -19,20 +21,18 @@ would rather not open an issue yourself.
       :link: mailto:uwrapid@uwrapid.org?subject=rAPIdtools%20feedback
 
       Send feedback, a question, a bug or a feature idea to
-      uwrapid@uwrapid.org. Say what you were doing, what you expected and
-      what happened; a screenshot or the name of the page or class helps. A
-      maintainer will answer and, with your agreement, turn the message into
-      a GitHub issue so others can follow it. Please leave API keys and
-      access tokens out of the message.
+      uwrapid@uwrapid.org. Tell us what you were doing, what you expected
+      and what happened; a screenshot, or the name of the page or class,
+      helps. A maintainer will reply and, if you agree, turn your message
+      into a GitHub issue so others can follow it.
 
-With a GitHub account
----------------------
+On GitHub
+---------
 
-The three forms below open an issue on the project's GitHub page, where
-other users can see it, add to it and follow the fix. Each form asks only
-for what is needed to act on it. **They need a GitHub account**: clicking a
-card asks you to sign in first, and GitHub offers to create a free account
-on that page. If you would rather not, use the email route above.
+Each form below opens an issue on the project's GitHub page, where other
+users can see it, add to it and follow the fix. The forms ask only for what
+we need to act. GitHub asks you to sign in first, and offers to create a
+free account if you do not have one.
 
 .. grid:: 1 3 3 3
    :gutter: 3
@@ -40,8 +40,8 @@ on that page. If you would rather not, use the email route above.
    .. grid-item-card:: :fas:`lightbulb` Request a feature
       :link: https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=feature_request.yml
 
-      A capability that is missing or a change to an existing one. Describe
-      the task and the data first; the design can follow.
+      A capability that is missing, or a change to an existing one.
+      Describe the task and the data first; the design can come later.
 
    .. grid-item-card:: :fas:`bug` Report a bug
       :link: https://github.com/RAPID-Facility/rAPIdtools/issues/new?template=bug_report.yml
@@ -56,35 +56,27 @@ on that page. If you would rather not, use the email route above.
       a question about which component to use, or an idea that is not yet
       a proposal.
 
+Every page of this site also has an *Open issue* entry under the repository
+button in its header, which starts an issue about that page, and you can
+edit the `wiki <https://github.com/RAPID-Facility/rAPIdtools/wiki>`_
+directly if you spot a mistake in it.
+
 Security problems
 -----------------
 
-Suspected vulnerabilities are handled privately, never in a public issue.
+Please report suspected vulnerabilities privately, never in a public issue.
 With a GitHub account, open a `security advisory
 <https://github.com/RAPID-Facility/rAPIdtools/security/advisories/new>`_;
-without one, email uwrapid@uwrapid.org with "security" in the subject. The
-repository's ``SECURITY.md`` describes the process.
+without one, email uwrapid@uwrapid.org with "security" in the subject.
+``SECURITY.md`` in the repository describes the process.
 
 What happens next
 -----------------
 
 A maintainer reads every email and every issue. Feature requests are
-discussed before any code is written, so the use case and the approach are agreed on
-first; if you would like to implement it yourself, the form has a box to say
-so and ``CONTRIBUTING.md`` explains how a change gets in. Bugs confirmed on
-real data are fixed with a test that would have caught them. Feedback on the
-documentation usually lands within the next docs build; the documentation
-site is regenerated from ``main`` on every push.
-
-Other ways to reach us
-----------------------
-
-Both of these also need a GitHub account:
-
-- Every page of this site has an *Open issue* entry under the repository
-  button in the header, which starts an issue about that page.
-- The `wiki <https://github.com/RAPID-Facility/rAPIdtools/wiki>`_ can be
-  edited directly if you spot a mistake in it.
-
-Please do not paste API keys, Mapillary tokens or Hugging Face tokens into
-an email or an issue; redact them before sending.
+discussed before any code is written, so that we agree on the use case and
+the approach first. If you would like to build the feature yourself, the
+form has a box for that, and ``CONTRIBUTING.md`` explains how a change gets
+in. Bugs confirmed on real data are fixed together with a test that would
+have caught them. Fixes to the documentation usually appear with the next
+docs build, since the site is rebuilt from ``main`` on every push.

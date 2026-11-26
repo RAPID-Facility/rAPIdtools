@@ -1,10 +1,11 @@
 Buildings from perspective drone photos
 =======================================
 
-Turn a drone flight into a multi-view record of every building and ask a
-vision-language model about it: for each footprint, the few photos that
-together show the most of its walls and roof are chosen, cropped and marked,
-and a local Gemma 4 model reports the recovery status of the property.
+This example turns a drone flight into a multi-view record of every building
+and asks a vision-language model about it. For each footprint, the few
+photos that together show the most of its walls and roof are chosen, cropped
+and marked, and a local Gemma 4 model reports the recovery status of the
+property.
 
 Source: ``examples/building_inference_from_drone.py``. The test flight comes
 from ``examples/drone_flight_from_google_earth.py``, which needs no drone.
@@ -12,14 +13,14 @@ from ``examples/drone_flight_from_google_earth.py``, which needs no drone.
 A flight without a drone
 ------------------------
 
-The second script flies a virtual camera over the Altadena block burned in
-the January 2025 Eaton fire, in the Google Earth web app's 3D imagery
-(December 2025), driven through headless Chrome. It follows the usual
-oblique mapping pattern (a grid of shots looking north, east, south and west
-with the gimbal at 45 degrees, plus a straight-down grid, 452 photos from
-70 m above the take-off point) and writes each render as a JPEG with
-DJI-style EXIF and XMP metadata, so the photos are read exactly like the
-ones a DJI aircraft produces.
+The second script flies a virtual camera over the Altadena block that burned
+in the January 2025 Eaton Fire, using the 3D imagery in the Google Earth web
+app (December 2025) driven through headless Chrome. It follows the usual
+oblique mapping pattern: a grid of shots looking north, east, south and
+west with the gimbal at 45 degrees, plus a straight-down grid, 452 photos in
+all from 70 m above the take-off point. Each render is saved as a JPEG with
+DJI-style EXIF and XMP metadata, so the package reads the photos exactly as
+it would read those from a DJI aircraft.
 
 .. code-block:: bash
 
@@ -27,9 +28,10 @@ ones a DJI aircraft produces.
        --footprints eaton_patch1_bing_buildings.geojson \
        --output out/drone_flight --launch-chrome
 
-The camera model was checked by projecting the footprints into the renders:
-they land on their buildings. The imagery belongs to Google and its data
-providers; use the renders to test software, not to redistribute.
+To check the camera model, the footprints were projected into the renders,
+and they land on their buildings. The imagery belongs to Google and its data
+providers, so use the renders for testing software and do not redistribute
+them.
 
 The pipeline
 ------------
@@ -71,12 +73,13 @@ The pipeline
    buildings.to_geojson('buildings_drone.geojson', ignore_properties=['image_assets'])
    extractor.coverage_gaps().to_geojson('coverage_gaps.geojson')
 
-What the selection buys
------------------------
+How much the selection helps
+----------------------------
 
-On this flight every building appears in 13 photos on average. Measured as
-the share of each building's walls and roof that the chosen photos show
-(quality-weighted, averaged over the 179 buildings):
+On this flight a building appears in 13 photos on average. The table shows
+how much of each building's walls and roof the chosen photos cover,
+weighted by how well they show it and averaged over the 179 buildings, for
+three ways of choosing:
 
 .. list-table::
    :header-rows: 1
@@ -103,22 +106,24 @@ the share of each building's walls and roof that the chosen photos show
      - 0.78
      - 0.77
 
-All 452 photos together reach 0.92, so four selected photos carry 95% of
-what the whole flight shows of a building. With four photos, every wall is
-seen for 70% of the buildings; with the four nearest photos that is true of
-13%. The nearest photo is a poor choice because the nearest camera is the
-one almost overhead, which sees the roof and nothing else.
+All 452 photos together reach 0.92, so four well-chosen photos carry 95% of
+what the whole flight shows of a building. With four selected photos, every
+wall of the building is seen for 70% of the buildings; with the four nearest
+photos, only for 13%. The nearest photo is a poor choice because the nearest
+camera is usually almost overhead, and it sees the roof and nothing else.
 
 What the model reports
 ----------------------
 
 Gemma 4 E2B takes about five seconds per building for four 640-pixel crops.
 On this block it called 157 buildings standing, 16 lots empty and 4 houses
-under construction; ten of the twenty non-standing answers were checked by
-eye and all ten were right. The prompt matters with a model this small: it
-asks for one answer for the whole view set, and it does not mention the fire
-(told that there had been one, the model reported debris on nearly every
-standing house).
+under construction. Ten of the twenty answers other than "standing" were
+checked by eye, and all ten were right.
+
+With a model this small, the wording of the prompt matters. It asks for one
+answer for the whole set of views, and it does not mention the fire: when
+told there had been one, the model reported debris on nearly every standing
+house.
 
 Outputs
 -------
@@ -134,10 +139,11 @@ Outputs
 With a real drone
 -----------------
 
-Point ``FLIGHT_DIR`` at the folder of photos. On flat ground drop the
+Point ``FLIGHT_DIR`` at your folder of photos. On flat ground, drop the
 elevation step and the ``ground_elevation`` argument; otherwise give
-``takeoff_elevation_m`` in the datum of your ground elevations. Consumer GPS
-and compass errors move a building by a fraction of its size in the photo;
-the crops allow for that (``position_error_m``, ``angle_error_deg``), and
-``refine_poses=True`` uses SAM 3 to shift each photo's footprints onto the
-buildings it actually shows. See :doc:`../user_guide/drone_imagery`.
+``takeoff_elevation_m`` in the same datum as your ground elevations.
+Consumer GPS and compass errors shift a building by a fraction of its size
+in the photo. The crops leave room for that (``position_error_m``,
+``angle_error_deg``), and ``refine_poses=True`` uses SAM 3 to move each
+photo's footprints onto the buildings it actually shows. See
+:doc:`../user_guide/drone_imagery` for details.

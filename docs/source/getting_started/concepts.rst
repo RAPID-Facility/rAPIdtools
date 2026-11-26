@@ -1,17 +1,18 @@
 Concepts
 ========
 
-Four ideas cover the whole library: assets and collections describe what you
-are studying, image assets hold the pictures of them, pipeline steps do the
-work, and models are interchangeable engines behind the analysis steps.
+The library is built around a few ideas. *Assets* and *collections* describe
+the things you are studying, *image assets* hold the pictures of them,
+*pipeline steps* do the work, and *models* are interchangeable engines
+behind the steps that analyze images.
 
 Assets and collections
 ----------------------
 
-A :class:`~rapidtools.core.PhysicalAsset` is the digital twin of one
-real-world object: a building, a road segment, a utility pole. It holds a
-Shapely geometry, a dictionary of ``attributes``, and an
-:class:`~rapidtools.core.ImageCollection` of the pictures taken of it.
+A :class:`~rapidtools.core.PhysicalAsset` stands for one real-world object,
+such as a building, a road segment or a utility pole. It has a Shapely
+geometry, a dictionary of ``attributes`` and an
+:class:`~rapidtools.core.ImageCollection` with the pictures taken of it.
 
 .. code-block:: python
 
@@ -24,9 +25,9 @@ Shapely geometry, a dictionary of ``attributes``, and an
        attributes={'asset_type': 'utility_pole', 'material': 'wood'},
    )
 
-A :class:`~rapidtools.core.PhysicalAssetCollection` is an ordered container
-of assets with unique IDs and constant-time lookup by ID. It reads and writes
-GeoJSON and Shapefiles, converts to a pandas DataFrame, filters by geometry or
+A :class:`~rapidtools.core.PhysicalAssetCollection` holds assets in order,
+with unique IDs and fast lookup by ID. It reads and writes GeoJSON and
+Shapefiles, converts to a pandas DataFrame, filters by geometry or by
 attribute, and merges with other collections.
 
 .. code-block:: python
@@ -47,9 +48,9 @@ Regions
 
 :class:`~rapidtools.core.BoundingBox` and
 :class:`~rapidtools.core.PolygonRegion` describe areas of interest in WGS84.
-A bounding box can be built from a raster's extent, a GeoJSON file or any
-geometry, buffered, split into tiles, and used to filter collections or to
-drive basemap downloads.
+You can build a bounding box from a raster's extent, a GeoJSON file or any
+geometry, buffer it, split it into tiles, and use it to filter collections
+or to say where to download a basemap.
 
 .. code-block:: python
 
@@ -60,54 +61,63 @@ drive basemap downloads.
 Image assets
 ------------
 
-An :class:`~rapidtools.core.ImageAsset` points at one image file and carries
-``properties`` such as the WGS84 bounds of an aerial crop or the panorama ID
-of a street-level view, plus optional semantic and instance masks. Extractors
-create image assets and attach them to physical assets; analyzers and
-segmenters read them. An image asset can exist before its file is downloaded
-(``allow_missing_file=True``), which lets extractors decide what to fetch
-before spending bandwidth.
+An :class:`~rapidtools.core.ImageAsset` points at one image file. Its
+``properties`` record where the image came from, for example the WGS84
+bounds of an aerial crop or the panorama ID of a street-level view, and it
+can carry semantic and instance masks. Extractors create image assets and
+attach them to physical assets; analyzers and segmenters read them.
+
+An image asset can exist before its file does
+(``allow_missing_file=True``). Extractors use this to decide which images
+are worth fetching before they spend any bandwidth.
 
 Pipelines and stages
 --------------------
 
 A :class:`~rapidtools.processing.Pipeline` runs a list of steps over a
-collection. Each step is a callable that takes a collection and returns one,
-and declares a :class:`~rapidtools.processing.Stage`:
+collection. A step is any callable that takes a collection and returns one.
+The built-in steps also declare a :class:`~rapidtools.processing.Stage`,
+which fixes where they run:
 
 .. list-table::
    :header-rows: 1
    :widths: 25 75
 
    * - Stage
-     - Components
+     - Built-in steps
    * - ``DETECT``
-     - :class:`~rapidtools.processing.SAM3OrthoFeatureExtractor` discovers
-       new assets in a raster;
-       :class:`~rapidtools.processing.MapillaryFeatureExtractor` discovers
-       them along a street-level survey.
+     - :class:`~rapidtools.processing.SAM3OrthoFeatureExtractor` finds new
+       assets in a raster, and
+       :class:`~rapidtools.processing.MapillaryFeatureExtractor` finds them
+       along a street-level survey.
    * - ``EXTRACT_IMAGERY``
      - :class:`~rapidtools.processing.AerialImageryExtractor`,
+       :class:`~rapidtools.processing.DroneImageExtractor`,
        :class:`~rapidtools.processing.GoogleStreetViewImageExtractor`,
-       :class:`~rapidtools.processing.MapillaryImageExtractor`,
+       :class:`~rapidtools.processing.MapillaryImageExtractor` and
        :class:`~rapidtools.processing.MapillaryObjectImageExtractor` attach
        imagery to assets.
    * - ``REGULARIZE``
-     - :class:`~rapidtools.processing.BuildingRegularizer`,
-       :class:`~rapidtools.processing.RoadwayRegularizer` clean geometries.
+     - :class:`~rapidtools.processing.BuildingRegularizer` and
+       :class:`~rapidtools.processing.RoadwayRegularizer` clean up
+       geometries.
    * - ``SEGMENT``
      - :class:`~rapidtools.processing.SAM3ImageSegmenter` masks the attached
        images.
+   * - ``VERIFY``
+     - :class:`~rapidtools.processing.DetectionVerifier` and
+       :class:`~rapidtools.processing.DuplicateResolver` screen detected
+       objects with a model before they are analyzed.
    * - ``ANALYZE``
      - :class:`~rapidtools.processing.AssetAnalyzer` writes model answers to
        attributes.
    * - ``EXPORT`` / ``CUSTOM``
-     - Your own callables; unknown steps run last.
+     - Your own callables. Steps without a stage run last.
 
-Steps can be added in any order: the pipeline sorts them by stage before
-running, so an analyzer added before an extractor still runs after it. Any
-plain function can be a step, which is the easiest way to add a custom
-export or filter.
+The pipeline sorts its steps by stage before running them, so the order you
+list them in does not matter: an analyzer listed before an extractor still
+runs after it. Any plain function can be a step, which is the easiest way to
+add your own filter or export.
 
 .. code-block:: python
 
@@ -120,12 +130,13 @@ export or filter.
 Models and analyzers
 --------------------
 
-Every model wrapper, hosted or local, implements ``run_inference(images,
-prompt)`` and returns a :class:`~rapidtools.models.ModelOutput`. Build one
-with :func:`rapidtools.models.load` and its registry key, then hand it to
-:class:`~rapidtools.processing.AssetAnalyzer`. Switching providers is a
-one-word change; the analyzer picks threaded execution for APIs and batched
-execution for local models on its own.
+Every model wrapper, hosted or local, has the same
+``run_inference(images, prompt)`` method and returns a
+:class:`~rapidtools.models.ModelOutput`. You build one with
+:func:`rapidtools.models.load` and a registry key, then hand it to
+:class:`~rapidtools.processing.AssetAnalyzer`. Switching providers means
+changing that key. The analyzer works out the rest itself, sending parallel
+requests to hosted APIs and batching images for local models.
 
 .. code-block:: python
 
@@ -139,5 +150,6 @@ execution for local models on its own.
        generation=GenerationConfig(json_mode=True, temperature=0.0),
    )
 
-Answers are written as attributes prefixed with the provider name
-(``claude_damage_level``); pass ``attribute_prefix=`` to choose your own.
+Answers are stored as attributes named after the provider
+(``claude_damage_level``). Pass ``attribute_prefix=`` to choose your own
+prefix.

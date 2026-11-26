@@ -4,9 +4,9 @@ Deploying on AWS
 The ``deploy/aws/`` folder of the repository turns an AWS account into a
 working ``rapidtools-gui`` server with one CloudFormation template. You get
 an HTTPS address that colleagues open in their browsers, protected by an
-access token, on a machine that stops itself when nobody uses it. No DNS
-name, SSH key or DevOps experience is needed. For a machine you already
-have, see :doc:`deployment`.
+access token, on a machine that stops itself when nobody is using it. You do
+not need a DNS name, an SSH key or any DevOps experience. To set up a
+machine you already have, see :doc:`deployment` instead.
 
 .. list-table::
    :header-rows: 1
@@ -47,8 +47,8 @@ What gets created
 - Two small Lambda functions: one stores the secrets and picks the machine
   image when the stack is created, one serves the wake link.
 
-Nothing in the template is shared with other stacks, so you can run several
-copies (for example one per project) under different stack names.
+Stacks share nothing with each other, so you can run several copies under
+different stack names, for example one per project.
 
 Before you start
 ----------------
@@ -106,7 +106,7 @@ Choose a machine
      - L4, 24 GB
      - 8 / 32 GiB
      - 0.98
-     -
+     - The L4 with large rasters
    * - ``g6e.xlarge``
      - L40S, 48 GB
      - 4 / 32 GiB
@@ -121,35 +121,35 @@ Choose a machine
      - T4, 16 GB
      - 8 / 32 GiB
      - 0.75
-     -
+     - The T4 with large rasters
    * - ``t3.large``
      - none
      - 2 / 8 GiB
      - 0.08
-     - Users bring cloud model API keys
+     - Hosted models only; users bring their API keys
    * - ``t3.xlarge``
      - none
      - 4 / 16 GiB
      - 0.17
-     -
+     - The same with large rasters
    * - ``m7i.large``
      - none
      - 2 / 8 GiB
      - 0.10
-     -
+     - Hosted models, steady CPU (no burst credits)
    * - ``m7i.xlarge``
      - none
      - 4 / 16 GiB
      - 0.20
-     -
+     - The same with large rasters
 
 Prices are approximate Linux on-demand rates for ``us-east-1`` and
 ``us-west-2`` as published by AWS on 2026-11-10. They differ by region and
 change over time: check the `EC2 pricing page
 <https://aws.amazon.com/ec2/pricing/on-demand/>`_.
 
-The hourly price is only charged while the machine runs. What you pay all
-month, also while it is stopped, is approximately:
+The hourly price is charged only while the machine runs. These costs run all
+month, even while it is stopped:
 
 .. list-table::
    :header-rows: 1
@@ -167,18 +167,19 @@ month, also while it is stopped, is approximately:
    * - Snapshot kept after teardown
      - about 0.05 USD per GiB actually used, per month
 
-Example: a ``g5.xlarge`` used 20 hours a month costs about 20 USD of compute
-plus about 24 USD for the disks and the address. Data transfer out to the
-internet (downloading results) is billed by AWS separately at its usual
-rates. See `EBS pricing <https://aws.amazon.com/ebs/pricing/>`_ and `VPC
+For example, a ``g5.xlarge`` used 20 hours a month costs about 20 USD of
+compute plus about 24 USD for the disks and the address. Data transferred
+out to the internet, such as downloaded results, is billed separately at
+AWS's usual rates. See `EBS pricing <https://aws.amazon.com/ebs/pricing/>`_ and `VPC
 pricing <https://aws.amazon.com/vpc/pricing/>`_ for the current numbers.
 
 GPU machines only: check the quota
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-New AWS accounts cannot start GPU machines. The limit is the service quota
-**Running On-Demand G and VT instances**, counted in vCPUs, and it starts at
-0. You need 4 for an ``xlarge``, 8 for a ``2xlarge``, 16 for a ``4xlarge``.
+New AWS accounts cannot start GPU machines. The limit is a service quota
+called **Running On-Demand G and VT instances**. It is counted in vCPUs and
+starts at 0. You need 4 for an ``xlarge``, 8 for a ``2xlarge`` and 16 for a
+``4xlarge``.
 
 1. Open `Service Quotas, Amazon EC2
    <https://console.aws.amazon.com/servicequotas/home/services/ec2/quotas/L-DB2E81BA>`_
@@ -256,11 +257,12 @@ Path A: the console, step by step
    press **Next**, then **Submit**.
 7. Wait until the stack status is **CREATE_COMPLETE**. The stack waits for
    the GUI to answer, so this takes as long as the machine needs to set
-   itself up: expect roughly 10 to 15 minutes when the container image is
-   published, and 25 to 40 minutes when the machine has to build the image
-   from source (the first release of the image had not been published when
-   this was written, so the first launches build). The **Events** tab shows
-   progress. The stack gives up after 60 minutes.
+   itself up. With a published container image, which is the case for the
+   default ``latest`` tag and every release since 0.3.0, expect roughly 10
+   to 15 minutes. If you ask for a tag that has no published image, the
+   machine builds one from source at the Git reference, which takes 25 to
+   40 minutes. The **Events** tab shows progress. The stack gives up after
+   60 minutes.
 8. Open the **Outputs** tab:
 
    .. list-table::
@@ -314,10 +316,11 @@ organization). AWS CloudShell in the console already has both.
    HF_TOKEN=hf_xxx deploy/aws/launch.sh --region us-west-2 --bucket my-rapid-data
 
 The script checks the GPU quota, picks an Availability Zone that offers the
-machine type, asks for confirmation, waits for the stack and prints the share
-link, the wake link and the command that opens a shell. Run
-``deploy/aws/launch.sh --help`` for all options. Running it again with one
-option changes that setting of the existing stack and leaves the rest alone.
+machine type and asks you to confirm. It then waits for the stack and prints
+the share link, the wake link and the command that opens a shell.
+``deploy/aws/launch.sh --help`` lists all options. If you run it again with
+one option, it changes that setting on the existing stack and leaves the
+rest alone.
 
 Without the script:
 
@@ -333,13 +336,14 @@ First login
 -----------
 
 Open the share link and check that the map loads. The very first request
-builds the RAPID route database from Mapillary in two to three minutes, after
-which it is cached on the data disk. The first use of a local model downloads
-its weights (several gigabytes) to the data disk as well.
+builds the RAPID route database from Mapillary, which takes two to three
+minutes; after that it is cached on the data disk. The first time someone
+uses a local model, its weights (several gigabytes) are downloaded to the
+data disk too.
 
-If the browser says the site cannot be reached or shows a certificate
-warning in the first minutes, wait a little and reload: Caddy may still be
-getting the certificate. See `Troubleshooting`_ if it persists.
+If, in the first few minutes, the browser cannot reach the site or shows a
+certificate warning, wait a little and reload. Caddy may still be getting
+the certificate. If the problem persists, see `Troubleshooting`_.
 
 Getting a shell on the machine
 ------------------------------
@@ -416,23 +420,30 @@ Stopping and starting
 A stopped machine keeps both disks, its address and its name, and costs only
 the storage and the address.
 
-- **By itself.** After *Stop after this many idle minutes* without a running
-  job and without a browser using the page, the machine shuts down. A
-  running job always keeps it up. An open browser tab counts as use, so close
-  the tab when you are done.
-- **Wake link.** Opening the ``WakeLink`` output shows a **Start the
-  server** button when the machine is stopped, waits while it boots (two to
-  three minutes) and then forwards to the GUI. Colleagues can use it too.
-  They still need the token.
-- **By hand.** In the EC2 console select the machine and use **Instance
-  state**, **Stop instance** or **Start instance**, or run the
-  ``StopCommand`` and ``StartCommand`` outputs.
-- **Every day at a fixed hour.** Set *Also stop every day at this hour* as a
-  safety net. This stop does not wait for a running job.
+Automatically
+   The machine shuts down once *Stop after this many idle minutes* have
+   passed with no running job and no browser using the page. A running job
+   always keeps it up. An open browser tab counts as use, so close the tab
+   when you are done.
 
-After a start everything comes back by itself. A stopped GPU machine
-sometimes cannot be started because AWS has no free capacity of that type in
-the zone at that moment. Try again a few minutes later.
+With the wake link
+   When the machine is stopped, the ``WakeLink`` output shows a **Start the
+   server** button. It waits while the machine boots (two to three minutes)
+   and then forwards you to the GUI. Colleagues can use it too, but they
+   still need the token.
+
+By hand
+   In the EC2 console, select the machine and use **Instance state**,
+   **Stop instance** or **Start instance**, or run the ``StopCommand`` and
+   ``StartCommand`` outputs.
+
+Every day at a fixed hour
+   Set *Also stop every day at this hour* as a safety net. This stop does
+   not wait for a running job.
+
+After a start, everything comes back by itself. Occasionally a stopped GPU
+machine cannot start because AWS has no free capacity of that type in the
+zone at that moment. Try again a few minutes later.
 
 Changing settings
 -----------------
@@ -537,8 +548,8 @@ or in the console: **CloudFormation**, select the stack, **Delete**.
 
 Deleting the stack removes the machine, the system disk, the address, the
 network, the functions and the stored secrets. **The data disk is saved as a
-snapshot first, and that snapshot stays and is billed until you delete it**
-(EC2, **Snapshots**). This is deliberate: results survive an accidental
+snapshot first, and that snapshot stays, and is billed, until you delete
+it** (EC2, **Snapshots**). That way your results survive an accidental
 deletion. A new stack can start from the snapshot (*Restore the data disk
 from this snapshot*). An S3 bucket you supplied is never touched.
 

@@ -2,9 +2,9 @@ Aerial damage assessment: Eaton Fire
 ====================================
 
 The January 2025 Eaton Fire destroyed thousands of structures in Altadena,
-California. The RAPID Facility flew the area in February 2025; this example
-grades the buildings in one orthomosaic patch on the Cal Fire / CHS damage
-scale with a local Gemma 4 model, entirely offline.
+California, and the RAPID Facility flew the area the following month. This
+example grades the buildings in one patch of that orthomosaic on the
+Cal Fire / CHS damage scale, using a local Gemma 4 model, entirely offline.
 
 Source: ``examples/fire_damage_from_aerial.py``.
 
@@ -57,14 +57,15 @@ Source: ``examples/fire_damage_from_aerial.py``.
 Notes
 -----
 
-- ``keep_multiple_copies=True`` appends a counter when two assets share a
-  centroid, which happens with stacked or duplicated footprints.
+- ``keep_multiple_copies=True`` adds a counter to the file name when two
+  assets share a centroid, which happens with stacked or duplicated
+  footprints.
 - The prompt file asks for a JSON object with a ``chs_level`` key, so the
-  grade lands in ``gemma4_chs_level``. Open the GeoJSON in QGIS and color
-  by that attribute to see the damage map.
-- Swap ``load('gemma4', ...)`` for ``load('gemini', api_key=...)`` to grade
-  with a hosted model; nothing else changes. The script
+  grade ends up in ``gemma4_chs_level``. Open the GeoJSON in QGIS and color
+  it by that attribute to see the damage map.
+- To grade with a hosted model, replace ``load('gemma4', ...)`` with
+  ``load('gemini', api_key=...)``. Nothing else changes, and
   ``examples/fire_damage_from_aerial_gemini.py`` does exactly that.
-- ``examples/chs_from_shapefile_example.py`` shows the same pipeline reading
-  a Shapefile inventory and writing one back with
+- ``examples/chs_from_shapefile_example.py`` runs the same pipeline on a
+  Shapefile inventory and writes a Shapefile back with
   :meth:`~rapidtools.core.PhysicalAssetCollection.to_shapefile`.

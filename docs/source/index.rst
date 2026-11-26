@@ -29,8 +29,9 @@ your choice, and writes the answers back to GeoJSON or Shapefile.
       :link: examples/eaton_fire_aerial
       :link-type: doc
 
-      End-to-end walkthroughs on the 2025 Eaton Fire dataset: aerial damage,
-      street-level recovery, footprint and road extraction.
+      Complete scripts on real data: damage and recovery after the 2025
+      Eaton Fire, a street survey of Spokane, drone photos, footprints and
+      roads.
 
    .. grid-item-card:: :fas:`book` API Reference
       :link: api/index
@@ -42,20 +43,26 @@ your choice, and writes the answers back to GeoJSON or Shapefile.
 What it does
 ------------
 
-- **Ingest at scale.** Load footprints from GeoJSON or Shapefiles, filter
-  them spatially, and read multi-gigabyte orthomosaics window by window.
-- **Fetch imagery without API keys.** Stitch Bing or Google basemap tiles into
-  georeferenced GeoTIFFs, and pull Google Street View or Mapillary panoramas
-  that actually show the asset, with occluded views culled by ray casting.
-- **Run any vision-language model.** One factory and one analyzer cover Gemini,
-  Claude, OpenAI, Muse Spark and Qwen APIs, plus Gemma 4, Llama, Muse Glimmer,
-  Qwen and any Hugging Face checkpoint locally, with batching, 4-bit loading
-  and rate-limit back-off handled for you.
-- **Discover and clean geometries.** Scan a raster for a text concept with
-  SAM 3, then regularize the masks into building footprints or road
-  centerlines.
-- **Stop cleanly.** Every long-running component takes a cancel event, so
-  notebooks and the bundled GUI can interrupt a job and keep partial results.
+rAPIdtools handles the steps between "we have imagery" and "we have an answer
+for every building":
+
+- Read footprints from GeoJSON or Shapefiles and crop multi-gigabyte
+  orthomosaics one window at a time.
+- Fetch imagery when you have none. It stitches Bing or Google basemaps into
+  GeoTIFFs and finds the Google Street View or Mapillary panoramas that
+  actually show each asset, skipping views blocked by a neighbor. From a
+  drone flight it picks the few photos that show the most of each building.
+- Build the inventory when you have none. SAM 3 finds buildings, roads or
+  trees in a raster from a text prompt, and a Mapillary survey yields
+  vehicles, poles and houses from the detections Mapillary already
+  publishes.
+- Ask any vision-language model about each asset: Gemini, Claude, OpenAI,
+  Muse Spark or Qwen through their APIs, or Gemma 4, Llama, Muse Glimmer,
+  Qwen and other Hugging Face checkpoints on your own GPU. Batching and
+  rate limits are handled for you.
+- Work from a browser if you prefer. The bundled interface runs the same
+  workflow without code, and any long job can be stopped without losing
+  what it has already finished.
 
 .. code-block:: python
 
@@ -74,10 +81,10 @@ Feedback and feature requests
 -----------------------------
 
 rAPIdtools is shaped by the surveys it is used on. If a workflow does not fit
-your data, a page is unclear, or a capability is missing, say so: the
-:doc:`feedback page <feedback>` has one form each for feature requests, bug
-reports and general feedback, and every page of this site has an *Open issue*
-entry under the repository button in its header.
+your data, a page is unclear or something is missing, please tell us. The
+:doc:`feedback page <feedback>` has a form for feature requests, one for bug
+reports and one for general feedback, plus an email address if you do not
+use GitHub.
 
 Citing rAPIdtools
 -----------------

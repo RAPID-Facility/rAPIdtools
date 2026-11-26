@@ -1,13 +1,15 @@
 Quickstart
 ==========
 
-This page grades every building in a drone orthomosaic of Altadena, CA,
-captured after the 2025 Eaton Fire, and writes the grades to GeoJSON.
+In this walkthrough you grade every building in a drone orthomosaic of
+Altadena, CA, flown after the 2025 Eaton Fire, and save the grades as
+GeoJSON.
 
-**What you need:** either a CUDA GPU with a few gigabytes of memory (the
-example runs a local Gemma 4 model, fully offline after the first download),
-or an API key for a hosted model (see *Using a hosted model instead* below).
-Nothing else: the sample data comes from the rapidtools registry.
+You need one of two things: a CUDA GPU with a few gigabytes of memory, to
+run a local Gemma 4 model (offline once the weights are downloaded), or an
+API key for a hosted model (see `Using a hosted model instead`_). The sample
+data comes from the rAPIdtools registry, so there is nothing else to
+prepare.
 
 The whole workflow
 ------------------
@@ -39,29 +41,30 @@ The whole workflow
    # 4. Export. Model answers are attributes prefixed with the provider name.
    buildings.to_geojson('output/buildings_graded.geojson', include_images=False)
 
-What happened
--------------
+What each step did
+------------------
 
-1. :class:`~rapidtools.processing.AerialImageryExtractor` read the raster
-   once, cropped a square patch around each footprint with a 5 m margin,
-   drew the footprint outline on the patch so the model knows which building
-   to look at, and attached the JPEG to the asset as an
+1. :class:`~rapidtools.processing.AerialImageryExtractor` opened the raster
+   once and cut a square patch around each footprint with a 5 m margin. It
+   drew the footprint on the patch, so the model knows which building to
+   look at, and attached the JPEG to the asset as an
    :class:`~rapidtools.core.ImageAsset`.
-2. :class:`~rapidtools.processing.AssetAnalyzer` sent each asset's crops and
+2. :class:`~rapidtools.processing.AssetAnalyzer` sent each asset's crop and
    the prompt to the model, eight assets per batch, and stored the answer on
-   the asset. The prompt file asks for a JSON object, so each key becomes an
-   attribute such as ``gemma4_chs_level``.
+   the asset. The prompt file asks for a JSON object, so every key in the
+   answer becomes an attribute, such as ``gemma4_chs_level``.
 3. :meth:`~rapidtools.core.PhysicalAssetCollection.to_geojson` wrote the
-   footprints with their new attributes; ``include_images=False`` keeps the
+   footprints with their new attributes. ``include_images=False`` leaves the
    image records out of the file.
 
 Using a hosted model instead
 ----------------------------
 
-Only the analyzer changes. Hosted models run several requests in parallel and
-back off automatically when the provider rate-limits them. The key is read
-from the provider's environment variable (``GOOGLE_API_KEY`` here) unless you
-pass ``api_key=``, as text or as the path of a file holding it:
+Only the analyzer changes. Hosted models send several requests at once and
+slow down by themselves when the provider starts rejecting them. The key
+comes from the provider's environment variable (``GOOGLE_API_KEY`` for
+Gemini) unless you pass ``api_key=``, either as text or as the path of a
+file that holds it:
 
 .. code-block:: python
 
@@ -71,8 +74,8 @@ pass ``api_key=``, as text or as the path of a file holding it:
    model = rt.load('gemini', model_id='gemini-3.8-flash')
    analyzer = rt.AssetAnalyzer(model, prompt=prompt, max_workers=4)
 
-Reading the results
--------------------
+Looking at the results
+----------------------
 
 .. code-block:: python
 
@@ -83,12 +86,12 @@ Reading the results
    PosixPath('/.../output/crops/aerial_3418715171_-11814335588.jpg')
    >>> buildings.to_dataframe().groupby('gemma4_chs_level').size()
 
-Next steps
-----------
+Where to go next
+----------------
 
 - :doc:`concepts` explains assets, collections, images and pipeline stages.
-- :doc:`../user_guide/aerial_imagery` covers crop sizing, edge handling and
-  outline styles.
-- :doc:`../user_guide/vision_language_models` lists every supported model
-  and the generation options.
-- :doc:`../gui` runs the same workflow from a browser without code.
+- :doc:`../user_guide/aerial_imagery` covers crop sizes, buildings on the
+  edge of the imagery and outline styles.
+- :doc:`../user_guide/vision_language_models` lists the supported models and
+  their options.
+- :doc:`../gui` runs the same workflow from a browser, without code.

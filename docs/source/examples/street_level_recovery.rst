@@ -1,11 +1,11 @@
 Street-level damage and recovery
 ================================
 
-Street-level imagery captured at two dates tells a longitudinal story: what
-was destroyed, and what has been cleared or rebuilt since. This example
-fetches Mapillary panoramas from February and September 2025 for the same
-buildings, grades the initial damage, then re-evaluates only the damaged
-buildings for recovery progress.
+Street-level imagery from two dates shows both what was destroyed and what
+has been cleared or rebuilt since. This example fetches Mapillary panoramas
+of the same buildings from February and September 2025, grades the initial
+damage, and then looks again at the damaged buildings only, this time for
+signs of recovery.
 
 Source: ``examples/fire_recovery_analysis_from_street.py``.
 
@@ -62,8 +62,8 @@ Source: ``examples/fire_recovery_analysis_from_street.py``.
 Notes
 -----
 
-- Both extractor runs attach images to the same assets; the analyzer's
-  ``image_filter`` decides which survey each pass sees.
-- The same model instance serves both passes, so the weights load once.
+- Both extractor runs attach their images to the same assets. The
+  analyzer's ``image_filter`` decides which survey each pass looks at.
+- Both passes use the same model object, so the weights load only once.
 - :doc:`vehicle_detection_from_street` builds the inventory from the
   imagery itself instead of starting from footprints.

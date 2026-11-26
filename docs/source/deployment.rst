@@ -1,28 +1,28 @@
 Deploying a shared server
 =========================
 
-This page sets up one ``rapidtools-gui`` server that colleagues use from
-their browsers over HTTPS. It runs the GUI in Docker behind the Caddy web
-server, which obtains the certificate by itself, and keeps imagery, results
-and caches on the host disk. The files live under ``deploy/`` in the
-repository. The same steps work on a machine in your lab, a university VM or
-a cloud instance; the last section covers the cloud specifics.
+This page sets up a ``rapidtools-gui`` server that colleagues open in their
+browsers over HTTPS. The GUI runs in Docker behind the Caddy web server,
+which gets its HTTPS certificate by itself, and imagery, results and caches
+stay on the host's disk. The files are under ``deploy/`` in the repository.
+The same steps work on a machine in your lab, a university VM or a cloud
+instance. Windows workstations and cloud machines have their own sections
+further down.
 
 What you need
 -------------
 
-- A Linux machine with Docker and the Docker Compose plugin. For local
-  models (Gemma 4, Qwen, Llama) and fast SAM 3 detection it needs an NVIDIA
-  GPU with at least 16 GB of memory, NVIDIA driver 580 or newer (the image
-  carries CUDA 13) and the `NVIDIA
-  Container Toolkit <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html>`_.
-  Without a GPU the cloud model backends (Gemini, Claude, OpenAI, Qwen and
-  Muse Spark through their APIs) still work and SAM 3 runs slowly on the
-  CPU.
-- A DNS name pointing at the machine (for example ``gui.example.edu``) and
+- A Linux machine with Docker and the Docker Compose plugin. To run local
+  models (Gemma 4, Qwen, Llama) and fast SAM 3 detection, it also needs an
+  NVIDIA GPU with at least 16 GB of memory, NVIDIA driver 580 or newer (the
+  image ships CUDA 13) and the `NVIDIA Container Toolkit
+  <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html>`_.
+  Without a GPU, the hosted models (Gemini, Claude, OpenAI, Qwen and Muse
+  Spark) still work, and SAM 3 runs slowly on the CPU.
+- A DNS name that points at the machine, such as ``gui.example.edu``, with
   ports 80 and 443 reachable by your colleagues. Port 8765 stays closed;
-  Caddy is the only thing exposed.
-- Optionally an SMTP relay for email notifications.
+  only Caddy is exposed.
+- An SMTP relay, if you want email notifications.
 
 One-time setup
 --------------
@@ -64,12 +64,12 @@ One-time setup
 
       docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
 
-   This pulls the ready-built image of the latest release from the GitHub
-   Container Registry (several gigabytes for the CUDA image, a few minutes
-   on a fast connection). ``docker compose logs -f gui`` shows the server
-   starting; the first request builds the RAPID route database from
-   Mapillary in two to three minutes, after which it is cached in the
-   ``rapidtools-cache`` volume for good.
+   This pulls the prebuilt image of the latest release from the GitHub
+   Container Registry. The CUDA image is several gigabytes, a few minutes
+   on a fast connection. ``docker compose logs -f gui`` shows the server
+   starting. The first request builds the RAPID route database from
+   Mapillary, which takes two to three minutes; after that it is cached in
+   the ``rapidtools-cache`` volume.
 
 4. Open ``https://<domain>/?token=<your token>`` and check that the map
    loads. That link is what you send to colleagues; the token can also be
@@ -78,34 +78,40 @@ One-time setup
 Day to day
 ----------
 
-- **Everyone shares one workspace and one job queue.** One detection or
-  inference runs at a time; a second person's request is refused until it
-  finishes. For a team that runs analyses at the same time, start a second
-  GUI service on another port in the compose file with its own token and
-  add it to the Caddyfile under a second path or name.
-- **Imagery colleagues load** must sit under ``DATA_DIR``; the file browser
-  cannot leave it. Results, crops and downloaded basemaps land under
-  ``OUTPUT_DIR``. Both are plain folders on the host, so copy files in and
-  out as usual.
-- **Model weights and the route database** persist in the
-  ``rapidtools-cache`` volume, so restarts do not download them again.
-- **Notifications**: with the SMTP lines filled in, users can ask for an
-  email when a long run ends; webhooks (Slack, Teams) work without any
-  setup. Browser alerts work because the site is served over HTTPS. Links
-  in messages use ``RAPIDTOOLS_PUBLIC_URL``, which the compose file sets to
-  the domain.
-- **Updating**: ``docker compose ... pull`` then the same ``up -d`` command
-  (with the same ``-f`` and ``--env-file`` options). Restarting clears the
-  loaded image and assets from memory but keeps every result file.
-- **Rotating the token**: change it in ``deploy/.env`` and restart the
-  ``gui`` service.
+Sharing
+   Everyone shares one workspace and one job queue. One detection or
+   inference runs at a time, and a second person's request is refused until
+   it finishes. If your team needs to run analyses at the same time, add a
+   second GUI service on another port to the compose file, with its own
+   token, and route to it in the Caddyfile under a second path or name.
+
+Files
+   Imagery that colleagues load must be under ``DATA_DIR``, since the file
+   browser cannot leave it. Results, crops and downloaded basemaps go to
+   ``OUTPUT_DIR``. Both are ordinary folders on the host, so copy files in
+   and out as usual. Model weights and the route database live in the
+   ``rapidtools-cache`` volume, so a restart does not download them again.
+
+Notifications
+   With the SMTP lines filled in, users can ask for an email when a long run
+   ends. Webhooks (Slack, Teams) need no setup, and browser alerts work
+   because the site is served over HTTPS. Links in messages use
+   ``RAPIDTOOLS_PUBLIC_URL``, which the compose file sets to the domain.
+
+Updating
+   Run ``docker compose ... pull``, then the same ``up -d`` command with the
+   same ``-f`` and ``--env-file`` options. A restart clears the loaded image
+   and assets from memory but keeps every result file.
+
+Rotating the token
+   Change it in ``deploy/.env`` and restart the ``gui`` service.
 
 The published images
 --------------------
 
-Every release tag publishes two images from ``deploy/Dockerfile`` to the
-GitHub Container Registry. The repository is public, so pulling them needs
-no account.
+Each release publishes two images, built from ``deploy/Dockerfile``, to the
+GitHub Container Registry. The repository is public, so you can pull them
+without an account.
 
 .. list-table::
    :header-rows: 1
@@ -120,9 +126,9 @@ no account.
      - CPU-only build (``0.3.0-cpu``, ``0.3-cpu``)
 
 ``RAPIDTOOLS_IMAGE`` in ``deploy/.env`` selects the image. Pin a version
-tag there to decide yourself when the server moves to a new release, and
-switch to the ``-cpu`` tag on a machine without a GPU. The image runs on its
-own too, without Caddy, for a quick look on a workstation:
+tag there if you want to decide when the server moves to a new release, and
+use the ``-cpu`` tag on a machine without a GPU. For a quick look on a
+workstation, the image also runs on its own, without Caddy:
 
 .. code-block:: bash
 
@@ -138,9 +144,10 @@ before it is released, add ``--build`` to the ``up -d`` command; the
 A Windows machine in the lab
 ----------------------------
 
-On a Windows workstation that colleagues reach over the local network, skip
-Docker and Caddy: run the console script in a conda environment, keep it
-alive with Task Scheduler, and open the port in the Windows firewall.
+On a Windows workstation that colleagues reach over the local network, you
+can skip Docker and Caddy. Run the console script in a conda environment,
+keep it alive with Task Scheduler, and open the port in the Windows
+firewall.
 
 1. Install, in an Anaconda Prompt (the CUDA build of PyTorch is picked up
    automatically on a machine with an NVIDIA driver):
@@ -229,18 +236,18 @@ with ``Restart=always`` keeps it up across reboots.
 On a cloud machine
 ------------------
 
-For AWS there is a ready-made path: :doc:`deployment_aws` launches the whole
-setup (machine, HTTPS address, access token, idle shutdown and a wake link)
-from one CloudFormation template, with step-by-step instructions. On another
-cloud, follow the steps above on a GPU instance with a static address and a
-persistent disk, and install ``deploy/idle-shutdown.sh`` as a cron job so the
-machine stops itself when nobody uses it.
+On AWS, :doc:`deployment_aws` sets up everything (the machine, an HTTPS
+address, the access token, idle shutdown and a wake link) from one
+CloudFormation template, with step-by-step instructions. On another cloud,
+follow the steps above on a GPU instance with a static address and a
+persistent disk, and install ``deploy/idle-shutdown.sh`` as a cron job so
+the machine stops itself when nobody is using it.
 
 Security notes
 --------------
 
-The token is the only protection and everyone shares it. Serve the site
+The token is the only protection, and everyone shares it. Serve the site
 over HTTPS only (the compose setup does), keep port 8765 closed, rotate the
-token when someone leaves, and prefer the institution's network or a VPN
-for the address. API keys pasted into the page are sent to the server for
-the duration of a job and are not stored.
+token when someone leaves, and keep the address on your institution's
+network or a VPN if you can. API keys pasted into the page are sent to the
+server for the length of a job and are not stored.
