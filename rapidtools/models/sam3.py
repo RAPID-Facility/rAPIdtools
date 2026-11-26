@@ -47,9 +47,9 @@ matching object. Only ``facebook/sam3`` has a Transformers integration;
 
 Example:
     >>> from rapidtools.models import SAM3Inference
-    >>> sam = SAM3Inference()
-    >>> out = sam.run_inference('tile.jpg', 'building', threshold=0.5)
-    >>> out.masks[0].shape  # (n_instances, height, width)
+    >>> sam = SAM3Inference()  # doctest: +SKIP
+    >>> out = sam.run_inference('tile.jpg', 'building', threshold=0.5)  # doctest: +SKIP
+    >>> out.masks[0].shape  # (n_instances, height, width)  # doctest: +SKIP
     (12, 1024, 1024)
 """
 
@@ -86,9 +86,11 @@ class SAM3Inference(BaseLocalInferenceModel):
         >>> from rapidtools.models import SAM3Inference
         >>> SAM3Inference.list_available_models()
         ['facebook/sam3']
-        >>> sam = SAM3Inference(device='cuda')
-        >>> out = sam.run_inference(['a.jpg', 'b.jpg'], 'swimming pool')
-        >>> len(out.masks), len(out.bounding_boxes)
+        >>> sam = SAM3Inference(device='cuda')  # doctest: +SKIP
+        >>> out = sam.run_inference(  # doctest: +SKIP
+        ...     ['a.jpg', 'b.jpg'], 'swimming pool'
+        ... )
+        >>> len(out.masks), len(out.bounding_boxes)  # doctest: +SKIP
         (2, 2)
     """
 
@@ -204,9 +206,11 @@ class SAM3Inference(BaseLocalInferenceModel):
 
         Example:
             >>> from rapidtools.models import SAM3Inference
-            >>> sam = SAM3Inference()
-            >>> out = sam.run_inference('tile.jpg', 'tree', threshold=0.4)
-            >>> out.has_masks, out.raw_response['status']
+            >>> sam = SAM3Inference()  # doctest: +SKIP
+            >>> out = sam.run_inference(  # doctest: +SKIP
+            ...     'tile.jpg', 'tree', threshold=0.4
+            ... )
+            >>> out.has_masks, out.raw_response['status']  # doctest: +SKIP
             (True, 'success')
         """
         base = config or SegmentationConfig()
