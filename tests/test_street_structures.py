@@ -7,7 +7,7 @@ import zlib
 
 import numpy as np
 import pytest
-from scipy.spatial import ConvexHull
+from scipy.spatial import ConvexHull, cKDTree
 from scipy.spatial.transform import Rotation
 from shapely.geometry import Point, Polygon
 
@@ -19,8 +19,12 @@ from rapidtools.processing.street_structures import (
     PointCloud,
     Structure,
     discover_structures,
+    drawn_as_one,
     fetch_sfm_cluster,
     footprint_rectangle,
+    footprint_stepped,
+    front_most,
+    ground_level,
     is_structure_label,
     label_points,
     parse_sfm_cluster,
@@ -70,8 +74,16 @@ def _corners(x0, x1, y0, y1):
     )
 
 
-def _survey(n=21, spacing=3.0, houses=HOUSES, day='2026-08-27'):
-    """A point cloud, the frames that made it and their building outlines."""
+def _survey(
+    n=21, spacing=3.0, houses=HOUSES, day='2026-08-27', together=False, road_above=0.0
+):
+    """
+    A point cloud, the frames that made it and their building outlines.
+
+    Every house has an outline of its own in every frame; with ``together``
+    one outline is drawn around all of them, as around the parts of one house.
+    ``road_above`` raises the street (and the cameras) above the lots.
+    """
     rng = np.random.default_rng(0)
     house_pts = [_house_points(*h, rng) for h in houses]
     ground = np.c_[
@@ -85,7 +97,9 @@ def _survey(n=21, spacing=3.0, houses=HOUSES, day='2026-08-27'):
     points = np.vstack([*house_pts, ground, shrub])
     rotations, translations, sightings, clusters = [], [], [], {}
     for i in range(n):
-        center = np.array([-30.0 + spacing * i, 0.0, GROUND + CAMERA_HEIGHT])
+        center = np.array(
+            [-30.0 + spacing * i, 0.0, GROUND + CAMERA_HEIGHT + road_above]
+        )
         # A slightly different heading per frame, as in a real drive:
         r = LEVEL @ Rotation.from_euler('z', 0.002 * (i - n // 2)).as_matrix()
         rotvec = Rotation.from_matrix(r).as_rotvec()
@@ -95,8 +109,9 @@ def _survey(n=21, spacing=3.0, houses=HOUSES, day='2026-08-27'):
         lon, lat = UNPROJECT(center[0], center[1])
         image_id = f'img{i}'
         clusters[image_id] = ('c1', 'https://clouds/c1')
-        for house in houses:
-            u, v, _ = project_points(_corners(*house), r, t)
+        outlined = [_corners(*h) for h in houses]
+        for corners in [np.vstack(outlined)] if together else outlined:
+            u, v, _ = project_points(corners, r, t)
             ring = np.c_[u, v]
             ring = ring[ConvexHull(ring).vertices]
             sightings.append(
@@ -341,6 +356,10 @@ def test_observed_footprint_assumes_nothing(survey):
 def test_thresholds_drop_small_and_short_structures(survey):
     none, counts, _ = _discover(survey, min_points=100000)
     assert none == [] and counts['too_few_points'] == 2
+    # Large enough to be a wall piece, too small to be a structure:
+    most = max(s.n_points for s in _discover(survey)[0])
+    none, counts, _ = _discover(survey, min_points=most + 1)
+    assert none == [] and counts['too_few_points'] == 2
     none, counts, _ = _discover(survey, min_frontage_m=50.0)
     assert none == [] and counts['too_short'] == 2
     none, counts, _ = _discover(survey, min_height_m=50.0)
@@ -429,6 +448,241 @@ def test_label_points_keeps_walls_and_drops_ground_and_clutter(survey):
     assert on_house.mean() > 0.9
     shrub = np.hypot(rows[:, 0], rows[:, 1] - 6.0) < 1.5
     assert rows[shrub, 3].max() < 2.0
+
+
+# ==========================================
+# What a frame can see, and pieces of one building
+# ==========================================
+def test_front_most_hides_what_stands_behind():
+    # A tree 5 m away, a wall 20 m away right behind it, the same wall to the side.
+    u = np.array([0.5, 0.5, 0.75, 0.999, 0.001])
+    v = np.array([0.5, 0.5, 0.5, 0.5, 0.5])
+    dist = np.array([5.0, 20.0, 20.0, 4.0, 30.0])
+    seen = front_most(u, v, dist)
+    assert seen.tolist() == [True, False, True, True, False]  # also across the seam
+    # A wall seen at a slant does not hide itself, and the test can be skipped:
+    assert front_most(u[:2], v[:2], np.array([20.0, 23.0])).all()
+    assert front_most(u, v, dist, cell_deg=0).all()
+    assert front_most(u[:0], v[:0], dist[:0]).shape == (0,)
+
+
+def _hedged_survey():
+    """The survey with a tall hedge hiding the west house from the frames near it."""
+    cloud, sightings, clusters = _survey()
+    xs, zs = np.meshgrid(np.arange(-16.0, 0.01, 0.1), np.arange(0.0, 5.01, 0.1))
+    hedge = np.c_[xs.ravel(), np.full(xs.size, 5.0), GROUND + zs.ravel()]
+    cloud = PointCloud(
+        'c1',
+        LON0,
+        LAT0,
+        np.vstack([cloud.points, hedge]),
+        cloud.rotations,
+        cloud.translations,
+    )
+    # Behind the hedge the detector outlines no house: frames up to x = 2 m
+    # (the first eleven) keep only the outline of the east house.
+    kept = [
+        o for n, o in enumerate(sightings) if n % 2 == 1 or int(o.image_id[3:]) > 10
+    ]
+    return cloud, kept, clusters
+
+
+def test_a_frame_that_cannot_see_a_wall_does_not_vote_it_out(monkeypatch):
+    hedged = _hedged_survey()
+    structures, _, _ = _discover(hedged)
+    west = [s for s in structures if s.x < 0]
+    assert len(structures) == 2 and len(west) == 1
+    assert abs(west[0].frontage_m - 12.0) < 1.5
+    # Counting every frame in range, the frames behind the hedge vote most of
+    # the west house away (its far end survives: seen from up the street it
+    # lies inside the outline of the east house).
+    monkeypatch.setattr(
+        street_structures, 'front_most', lambda u, v, dist: np.ones(len(u), bool)
+    )
+    structures, _, _ = _discover(hedged)
+    assert all(s.frontage_m < 8.0 for s in structures if s.x < 0)
+
+
+def test_ground_level_is_read_from_the_cloud():
+    rng = np.random.default_rng(1)
+    lawn = np.c_[rng.uniform(0, 20, (2000, 2)), rng.normal(95.0, 0.02, 2000)]
+    wall = np.c_[np.full(80, 10.0), np.linspace(8, 12, 80), np.linspace(95, 100, 80)]
+    # A clump of stray points far under the surface, as reconstructions have:
+    stray = np.c_[rng.normal(11.0, 0.2, (12, 2)), np.full(12, 70.0)]
+    cloud = np.vstack([lawn, wall, stray])
+    at = np.array([[10.0, 10.0, 99.0], [3.0, 3.0, 95.5]])
+    assert np.allclose(ground_level(cloud, at), 95.0, atol=0.1)
+    assert np.allclose(ground_level(cloud, at[:, :2]), 95.0, atol=0.1)
+    # No ground to read: outside the cloud, too few cells around, nothing at all.
+    assert np.isnan(ground_level(cloud, np.array([[500.0, 500.0, 0.0]]))).all()
+    assert np.isnan(ground_level(cloud, np.array([[-50.0, 5.0, 0.0]]))).all()
+    assert np.isnan(ground_level(wall[:10], at)).all()
+    assert np.isnan(ground_level(cloud[:0], at)).all()
+    assert ground_level(cloud, at[:0]).shape == (0,)
+
+
+def test_houses_on_lots_below_the_street_are_found(monkeypatch):
+    low = _survey(road_above=3.0)
+    structures, _, _ = _discover(low)
+    assert len(structures) == 2
+    assert all(abs(s.height_m - HOUSE_HEIGHT) < 0.5 for s in structures)
+    # Measured from the road, the walls would end below the clutter cut:
+    monkeypatch.setattr(
+        street_structures, 'ground_level', lambda cloud, at: np.full(len(at), np.nan)
+    )
+    structures, _, _ = _discover(low)
+    assert all(s.height_m < HOUSE_HEIGHT - 2.5 for s in structures)
+    assert sum(s.n_points for s in structures) < 600
+
+
+# A garage standing forward and the house front set back behind it, with two
+# meters of blank wall (no points) between them along the street:
+GARAGE_AND_HOUSE = [(-14.0, -9.0, 10.0, 20.0), (-7.0, -1.0, 14.0, 20.0)]
+
+
+def test_pieces_outlined_as_one_building_are_joined():
+    one, counts, _ = _discover(_survey(houses=GARAGE_AND_HOUSE, together=True))
+    assert len(one) == 1 and counts['joined'] >= 1
+    house = one[0]
+    assert 12.0 < house.frontage_m < 14.0
+    # The footprint steps back where the house front does:
+    outline = Polygon(house.footprint)
+    assert len(house.footprint) == 6
+    assert outline.contains(Point(-11.5, 12.0))  # behind the garage door
+    assert not outline.contains(Point(-4.0, 12.0))  # the yard before the entrance
+    assert outline.contains(Point(-4.0, 16.0))
+    # The rear was not seen: it is drawn the assumed depth behind the house front.
+    assert house.depth_source == 'assumed'
+    assert house.depth_m == pytest.approx(14.0, abs=1.0)
+    # One rectangle around both is still available:
+    box, _, _ = _discover(
+        _survey(houses=GARAGE_AND_HOUSE, together=True), footprint='rectangle'
+    )
+    assert len(box) == 1 and len(box[0].footprint) == 4
+    assert Polygon(box[0].footprint).contains(Point(-4.0, 12.0))
+
+
+def test_pieces_outlined_apart_stay_apart():
+    # The same walls, but every frame outlines the two separately: neighbors.
+    two, counts, _ = _discover(_survey(houses=GARAGE_AND_HOUSE))
+    assert len(two) == 2 and sorted(round(s.frontage_m) for s in two) == [6, 6]
+    # Too far apart along the street, the outlines are not even asked:
+    far = [(-14.0, -9.0, 10.0, 20.0), (-4.0, 2.0, 14.0, 20.0)]
+    assert len(_discover(_survey(houses=far, together=True))[0]) == 2
+    # Nor are pieces whose setbacks differ by more than a house steps:
+    deep = [(-14.0, -9.0, 10.0, 16.0), (-7.0, -1.0, 28.0, 34.0)]
+    assert len(_discover(_survey(houses=deep, together=True))[0]) == 2
+
+
+def test_without_a_frame_that_shows_both_only_touching_pieces_join(monkeypatch):
+    monkeypatch.setattr(street_structures, 'drawn_as_one', lambda *a, **k: None)
+    apart, _, _ = _discover(_survey(houses=GARAGE_AND_HOUSE, together=True))
+    assert len(apart) == 2  # two meters apart: not enough to go on
+    touching = [(-14.0, -9.0, 10.0, 20.0), (-8.6, -1.0, 14.0, 20.0)]
+    monkeypatch.setattr(street_structures, '_MAX_STEP_M', 6.0)
+    joined, _, _ = _discover(_survey(houses=touching, together=True), min_gap_m=0.3)
+    assert len(joined) == 1
+
+
+def test_a_piece_joins_only_the_larger_piece_it_continues_best():
+    # A short wall in the side yard continues both houses, and every frame
+    # outlines all three as one; it must not tie the two houses together.
+    row = [(-16.0, -4.5, 10.0, 20.0), (-2.0, 2.0, 12.0, 16.0), (4.5, 16.0, 10.0, 20.0)]
+    structures, _, _ = _discover(_survey(houses=row, together=True))
+    assert len(structures) == 2
+    widths = sorted(round(s.frontage_m) for s in structures)
+    assert widths[0] >= 11 and widths[1] >= 17  # one house took the short wall
+
+
+def test_drawn_as_one_asks_the_frames_in_front():
+    cloud, sightings, clusters = _survey(houses=GARAGE_AND_HOUSE, together=True)
+    labeled = label_points(sightings, clusters, PROJECT, loader=lambda c, u: cloud)
+    rows = labeled.rows[labeled.rows[:, 3] > 2.0]
+    garage, house = rows[rows[:, 0] < -8.5, :3], rows[rows[:, 0] > -7.5, :3]
+    ids = list(labeled.shots)
+    tree = cKDTree(np.array([labeled.shots[i][1][:2] for i in ids]))
+    args = (labeled.shots, labeled.outlines, ids, tree)
+    assert drawn_as_one(garage, house, *args) is True
+    apart = _survey(houses=GARAGE_AND_HOUSE)
+    outlines = label_points(
+        apart[1], apart[2], PROJECT, loader=lambda c, u: apart[0]
+    ).outlines
+    assert drawn_as_one(garage, house, labeled.shots, outlines, ids, tree) is False
+    # Nothing to ask: no points, no frames, frames too far, or no outlines.
+    assert drawn_as_one(garage[:0], house, *args) is None
+    assert (
+        drawn_as_one(garage, house, labeled.shots, labeled.outlines, [], tree) is None
+    )
+    assert drawn_as_one(garage, house, *args, max_range_m=1.0) is None
+    assert drawn_as_one(garage, house, labeled.shots, {}, ids, tree) is None
+    # A piece no outline covers says nothing either:
+    elsewhere = house + np.array([300.0, 0.0, 0.0])
+    assert drawn_as_one(garage, elsewhere, *args, max_range_m=1e3) is None
+
+
+def test_wall_offsets_along_and_across_a_facade():
+    garage = [(0.0, 0.0), (6.0, 0.0), (6.0, 10.0), (0.0, 10.0)]
+    house_front = np.c_[np.linspace(6.5, 14.0, 40), np.full(40, 5.0)]
+    gap, step = street_structures._wall_offsets(garage, 1.0, house_front)
+    assert gap == pytest.approx(0.6, abs=0.1) and step == pytest.approx(4.0, abs=0.1)
+    before = np.c_[np.linspace(-9.0, -2.0, 40), np.full(40, -3.0)]
+    gap, step = street_structures._wall_offsets(garage, 1.0, before)
+    assert gap == pytest.approx(2.1, abs=0.1) and step == pytest.approx(3.0, abs=0.1)
+    inside = np.c_[np.linspace(1.0, 5.0, 40), np.full(40, 0.5)]
+    assert street_structures._wall_offsets(garage, 1.0, inside) == (0.0, 0.0)
+    assert street_structures._wall_offsets(garage, 1.0, inside[:0]) == (math.inf,) * 2
+    flat = [(0.0, 0.0), (0.0, 0.0), (0.0, 10.0), (0.0, 10.0)]
+    assert street_structures._wall_offsets(flat, 1.0, inside) == (math.inf,) * 2
+
+
+def _front(x0, x1, y, n=None):
+    xs = np.linspace(x0, x1, n or int(20 * (x1 - x0)))
+    return np.c_[xs, np.full(len(xs), y)]
+
+
+def test_footprint_stepped_follows_the_setbacks():
+    camera, street = np.array([7.0, 0.0]), np.array([1.0, 0.0])
+    wall = np.vstack([_front(0, 6, 10.0), _front(6, 14, 15.0)])
+    outline, frontage, depth, observed, source, facing = footprint_stepped(
+        wall, wall, camera, street
+    )
+    assert len(outline) == 6 and frontage == pytest.approx(14.0, abs=0.3)
+    ys = sorted(round(y) for _, y in outline)
+    assert ys == [10, 10, 15, 15, 25, 25]  # rear: assumed depth behind the far wall
+    assert source == 'assumed' and depth == pytest.approx(15.0, abs=0.3)
+    assert abs(facing - 180.0) < 3.0
+    # Roof points seen deep behind both fronts set the rear instead:
+    roof = np.c_[
+        np.tile(np.linspace(1, 13, 13), 4), np.repeat([18.0, 21.0, 24.0, 27.0], 13)
+    ]
+    outline, _, depth, observed, source, _ = footprint_stepped(
+        wall, roof, camera, street
+    )
+    assert source == 'observed' and depth == pytest.approx(observed, abs=1e-6)
+    assert max(y for _, y in outline) == pytest.approx(10.0 + observed, abs=0.2)
+    # The direction can be read from the longest straight wall alone:
+    turned, *_ = footprint_stepped(
+        wall, wall, camera, street, axis_points=_front(0, 6, 10.0)
+    )
+    assert len(turned) == 6
+
+
+def test_footprint_stepped_keeps_a_flat_front_a_rectangle():
+    camera, street = np.array([7.0, 0.0]), np.array([1.0, 0.0])
+    flat = _front(0, 14, 10.0)
+    box = footprint_rectangle(flat, flat, camera, street)
+    assert footprint_stepped(flat, flat, camera, street) == box
+    # A facade too short to step, or with too few points to read a wall line:
+    short = _front(0, 5, 10.0)
+    assert len(footprint_stepped(short, short, camera, street)[0]) == 4
+    sparse = np.vstack([_front(0, 14, 10.0, n=9), _front(0, 14, 15.0, n=9)])
+    assert len(footprint_stepped(sparse, sparse, camera, street)[0]) == 4
+    # A one-meter recess (a porch) is not a wall of its own and is drawn over:
+    porch = np.vstack([_front(0, 6, 10.0), _front(6, 7, 13.0), _front(7, 14, 10.0)])
+    assert len(footprint_stepped(porch, porch, camera, street)[0]) == 4
+    # A step smaller than the smallest drawn is a flat front too:
+    slight = np.vstack([_front(0, 7, 10.0), _front(7, 14, 10.8)])
+    assert len(footprint_stepped(slight, slight, camera, street)[0]) == 4
 
 
 # ==========================================

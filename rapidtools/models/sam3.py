@@ -45,6 +45,11 @@ such as ``'building'`` it returns instance masks, boxes and scores for every
 matching object. Only ``facebook/sam3`` has a Transformers integration;
 ``facebook/sam3.1`` ships raw checkpoints for the reference repository only.
 
+The same checkpoint also answers point prompts: :class:`SAM3PointInference`
+returns the object under a few pixels of an image, as candidates from a part
+to the whole. Street-level localization uses it to ask whether two masks
+are wings of one building.
+
 Example:
     >>> from rapidtools.models import SAM3Inference
     >>> sam = SAM3Inference()  # doctest: +SKIP
@@ -61,8 +66,14 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import torch
-from transformers import Sam3Model, Sam3Processor
+from transformers import (
+    Sam3Model,
+    Sam3Processor,
+    Sam3TrackerModel,
+    Sam3TrackerProcessor,
+)
 
 from .base import ModelOutput, SegmentationConfig
 from .catalogs import (
@@ -310,3 +321,146 @@ class SAM3Inference(BaseLocalInferenceModel):
         except Exception as e:  # noqa: BLE001 - surfaced as a failed batch
             logger.error(f'{log_ctx} Unexpected SAM 3 generation error: {e}')
             return None
+
+
+class SAM3PointInference(BaseLocalInferenceModel):
+    """
+    SAM 3 prompted with points: the object under a few pixels of an image.
+
+    A click on a garage door is ambiguous: the door, the garage or the
+    house. The model answers with several candidates, from the part to the
+    whole, which is what makes it useful for asking whether two masks
+    belong to one object: the whole object found from one covers the other.
+    This is the model's interactive head (``Sam3TrackerModel``), loaded from
+    the same weights as :class:`SAM3Inference`.
+
+    Example:
+        >>> from rapidtools.models.sam3 import SAM3PointInference
+        >>> sam = SAM3PointInference()  # doctest: +SKIP
+        >>> (candidates,) = sam.segment_at(  # doctest: +SKIP
+        ...     'pano.jpg', [[(420, 260), (450, 270)]])
+        >>> candidates.shape  # (candidates, height, width)  # doctest: +SKIP
+        (3, 512, 1024)
+    """
+
+    def __init__(self, model_id: str = SAM3_DEFAULT_MODEL, device: str = 'auto'):
+        """
+        Load the processor and weights of the interactive head.
+
+        Args:
+            model_id: Hugging Face repository ID. Defaults to ``'facebook/sam3'``.
+            device: ``'auto'``, ``'cuda'`` or ``'cpu'``.
+        """
+        super().__init__(device=device, temperature=0.0, max_tokens=0)
+        logging.getLogger('httpx').setLevel(logging.WARNING)
+        logging.getLogger('urllib3').setLevel(logging.WARNING)
+        logging.getLogger('huggingface_hub').setLevel(logging.WARNING)
+        self.model_id = model_id
+        logger.info(f'Loading the point-prompt head of {self.model_id}...')
+        self.processor = Sam3TrackerProcessor.from_pretrained(self.model_id)
+        self.model = Sam3TrackerModel.from_pretrained(
+            self.model_id,
+            dtype=torch.float16,
+            device_map='auto' if self.device == 'auto' else self.device,
+        )
+        self.model.eval()
+
+    def run_inference(
+        self,
+        image_inputs: str | Path | Sequence[str | Path],
+        prompt: str | Path | None = None,
+        points: Sequence[Sequence[Sequence[float]]] | None = None,
+        **kwargs: Any,
+    ) -> ModelOutput | None:
+        """
+        Segment the objects under ``points`` in one image.
+
+        The form every model wrapper shares; :meth:`segment_at` is the
+        direct one.
+
+        Args:
+            image_inputs: Path or URL of the image (the first, of several).
+            prompt: Ignored; this head takes points, not text.
+            points: For every object, a few ``(x, y)`` pixel positions.
+            **kwargs: Ignored; accepted for interface compatibility.
+
+        Returns:
+            ModelOutput | None: ``masks`` holds, for the one image, the list
+            of per-object candidate stacks; ``None`` when nothing came back.
+
+        Example:
+            >>> out = sam.run_inference(  # doctest: +SKIP
+            ...     'pano.jpg', points=[[(420, 260)]])
+            >>> len(out.masks[0])  # doctest: +SKIP
+            1
+        """
+        first = (
+            image_inputs
+            if isinstance(image_inputs, (str, Path))
+            else next(iter(image_inputs), None)
+        )
+        masks = self.segment_at(first, points or []) if first is not None else []
+        if not masks:
+            return None
+        return ModelOutput(
+            text=None,
+            masks=[masks],
+            bounding_boxes=None,
+            raw_response={'status': 'success', 'device': str(self.model.device)},
+        )
+
+    def segment_at(
+        self,
+        image_input: str | Path,
+        points: Sequence[Sequence[Sequence[float]]],
+    ) -> list[np.ndarray]:
+        """
+        Segment the object under each set of points.
+
+        Args:
+            image_input: Path or URL of the image.
+            points: For every object asked about, a few ``(x, y)`` pixel
+                positions on it. Every object needs the same number of
+                points.
+
+        Returns:
+            list[np.ndarray]: For every object, a boolean
+            ``(candidates, height, width)`` array of masks, from the part
+            under the points to the whole object. Empty when the image
+            cannot be read, nothing was asked or inference fails.
+
+        Example:
+            >>> masks = sam.segment_at(  # doctest: +SKIP
+            ...     'pano.jpg', [[(420, 260)], [(700, 250)]])
+            >>> len(masks), masks[0].dtype  # doctest: +SKIP
+            (2, dtype('bool'))
+        """
+        asked = [[[float(x), float(y)] for x, y in group] for group in points]
+        image = self._load_image_as_pil(image_input) if asked else None
+        if image is None:
+            return []
+        try:
+            inputs = self.processor(
+                images=image,
+                input_points=[asked],
+                input_labels=[[[1] * len(group) for group in asked]],
+                return_tensors='pt',
+            )
+            sizes = inputs['original_sizes']
+            device = self.model.device
+            tensors = {
+                key: value.to(device, dtype=torch.float16)
+                if value.is_floating_point()
+                else value.to(device)
+                for key, value in inputs.items()
+                if key != 'original_sizes' and isinstance(value, torch.Tensor)
+            }
+            with torch.no_grad():
+                outputs = self.model(**tensors, multimask_output=True)
+            masks = self.processor.post_process_masks(
+                outputs.pred_masks.float().cpu(), sizes
+            )[0]
+        except Exception as e:  # noqa: BLE001 - surfaced as no answer
+            logger.error(f'SAM 3 point prompt failed: {e}')
+            return []
+        return [np.asarray(m).astype(bool) for m in masks]

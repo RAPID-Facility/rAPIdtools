@@ -25,6 +25,54 @@ minor releases may change public APIs.
   `max_tokens` of the `analyze` job step now defaults to `null` (the
   model's default), and the GUI field follows the selected model until
   you type a limit.
+- **Buildings from one mask per house.** `MapillaryFeatureExtractor` can
+  place buildings from the masks of a segmentation model instead of
+  Mapillary's building surface:
+  `detection_source={'buildings': 'sam3'}, sam3_prompts={'buildings': 'house'}`.
+  Masks in different frames are linked into one building by the
+  reconstructed points they share
+  (`localization_method='instances'`, chosen automatically for buildings
+  detected this way), which keeps neighbors apart where a fence or a shed
+  joins them in Mapillary's outline. On the 1 km Spokane neighborhood, of
+  324 first-row houses: 321 found (316 without), 7 structures spanning two
+  or more houses (12 without), median overlap with the mapped footprint
+  0.61 (0.55 without); 17 houses come out in two pieces (14 without). It
+  downloads a thumbnail of every frame and runs the model on each (about
+  0.4 s per frame on one GPU), so it is opt-in. The linking lives in
+  `rapidtools.processing.street_instances` and takes outlines from any
+  source; `sam3_model` accepts any model with SAM 3's `run_inference`.
+  `detection_source` now also takes a mapping from class to source, and
+  `sam3_prompts` the text asked per class. A model often outlines the
+  wings of a large house separately; they are rejoined when their outlines
+  touch in the frames in front of them, or, with `join_wings_by='prompt'`,
+  when SAM 3 asked for the whole object at a few points on one wing returns
+  a mask that covers the other (new `SAM3PointInference` in
+  `rapidtools.models.sam3`). The prompt test wrongly joined 2 of 84
+  neighbor pairs where touching joined 13, and brought the structures
+  spanning two or more houses down from 7 to 3, for about 1,700 further
+  model calls on that neighborhood.
+- **Buildings matched to known footprints.** Give
+  `MapillaryFeatureExtractor` a footprint layer (`footprints=`: a
+  `PhysicalAssetCollection`, a GeoJSON file or polygons) and buildings are
+  no longer discovered: each footprint is projected into the frames around
+  it and the outlines found there are its sightings
+  (`localization_method='footprints'`, automatic when `footprints` is
+  given). Buildings come back as the footprints themselves, with their own
+  identifiers and attributes plus `frames_expected` and `frames_seen`, so
+  nothing is split or merged and a footprint that should be visible but is
+  not stands out. It needs no point cloud. On the 1 km Spokane
+  neighborhood, of 324 first-row houses: all 324 matched with SAM 3 masks,
+  323 with Mapillary's own outlines and no image download. Four more
+  first-row footprints there are lots whose houses burned before the
+  survey; SAM 3 on every frame reported 2 of them, each seen in three
+  frames where every standing house was seen in 16 or more, and SAM 3 on
+  every fifth frame reported none. Buildings the layer
+  lacks are still placed and marked `unmapped` (`report_unmapped`): with a
+  model, the masks on no footprint; with Mapillary's outlines, the point
+  cloud structures that lie off every footprint. With a tenth of the
+  first-row houses taken out of the layer, 99% of them came back with SAM 3
+  and 91% with Mapillary's outlines. The matching lives in
+  `rapidtools.processing.street_footprints`.
 
 ### Fixed
 
@@ -46,6 +94,32 @@ minor releases may change public APIs.
   built on it now return only the answer in `text` (the full output stays
   in `raw_response`), and report a failure that says to raise `max_tokens`
   when the limit is reached before the answer.
+- **Buildings from street level are found more often, and whole.** Changes
+  to the point-cloud method behind
+  `MapillaryFeatureExtractor(classes=['buildings'])`:
+  - A house whose garage and entrance stand at different setbacks used to
+    come out as two structures. Wall pieces now join when they continue each
+    other along the street and every frame in front of them outlines them as
+    one building; neighbors stay apart because a frame facing the side yard
+    outlines each separately.
+  - A frame votes against a reconstructed point only when it can see it, so
+    houses behind street trees are no longer voted away.
+  - Heights are measured above the ground read from the point cloud, not
+    above the road, so houses on lots below the street keep their walls and
+    fences on lots above it are no longer taken for walls. `height_m` is the
+    height above that ground.
+  - Footprints follow the setbacks of the facade
+    (`structure_footprint='stepped'`, the new default) instead of one
+    rectangle; `'rectangle'` and `'observed'` remain. The depth is taken
+    from the bulk of the points behind the wall, not the deepest few.
+  - A structure needs 40 reconstructed points instead of 80.
+
+  On a 1 km neighborhood of the Spokane survey, checked against mapped
+  footprints: of the 324 houses in the first row along the street, those
+  found rose from 254 to 316; houses reported as two structures fell from
+  62 to 14; the median overlap with the mapped footprint rose from 0.50 to
+  0.55. Structures spanning two or more neighbors went from 10 to 12,
+  mostly where a fence between houses is segmented as building.
 
 ## [0.3.0] - 2026-11-25
 

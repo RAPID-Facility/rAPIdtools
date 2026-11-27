@@ -84,7 +84,7 @@ import math
 import threading
 import warnings
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 from pathlib import Path
@@ -92,6 +92,7 @@ from typing import Any
 
 import numpy as np
 from PIL import Image
+from shapely import STRtree
 from shapely.geometry import Point, Polygon
 from tqdm import tqdm
 
@@ -115,7 +116,9 @@ from rapidtools.data_sources.mapillary_client import (
 from . import outlines
 from .reid import DEFAULT_MIN_WIDTH_PX, DEFAULT_REID_MODEL
 from .step import Stage
+from .street_footprints import footprint_sightings
 from .street_fusion import fuse_observations, object_attributes
+from .street_instances import discover_instances, mask_outlines
 from .street_localization import (
     DEFAULT_MAX_RANGE_M,
     MIN_POLYGON_AREA_FRACTION,
@@ -224,9 +227,25 @@ _IMAGE_FIELDS: tuple[str, ...] = (
 _DETECTION_FIELDS: tuple[str, ...] = ('detections.value', 'detections.geometry')
 
 _PANO_TYPES = ('spherical', 'equirectangular')
-_LOCALIZATION_METHODS = ('auto', 'fusion', 'points', 'tracks', 'voting', 'cluster')
+_LOCALIZATION_METHODS = (
+    'auto',
+    'fusion',
+    'points',
+    'instances',
+    'footprints',
+    'tracks',
+    'voting',
+    'cluster',
+)
+_DETECTION_SOURCES = ('auto', 'mapillary', 'sam3', 'map_features')
 # ``simplify_tolerance`` is capped at this share of an outline's longest side.
 _RELATIVE_TOLERANCE = 0.01
+# A structure found from the point cloud is a building the footprint layer
+# lacks when less than this share of it lies on any one known footprint.
+# Pieces of a mapped house reach past it; on a 1 km test area with a tenth
+# of the houses taken out of the layer, 91 % of those were reported and
+# nothing that overlapped a house still in the layer.
+_OFF_FOOTPRINT_SHARE = 0.1
 
 
 def mapillary_vocabulary() -> frozenset[str]:
@@ -242,6 +261,72 @@ def mapillary_vocabulary() -> frozenset[str]:
         for name, value in vars(MapillaryLabels).items()
         if not name.startswith('_') and isinstance(value, str) and '--' in value
     )
+
+
+def _known_footprints(source: Any) -> list[tuple[str | None, Polygon, dict[str, Any]]]:
+    """
+    Identifier, polygon and attributes of every known footprint.
+
+    ``source`` is a ``PhysicalAssetCollection`` (or any iterable of assets),
+    the path of a GeoJSON file, or polygons in longitude and latitude. Only
+    polygons are kept; of a footprint in several parts, the largest.
+    """
+    if source is None:
+        return []
+    if isinstance(source, (str, Path)):
+        source = PhysicalAssetCollection.from_geojson(source)
+    known: list[tuple[str | None, Polygon, dict[str, Any]]] = []
+    for item in source:
+        shape = getattr(item, 'geometry', item)
+        parts = list(getattr(shape, 'geoms', [shape]))
+        parts = [p for p in parts if isinstance(p, Polygon) and not p.is_empty]
+        if not parts:
+            continue
+        attributes = dict(getattr(item, 'attributes', None) or {})
+        attributes.pop('observations', None)
+        asset_id = getattr(item, 'id', None)
+        known.append(
+            (
+                None if asset_id is None else str(asset_id),
+                max(parts, key=lambda p: p.area),
+                attributes,
+            )
+        )
+    return known
+
+
+class _OffFootprints:
+    """
+    Whether a shape lies off every known footprint.
+
+    True when less than ``_OFF_FOOTPRINT_SHARE`` of the shape's area lies on
+    any one footprint. Shapes and footprints are in longitude and latitude;
+    only the ratio of areas is used, which the degrees do not change.
+    """
+
+    def __init__(self, footprints: Sequence[Polygon]):
+        self.footprints = list(footprints)
+        self.tree = STRtree(self.footprints)
+
+    def __call__(self, shape: Polygon) -> bool:
+        shape = shape if shape.is_valid else shape.buffer(0)
+        if shape.is_empty or shape.area <= 0:
+            return False
+        for n in self.tree.query(shape):
+            on = self.footprints[int(n)].intersection(shape).area
+            if on >= _OFF_FOOTPRINT_SHARE * shape.area:
+                return False
+        return True
+
+
+def _mask_stack(masks: Any) -> np.ndarray:
+    """An ``(n, height, width)`` boolean stack from a model's masks of one image."""
+    if masks is None:
+        return np.zeros((0, 1, 1), bool)
+    stack = np.asarray(masks)
+    if stack.ndim == 2:
+        stack = stack[None]
+    return stack.astype(bool)
 
 
 def resolve_classes(
@@ -373,9 +458,13 @@ _OPTION_DEFAULTS: dict[str, Any] = {
     # Structures from the point cloud:
     'structure_range_m': 40.0,
     'min_gap_m': 1.0,
-    'structure_footprint': 'rectangle',
+    'structure_footprint': 'stepped',
     'structure_views': 12,
     'point_cloud_dir': None,
+    'footprints': None,
+    'report_unmapped': True,
+    'join_wings_by': 'touching',
+    'sam3_point_model': None,
     # Frames and detections:
     'ego_filter': True,
     'ego_min_recurrence': 0.5,
@@ -383,6 +472,7 @@ _OPTION_DEFAULTS: dict[str, Any] = {
     'simplify_tolerance': 0.002,
     # SAM 3 detection:
     'sam3_model': None,
+    'sam3_prompts': None,
     'sam3_model_id': 'facebook/sam3',
     'sam3_threshold': 0.5,
     'sam3_mask_threshold': 0.5,
@@ -455,13 +545,16 @@ class MapillaryFeatureExtractor:
         filter_rapid_only (bool):
             Only use imagery uploaded by the RAPID Facility. Defaults to
             ``True``.
-        detection_source (str):
+        detection_source (str | Mapping[str, str]):
             ``'auto'`` (Mapillary map features for static point classes such
             as utility poles and hydrants, Mapillary detections for the rest,
             SAM 3 for unresolved classes), ``'mapillary'`` (detections only;
             skip unresolved classes with a warning), ``'sam3'`` (SAM 3 for
             every class) or ``'map_features'`` (only Mapillary's
-            pre-triangulated map features; other classes are skipped).
+            pre-triangulated map features; other classes are skipped). A
+            mapping chooses per class and leaves the rest on ``'auto'``:
+            ``{'buildings': 'sam3'}`` segments every building on its own
+            with SAM 3 while vehicles still come from Mapillary.
         localization_method (str):
             How sightings become objects. ``'auto'`` (default) uses
             ``'points'`` for buildings and other structures and
@@ -476,7 +569,23 @@ class MapillaryFeatureExtractor:
             footprint polygons (see
             :mod:`~rapidtools.processing.street_structures`); it needs
             panoramas Mapillary has reconstructed and falls back to
-            ``'fusion'`` otherwise. ``'tracks'`` is the earlier method:
+            ``'fusion'`` otherwise. ``'instances'`` is for sightings that
+            are one outline per object, as a segmentation model gives
+            (``detection_source='sam3'``): outlines in different frames are
+            linked into one object by the reconstructed points they share,
+            which keeps neighbors apart where a fence or a shed joins them
+            in Mapillary's building surface (see
+            :mod:`~rapidtools.processing.street_instances`). ``'auto'``
+            uses it for buildings detected with SAM 3. It downloads a
+            thumbnail of every frame and runs the model on each, so it
+            costs GPU time that ``'points'`` does not. ``'footprints'`` is for buildings
+            whose footprints are known (the ``footprints`` option): each
+            footprint is projected into the frames around it and the
+            outlines found there are its sightings, so nothing has to be
+            discovered, located or told apart (see
+            :mod:`~rapidtools.processing.street_footprints`). ``'auto'``
+            uses it for buildings whenever ``footprints`` is given, with
+            Mapillary's outlines or a model's. ``'tracks'`` is the earlier method:
             detections linked frame to frame by bearing, triangulated and
             merged by a set of rules tuned on vehicles (see
             :mod:`~rapidtools.processing.street_tracking`). ``'voting'``
@@ -559,15 +668,34 @@ class MapillaryFeatureExtractor:
     - ``structure_range_m`` (*float*): Farthest range at which a frame votes on
       a point in ``'points'``, and from which a structure gets a sighting.
       Defaults to 40.0.
-    - ``min_gap_m`` (*float*): Gap along the street that separates two
-      structures in ``'points'``. Defaults to 1.0.
-    - ``structure_footprint`` (*str*): ``'rectangle'`` (default) draws a
-      facade-aligned rectangle with the unseen rear filled in; ``'observed'``
+    - ``min_gap_m`` (*float*): Free ground that separates two wall pieces in
+      ``'points'``. Pieces up to three times as far apart along the street
+      are joined when the frames in front of them outline them as one
+      building. Defaults to 1.0.
+    - ``structure_footprint`` (*str*): ``'stepped'`` (default) draws a
+      footprint whose front follows the setbacks of the facade (garage
+      forward, entrance back), with the unseen rear filled in;
+      ``'rectangle'`` draws one facade-aligned rectangle; ``'observed'``
       draws only the convex outline of what was seen.
     - ``structure_views`` (*int*): Sightings kept per structure, spread over
       the directions it was seen from. Defaults to 12.
     - ``point_cloud_dir`` (*str | Path | None*): Where downloaded point clouds
       are cached. Defaults to ``<save_directory>/point_clouds``.
+    - ``footprints`` (*PhysicalAssetCollection | str | Path | Sequence | None*):
+      Known building footprints: a collection, the path of a GeoJSON file,
+      or polygons in longitude and latitude. When given, buildings are
+      matched to them (``'footprints'``) and come back with the footprint's
+      own geometry, identifier and attributes, plus ``frames_expected`` (the
+      frames it should be visible in) and ``frames_seen``. Defaults to
+      ``None``: buildings are discovered.
+    - ``report_unmapped`` (*bool*): With ``footprints``, also place the
+      buildings the layer does not have (``unmapped`` is ``True`` on them).
+      With a segmentation model these come from the masks that lie on no
+      footprint (``'instances'``); with Mapillary's outlines, from the
+      structures of ``'points'`` that lie off every footprint, which
+      downloads the point clouds and costs about a minute per thousand
+      frames. Either needs frames with a point cloud. Defaults to ``True``;
+      ``False`` matches the layer only.
 
     **Frames and detections** (every method):
 
@@ -591,8 +719,21 @@ class MapillaryFeatureExtractor:
     **SAM 3 detection** (classes Mapillary does not segment, or
     ``detection_source='sam3'``):
 
-    - ``sam3_model`` (*Any | None*): Pre-loaded SAM 3 wrapper. Loaded on demand
-      otherwise.
+    - ``sam3_model`` (*Any | None*): Pre-loaded segmentation model: the local
+      SAM 3 wrapper, or anything else with the same
+      ``run_inference``. The local wrapper is loaded on demand otherwise.
+    - ``sam3_prompts`` (*Mapping[str, str] | None*): The text the model is
+      asked for per class, where the class name is not it. SAM 3 wants a
+      singular noun: ``{'buildings': 'house'}``.
+    - ``join_wings_by`` (*str*): How ``'instances'`` decides that two masks
+      are wings of one building. ``'touching'`` (default): their outlines
+      touch in the frames in front of them. ``'prompt'``: a point-prompt
+      model, asked for the whole object at a few points on one, returns a
+      mask that covers the other; this joins neighbors far less often and
+      costs a few model calls per pair of candidate wings.
+    - ``sam3_point_model`` (*Any | None*): Pre-loaded point-prompt model for
+      ``join_wings_by='prompt'``: anything with
+      ``segment_at(image, points)``. SAM 3's is loaded on demand otherwise.
     - ``sam3_model_id`` (*str*): Hugging Face repository of the SAM 3 weights.
       Defaults to ``'facebook/sam3'``.
     - ``sam3_threshold`` (*float*): SAM 3 detection confidence threshold.
@@ -729,7 +870,7 @@ class MapillaryFeatureExtractor:
         start_date: str = '',
         end_date: str = '',
         filter_rapid_only: bool = True,
-        detection_source: str = 'auto',
+        detection_source: str | Mapping[str, str] = 'auto',
         localization_method: str = 'auto',
         geometry: str = 'auto',
         min_observations: int = 1,
@@ -765,11 +906,18 @@ class MapillaryFeatureExtractor:
             raise ValueError('frame_batch_size must be at least 1.')
         if o['simplify_tolerance'] < 0:
             raise ValueError('simplify_tolerance cannot be negative.')
-        if detection_source not in ('auto', 'mapillary', 'sam3', 'map_features'):
-            raise ValueError(
-                "detection_source must be 'auto', 'mapillary', 'sam3' or "
-                f"'map_features', got {detection_source!r}."
-            )
+        chosen = (
+            list(detection_source.values())
+            if isinstance(detection_source, Mapping)
+            else [detection_source]
+        )
+        for value in chosen:
+            if value not in _DETECTION_SOURCES:
+                raise ValueError(
+                    "detection_source must be 'auto', 'mapillary', 'sam3' or "
+                    f"'map_features' (for every class, or as a mapping from "
+                    f'class to one of them), got {value!r}.'
+                )
         if localization_method not in _LOCALIZATION_METHODS:
             raise ValueError(
                 'localization_method must be one of '
@@ -780,10 +928,10 @@ class MapillaryFeatureExtractor:
             raise ValueError(
                 f"geometry must be 'auto', 'point' or 'footprint', got {geometry!r}."
             )
-        if o['structure_footprint'] not in ('rectangle', 'observed'):
+        if o['structure_footprint'] not in ('stepped', 'rectangle', 'observed'):
             raise ValueError(
-                "structure_footprint must be 'rectangle' or 'observed', "
-                f'got {o["structure_footprint"]!r}.'
+                "structure_footprint must be 'stepped', 'rectangle' or "
+                f"'observed', got {o['structure_footprint']!r}."
             )
         if client is None:
             access_token = resolve_mapillary_token(access_token)
@@ -827,6 +975,21 @@ class MapillaryFeatureExtractor:
         self.assumed_depth_m = float(assumed_depth_m)
         self.structure_footprint = o['structure_footprint']
         self.structure_views = int(o['structure_views'])
+        self.footprints = _known_footprints(o['footprints'])
+        self.report_unmapped = bool(o['report_unmapped'])
+        if o['join_wings_by'] not in ('touching', 'prompt'):
+            raise ValueError(
+                "join_wings_by must be 'touching' or 'prompt', "
+                f'got {o["join_wings_by"]!r}.'
+            )
+        self.join_wings_by = o['join_wings_by']
+        self.sam3_point_model = o['sam3_point_model']
+        if localization_method == 'footprints' and not self.footprints:
+            raise ValueError(
+                "localization_method='footprints' needs the buildings to match: "
+                'pass footprints= (a PhysicalAssetCollection, a GeoJSON file or '
+                'polygons in longitude and latitude).'
+            )
         self.point_cloud_dir = (
             Path(o['point_cloud_dir'])
             if o['point_cloud_dir'] is not None
@@ -859,6 +1022,7 @@ class MapillaryFeatureExtractor:
         self.id_prefix = id_prefix
         self.save_directory = Path(save_directory)
         self.sam3_model = o['sam3_model']
+        self.sam3_prompts = dict(o['sam3_prompts'] or {})
         self.sam3_model_id = o['sam3_model_id']
         self.sam3_threshold = o['sam3_threshold']
         self.sam3_mask_threshold = o['sam3_mask_threshold']
@@ -887,33 +1051,70 @@ class MapillaryFeatureExtractor:
             SAM 3, and classes served by Mapillary's pre-triangulated map
             features (static point objects such as poles and hydrants).
         """
-        if self.detection_source == 'sam3':
-            return {}, list(self.classes), {}
-        resolved, unresolved = resolve_classes(self.classes, self.label_mapper)
+        source = self._source_of
+        asked = [cls for cls in self.classes if source(cls) != 'sam3']
+        resolved, unresolved = resolve_classes(asked, self.label_mapper)
+        sam3 = [cls for cls in self.classes if source(cls) == 'sam3']
         map_features: dict[str, tuple[str, ...]] = {}
-        if self.detection_source in ('auto', 'map_features'):
-            for cls, labels in list(resolved.items()):
-                if labels and all(is_map_feature_value(v) for v in labels):
-                    map_features[cls] = labels
-                    del resolved[cls]
-        if self.detection_source == 'map_features':
-            skipped = list(resolved) + unresolved
-            if skipped:
-                logger.warning(
-                    'Not served as Mapillary map features: %s; these classes are '
-                    "skipped. Use detection_source='auto' to detect them from "
-                    'images.',
-                    ', '.join(repr(c) for c in skipped),
-                )
-            return {}, [], map_features
-        if unresolved and self.detection_source == 'mapillary':
+        for cls, labels in list(resolved.items()):
+            if source(cls) not in ('auto', 'map_features'):
+                continue
+            if labels and all(is_map_feature_value(v) for v in labels):
+                map_features[cls] = labels
+                del resolved[cls]
+        skipped = [
+            cls for cls in [*resolved, *unresolved] if source(cls) == 'map_features'
+        ]
+        if skipped:
+            logger.warning(
+                'Not served as Mapillary map features: %s; these classes are '
+                "skipped. Use detection_source='auto' to detect them from "
+                'images.',
+                ', '.join(repr(c) for c in skipped),
+            )
+        unlabeled = [cls for cls in unresolved if source(cls) == 'mapillary']
+        if unlabeled:
             logger.warning(
                 'No Mapillary label for %s; these classes are skipped. Use '
                 "detection_source='auto' to detect them with SAM 3.",
-                ', '.join(repr(c) for c in unresolved),
+                ', '.join(repr(c) for c in unlabeled),
             )
-            unresolved = []
-        return resolved, unresolved, map_features
+        resolved = {
+            cls: labels
+            for cls, labels in resolved.items()
+            if source(cls) != 'map_features'
+        }
+        sam3 += [cls for cls in unresolved if source(cls) == 'auto']
+        sam3 = [cls for cls in self.classes if cls in sam3]  # in the order asked
+        return resolved, sam3, map_features
+
+    def _source_of(self, cls: str) -> str:
+        """Where one class's sightings come from (``detection_source``)."""
+        if isinstance(self.detection_source, Mapping):
+            return str(self.detection_source.get(cls, 'auto'))
+        return str(self.detection_source)
+
+    def _outlined_classes(self, sam3_classes: Sequence[str]) -> set[str]:
+        """
+        The model-detected classes whose masks are kept as per-object outlines.
+
+        Such sightings are placed by ``'instances'``: every class when that
+        method is asked for, and in ``'auto'`` the classes that name
+        structures (buildings), which no single frame shows whole. With
+        ``'footprints'`` the structure classes keep them too: a mask is then
+        given to the one footprint it lies on, and masks on none are the
+        buildings the layer does not have.
+        """
+        if self.localization_method == 'instances':
+            return set(sam3_classes)
+        if self.localization_method not in ('auto', 'footprints'):
+            return set()
+        structures, _ = resolve_classes(list(sam3_classes), self.label_mapper)
+        return {
+            cls
+            for cls, labels in structures.items()
+            if labels and all(is_structure_label(v) for v in labels)
+        }
 
     def _wants_point_clouds(
         self, mapillary_classes: dict[str, tuple[str, ...]], sam3_classes: list[str]
@@ -921,7 +1122,13 @@ class MapillaryFeatureExtractor:
         """Whether any requested class will be placed from the point cloud."""
         if self.localization_method == 'points':
             return bool(mapillary_classes or sam3_classes)
-        if self.localization_method != 'auto':
+        if self._outlined_classes(sam3_classes):
+            return True
+        # With known footprints the point cloud only places what the layer
+        # lacks (``report_unmapped``).
+        if self.localization_method == 'footprints' and not self.report_unmapped:
+            return False
+        if self.localization_method not in ('auto', 'footprints'):
             return False
         return any(
             labels and all(is_structure_label(v) for v in labels)
@@ -932,10 +1139,20 @@ class MapillaryFeatureExtractor:
         """The localization method one class's sightings are placed with."""
         if self.localization_method != 'auto':
             return self.localization_method
+        # Per-object outlines (one mask per building from a segmentation
+        # model) are linked through the point cloud, whoever made them.
+        outlined = bool(obs_list) and all(
+            'instance' in (o.extra or {}) for o in obs_list
+        )
         labels = {o.label for o in obs_list}
-        if labels and all(is_structure_label(v) for v in labels):
-            return 'points'
-        return 'fusion'
+        structure = bool(labels) and all(is_structure_label(v) for v in labels)
+        # Known footprints say which outline shows which building; nothing
+        # has to be discovered.
+        if self.footprints and (outlined or structure):
+            return 'footprints'
+        if outlined:
+            return 'instances'
+        return 'points' if structure else 'fusion'
 
     @staticmethod
     def _finish(
@@ -1096,7 +1313,9 @@ class MapillaryFeatureExtractor:
             return self._finish(existing, map_assets)
         logger.info(f'{n_frames} frames with metadata; detections read.')
         if sam3_classes:
-            for cls, obs in self._sam3_observations(sam3_frames, sam3_classes).items():
+            for cls, obs in self._sam3_observations(
+                sam3_frames, sam3_classes, self._outlined_classes(sam3_classes)
+            ).items():
                 observations[cls].extend(obs)
 
         collection = self._finish(existing, map_assets)
@@ -1254,9 +1473,21 @@ class MapillaryFeatureExtractor:
         return target if self.client._download_image(url, target) else None
 
     def _sam3_observations(
-        self, frames: list[dict[str, Any]], classes: list[str]
+        self,
+        frames: list[dict[str, Any]],
+        classes: list[str],
+        outlined: Iterable[str] = (),
     ) -> dict[str, list[Observation]]:
-        """Detect classes without Mapillary labels with SAM 3 on thumbnails."""
+        """
+        Detect classes with the segmentation model on thumbnails.
+
+        A class in ``outlined`` keeps the outline of every mask and the
+        number of the mask in its frame (``extra['instance']``), which is
+        what linking objects across frames needs; the others keep each
+        mask's bounding box. The model is whatever ``sam3_model`` holds:
+        anything with SAM 3's ``run_inference``.
+        """
+        outlined = set(outlined)
         model = self._load_sam3()
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
             paths = list(
@@ -1274,17 +1505,36 @@ class MapillaryFeatureExtractor:
                 batch = ready[start : start + self.sam3_batch_size]
                 output = model.run_inference(
                     [str(p) for _, p in batch],
-                    prompt=cls,
+                    prompt=self.sam3_prompts.get(cls, cls),
                     threshold=self.sam3_threshold,
                     mask_threshold=self.sam3_mask_threshold,
                 )
                 if output is None or not output.masks:
                     continue
-                for (frame, _), masks in zip(batch, output.masks, strict=False):
-                    for polygon in self._masks_to_polygons(masks):
-                        result[cls].append(
-                            self._observation(frame, cls, polygon, 'sam3')
-                        )
+                scores = (getattr(output, 'raw_response', None) or {}).get('scores')
+                for n, ((frame, _), masks) in enumerate(
+                    zip(batch, output.masks, strict=False)
+                ):
+                    if cls not in outlined:
+                        for polygon in self._masks_to_polygons(masks):
+                            result[cls].append(
+                                self._observation(frame, cls, polygon, 'sam3')
+                            )
+                        continue
+                    confidence = scores[n] if scores and n < len(scores) else None
+                    for k, mask in enumerate(_mask_stack(masks)):
+                        for ring in mask_outlines(mask):
+                            obs = self._observation(
+                                frame,
+                                cls,
+                                [(float(x), float(y)) for x, y in ring],
+                                'sam3',
+                                float(confidence[k])
+                                if confidence is not None and k < len(confidence)
+                                else None,
+                            )
+                            obs.extra['instance'] = k
+                            result[cls].append(obs)
         return result
 
     @staticmethod
@@ -1370,8 +1620,15 @@ class MapillaryFeatureExtractor:
                 )
             obs_list = [o for i, o in enumerate(obs_list) if i not in ego]
         method = self._method_for(obs_list)
-        if method == 'points':
-            assets, counter, done = self._assets_from_points(cls, obs_list, counter)
+        if method == 'footprints':
+            return self._assets_from_footprints(cls, obs_list, counter)
+        if method in ('points', 'instances'):
+            place = (
+                self._assets_from_points
+                if method == 'points'
+                else self._assets_from_instances
+            )
+            assets, counter, done = place(cls, obs_list, counter)
             if done:
                 return assets, counter
             method = 'fusion'
@@ -1479,10 +1736,18 @@ class MapillaryFeatureExtractor:
         return assets, counter
 
     def _assets_from_points(
-        self, cls: str, obs_list: list[Observation], counter: int
+        self,
+        cls: str,
+        obs_list: list[Observation],
+        counter: int,
+        keep: Callable[[Polygon], bool] | None = None,
     ) -> tuple[list[PhysicalAsset], int, bool]:
         """
         Place one class from the survey's point cloud (see ``street_structures``).
+
+        ``keep``, when given, is asked about every structure's footprint (in
+        longitude and latitude) before it is numbered; structures it turns
+        down are left out.
 
         Returns the assets, the counter and whether the method could run;
         ``False`` means no frame had a point cloud and the caller should
@@ -1522,6 +1787,141 @@ class MapillaryFeatureExtractor:
         for structure in structures:
             if structure.n_images < self.min_observations:
                 continue
+            shape = Polygon([unproject(x, y) for x, y in structure.footprint])
+            if keep is not None and not keep(shape):
+                continue
+            counter += 1
+            asset_id, attributes = self._describe(cls, structure.members, counter)
+            attributes.update(structure_attributes(structure))
+            if self.geometry == 'point':
+                geometry: Any = Point(*unproject(structure.x, structure.y))
+            else:
+                geometry = shape
+            assets.append(
+                PhysicalAsset(id=asset_id, geometry=geometry, attributes=attributes)
+            )
+        return assets, counter, True
+
+    def _assets_from_footprints(
+        self, cls: str, obs_list: list[Observation], counter: int
+    ) -> tuple[list[PhysicalAsset], int]:
+        """
+        Give one class's sightings to known footprints (see ``street_footprints``).
+
+        Every footprint that was seen becomes an asset with its own
+        geometry, identifier and attributes. When ``report_unmapped`` is set
+        and the frames have point clouds, buildings the layer does not have
+        are placed too: from per-object outlines, the ones that lie on no
+        footprint (``'instances'``); from surface outlines, which claim no
+        single building, the structures of ``'points'`` that lie off every
+        footprint.
+        """
+        views, unclaimed, counts = footprint_sightings(
+            obs_list,
+            [shape for _, shape, _ in self.footprints],
+            camera_height_m=self.camera_height_m,
+            max_range_m=self.structure_range_m,
+            max_views=self.structure_views,
+        )
+        unseen = sum(v.n_expected >= 3 and not v.n_seen for v in views)
+        logger.info(
+            f"'{cls}': {counts.get('footprints_seen', 0)} of the "
+            f'{counts.get("footprints_expected", 0)} footprints in view were seen '
+            f'in {counts.get("frames", 0)} frames; {unseen} in view of three or '
+            f'more frames have no sighting (hidden, or no longer standing); '
+            f'{counts.get("unclaimed", 0)} outlines lie on no footprint.'
+        )
+        assets = []
+        for (known_id, shape, known), view in zip(self.footprints, views, strict=True):
+            if not view.members or view.n_images < self.min_observations:
+                continue
+            counter += 1
+            asset_id, attributes = self._describe(cls, view.members, counter)
+            attributes = {
+                **known,
+                **attributes,
+                'localization': 'footprint',
+                'n_images': view.n_images,
+                'frames_expected': view.n_expected,
+                'frames_seen': view.n_seen,
+            }
+            assets.append(
+                PhysicalAsset(
+                    id=known_id or asset_id, geometry=shape, attributes=attributes
+                )
+            )
+        if not self.report_unmapped:
+            return assets, counter
+        left = [obs_list[n] for n in unclaimed]
+        unmapped: list[PhysicalAsset] = []
+        if any('instance' in (o.extra or {}) for o in obs_list):
+            if any(o.image_id in self._clusters for o in left):
+                unmapped, counter, _ = self._assets_from_instances(cls, left, counter)
+        elif any(o.image_id in self._clusters for o in obs_list):
+            unmapped, counter, _ = self._assets_from_points(
+                cls,
+                obs_list,
+                counter,
+                keep=_OffFootprints([shape for _, shape, _ in self.footprints]),
+            )
+            logger.info(
+                f"'{cls}': {len(unmapped)} structures from the point cloud lie off "
+                'every footprint.'
+            )
+        for asset in unmapped:
+            asset.attributes['unmapped'] = True
+        assets.extend(unmapped)
+        return assets, counter
+
+    def _assets_from_instances(
+        self, cls: str, obs_list: list[Observation], counter: int
+    ) -> tuple[list[PhysicalAsset], int, bool]:
+        """
+        Place one class from per-object outlines (see ``street_instances``).
+
+        Returns the assets, the counter and whether the method could run;
+        ``False`` means the sightings are not per-object outlines or no
+        frame had a point cloud, and the caller should fall back to fusion.
+        """
+        clusters = {
+            o.image_id: self._clusters[o.image_id]
+            for o in obs_list
+            if o.image_id in self._clusters
+        }
+        outlined = any('instance' in (o.extra or {}) for o in obs_list)
+        if not clusters or not outlined:
+            logger.warning(
+                f"'{cls}': localization_method='instances' needs one outline per "
+                'object from a segmentation model (detection_source='
+                f"{{'{cls}': 'sam3'}}) and frames with a Mapillary point cloud "
+                '(sfm_cluster); placing it by occupancy fusion instead.'
+            )
+            return [], counter, False
+        structures, counts, unproject = discover_instances(
+            obs_list,
+            clusters,
+            cache_dir=self.point_cloud_dir,
+            camera_height_m=self.camera_height_m,
+            max_range_m=self.structure_range_m,
+            min_gap_m=self.min_gap_m,
+            assumed_depth_m=self.assumed_depth_m,
+            footprint=self.structure_footprint,
+            max_views=self.structure_views,
+            max_workers=self.max_workers,
+            whole_object=self._whole_object if self.join_wings_by == 'prompt' else None,
+        )
+        logger.info(
+            f"'{cls}': {counts.get('outlines', 0)} outlines in "
+            f'{counts.get("frames", 0)} frames linked through '
+            f'{counts.get("points", 0)} points of {counts.get("clusters", 0)} point '
+            f'clouds into {counts.get("tracks", 0)} tracks, '
+            f'{counts.get("joined", 0)} joined as wings of one structure -> '
+            f'{counts["structures"]} structures.'
+        )
+        assets = []
+        for structure in structures:
+            if structure.n_images < self.min_observations:
+                continue
             counter += 1
             asset_id, attributes = self._describe(cls, structure.members, counter)
             attributes.update(structure_attributes(structure))
@@ -1533,6 +1933,33 @@ class MapillaryFeatureExtractor:
                 PhysicalAsset(id=asset_id, geometry=geometry, attributes=attributes)
             )
         return assets, counter, True
+
+    def _whole_object(
+        self, image_id: str, points: np.ndarray
+    ) -> list[list[np.ndarray]]:
+        """
+        The candidate outlines of the object under a few points of a frame.
+
+        Asked of the point-prompt model (``sam3_point_model``, loaded on
+        first use) on the frame's cached thumbnail; no answer when the
+        thumbnail is not there.
+        """
+        path = self.save_directory / 'images' / f'{image_id}_{self.sam3_image_size}.jpg'
+        if not path.is_file():
+            return []
+        if self.sam3_point_model is None:
+            from rapidtools.models.sam3 import SAM3PointInference
+
+            self.sam3_point_model = SAM3PointInference(
+                model_id=self.sam3_model_id, device=self.device
+            )
+        with Image.open(path) as image:
+            width, height = image.size
+        pixels = [[(float(x) * width, float(y) * height) for x, y in points]]
+        candidates: list[list[np.ndarray]] = []
+        for stack in self.sam3_point_model.segment_at(str(path), pixels):
+            candidates.extend(mask_outlines(mask) for mask in _mask_stack(stack))
+        return candidates
 
     def _assets_from_tracks(
         self,

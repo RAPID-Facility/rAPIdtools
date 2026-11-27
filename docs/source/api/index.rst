@@ -103,6 +103,19 @@ and ray-voting baseline, and appearance re-identification.
    street_structures.label_points
    street_structures.structures_from_points
    street_structures.footprint_rectangle
+   street_structures.footprint_stepped
+   street_structures.front_most
+   street_structures.ground_level
+   street_structures.drawn_as_one
+   street_instances.discover_instances
+   street_instances.mask_outlines
+   street_instances.survey_points
+   street_instances.outline_memberships
+   street_instances.link_outlines
+   street_instances.track_points
+   street_footprints.footprint_sightings
+   street_footprints.footprint_region
+   street_footprints.FootprintViews
    street_structures.fetch_sfm_cluster
    street_structures.Structure
    street_structures.PointCloud

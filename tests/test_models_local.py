@@ -39,6 +39,7 @@
 
 """Tests for the local (Hugging Face / PyTorch) model wrappers with fake weights."""
 
+import types
 from pathlib import Path
 
 import numpy as np
@@ -701,6 +702,91 @@ def fake_sam(monkeypatch):
     FakeSamModel.oom = False
     monkeypatch.setattr(sam3_mod, 'Sam3Processor', FakeSamProcessor)
     monkeypatch.setattr(sam3_mod, 'Sam3Model', FakeSamModel)
+
+
+class FakeTrackerProcessor:
+    created: list = []
+
+    def __init__(self, model_id):
+        self.model_id = model_id
+        self.calls: list = []
+        FakeTrackerProcessor.created.append(self)
+
+    @classmethod
+    def from_pretrained(cls, model_id, **kwargs):
+        return cls(model_id)
+
+    def __call__(self, images, input_points, input_labels, return_tensors):
+        self.calls.append((input_points, input_labels))
+        return {
+            'pixel_values': torch.zeros((1, 3, 8, 8)),
+            'input_points': torch.tensor(input_points, dtype=torch.float32),
+            'input_labels': torch.tensor(input_labels),
+            'original_sizes': torch.tensor([[8, 16]]),
+        }
+
+    def post_process_masks(self, masks, sizes):
+        return [masks[0] > 0]
+
+
+class FakeTrackerModel:
+    fail = False
+
+    def __init__(self, model_id, **kwargs):
+        self.model_id, self.kwargs = model_id, kwargs
+        self.device = torch.device('cpu')
+        self.eval_called = False
+
+    @classmethod
+    def from_pretrained(cls, model_id, **kwargs):
+        return cls(model_id, **kwargs)
+
+    def eval(self):
+        self.eval_called = True
+
+    def __call__(self, multimask_output, **inputs):
+        if self.fail:
+            raise RuntimeError('forward failed')
+        assert multimask_output and inputs['pixel_values'].dtype == torch.float16
+        assert inputs['input_labels'].dtype == torch.int64
+        n_objects = inputs['input_points'].shape[1]
+        masks = torch.zeros((1, n_objects, 3, 8, 16))
+        masks[:, :, 0, 2:4, 2:4] = 1.0  # the part
+        masks[:, :, 2, 1:7, 1:15] = 1.0  # the whole
+        return types.SimpleNamespace(pred_masks=masks)
+
+
+@pytest.fixture
+def fake_tracker(monkeypatch, fake_sam):
+    FakeTrackerProcessor.created.clear()
+    FakeTrackerModel.fail = False
+    monkeypatch.setattr(sam3_mod, 'Sam3TrackerProcessor', FakeTrackerProcessor)
+    monkeypatch.setattr(sam3_mod, 'Sam3TrackerModel', FakeTrackerModel)
+
+
+def test_sam3_point_prompts(fake_tracker, image, tmp_path):
+    """Every object asked about gets its candidate masks, from part to whole."""
+    sam = sam3_mod.SAM3PointInference(device='cuda:1')
+    assert sam.model_id == 'facebook/sam3' and sam.model.eval_called
+    assert sam.model.kwargs == {'dtype': torch.float16, 'device_map': 'cuda:1'}
+    assert sam3_mod.SAM3PointInference().model.kwargs['device_map'] == 'auto'
+    masks = sam.segment_at(image, [[(3, 3), (4, 3)], [(10, 5), (11, 5)]])
+    assert len(masks) == 2 and masks[0].shape == (3, 8, 16) and masks[0].dtype == bool
+    assert masks[0][0].sum() == 4 and masks[0][2].sum() == 84 and not masks[0][1].any()
+    points, labels = FakeTrackerProcessor.created[0].calls[0]
+    assert points == [[[[3.0, 3.0], [4.0, 3.0]], [[10.0, 5.0], [11.0, 5.0]]]]
+    assert labels == [[[1, 1], [1, 1]]]
+    # The form shared by every wrapper:
+    out = sam.run_inference([image], points=[[(3, 3)]])
+    assert out.text is None and len(out.masks) == 1 and len(out.masks[0]) == 1
+    assert out.raw_response['status'] == 'success'
+    assert sam.run_inference(image, points=[[(3, 3)]]).masks[0][0].shape == (3, 8, 16)
+    # Nothing asked, nothing to read, or a failed forward pass: no answer.
+    assert sam.segment_at(image, []) == [] and sam.run_inference(image) is None
+    assert sam.run_inference([], points=[[(3, 3)]]) is None
+    assert sam.segment_at(tmp_path / 'missing.jpg', [[(3, 3)]]) == []
+    FakeTrackerModel.fail = True
+    assert sam.segment_at(image, [[(3, 3)]]) == []
 
 
 def test_sam3_loading_options(fake_sam):

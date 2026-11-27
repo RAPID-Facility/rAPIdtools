@@ -1,9 +1,10 @@
 Building footprints from a street-level survey
 ==============================================
 
-Map every house the RAPID survey vehicle drove past in Spokane as a polygon,
-with the views that show it, and the parked vehicles as points, from the
-survey imagery alone. No footprint layer is needed.
+This example maps every house the RAPID survey vehicle drove past in
+Spokane, WA, as a polygon with the views that show it, and the parked
+vehicles as points. It uses the survey imagery alone, with no footprint
+layer.
 
 Source: ``examples/building_footprints_from_street.py``.
 
@@ -40,29 +41,38 @@ Source: ``examples/building_footprints_from_street.py``.
    assets = pipeline.run()
    assets.to_geojson('spokane_buildings.geojson')
 
-What to look at in the output
------------------------------
+What to look for in the output
+------------------------------
 
-- Buildings are polygons with ``localization='point_cloud'``; vehicles are
-  points. Both carry their sightings under ``observations`` and their crops
-  under ``image_assets``, so an :class:`~rapidtools.processing.AssetAnalyzer`
-  can follow directly.
-- ``frontage_m`` and the position of the facade are measured from
-  reconstructed points on the walls. ``depth_m`` is measured only when
-  ``depth_source`` is ``'observed'`` (roof or side-wall points reach that
-  deep); with ``'assumed'`` the rear was closed at ``assumed_depth_m``.
-  ``observed_depth_m`` always says how deep the points go.
-- ``height_m`` is the height of the highest points above the road, and
-  ``facade_bearing`` the compass direction the front faces.
-- A house is occasionally reported as two structures (a tree hiding the
-  middle of the facade) or joined with its neighbor (side yards under a
-  meter). ``min_gap_m`` moves that balance.
-- Each building's three crops come from the left, the front and the right,
-  marked with corner brackets. The outline in each image is where the
-  building's points project, which the per-image segmentation alone could
-  not provide: Mapillary labels all buildings in a frame as one surface.
+Buildings are polygons with ``localization='point_cloud'``, and vehicles
+are points. Both carry their sightings under ``observations`` and their
+crops under ``image_assets``, so an
+:class:`~rapidtools.processing.AssetAnalyzer` can follow straight away.
 
-On the four blocks above the script takes about four minutes: 80 s to read
-the detections of 884 panoramas, 40 s to download 15 point clouds and vote,
-15 s for the vehicles, and a minute to cut the crops. The method and its
-measured accuracy are described in :doc:`../user_guide/street_level_imagery`.
+The front of each footprint follows the facade, with a step where the
+garage and the entrance stand at different setbacks. ``frontage_m`` and the
+position of the facade are measured from reconstructed points on the walls.
+``depth_m`` is measured only when ``depth_source`` is ``'observed'``, meaning
+roof or side-wall points reach that deep. When it reads ``'assumed'``, the
+rear was closed at ``assumed_depth_m``, and ``observed_depth_m`` tells you
+how deep the points actually go. ``height_m`` is the height of the highest
+points above the ground around the building, and ``facade_bearing`` is the
+compass direction the front faces.
+
+Now and then a house comes out as two structures, usually because a tree
+hides the middle of its facade. Less often, two neighbors come out as one,
+mostly where a fence between them is segmented as building. If you have a
+GPU, the script's commented-out ``detection_source={'buildings': 'sam3'}``
+option outlines each house separately with SAM 3 and keeps such neighbors
+apart, at about 0.4 s per frame.
+
+Each building's three crops come from the left, the front and the right,
+marked with corner brackets. The outline in each image is where the
+building's points project. Mapillary's own segmentation could not provide
+it, since it labels all the buildings in a frame as one surface.
+
+On the four blocks above, the script runs in about four minutes: 80 s to
+read the detections of 884 panoramas, 40 s to download 15 point clouds and
+vote, 15 s for the vehicles, and a minute to cut the crops. The method and
+its measured accuracy are described in
+:doc:`../user_guide/street_level_imagery`.

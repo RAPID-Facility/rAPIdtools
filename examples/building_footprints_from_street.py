@@ -13,10 +13,12 @@ positions, with a single detector:
    - Buildings are placed from the survey's own 3-D reconstruction.
      Mapillary publishes the sparse point cloud each panorama was aligned
      in; the detector keeps the points most frames see inside a building
-     outline, groups them into structures, and outlines each one. The
-     facade and the sides the survey saw are measured. The rear is not, so
-     the footprint is closed to ``assumed_depth_m`` where less was seen and
-     the ``depth_source`` attribute says so.
+     outline, groups them into structures, and outlines each one along its
+     facade, with a step where the garage and the entrance stand at
+     different setbacks. The facade and the sides the survey saw are
+     measured. The rear is not, so the footprint is closed to
+     ``assumed_depth_m`` where less was seen and the ``depth_source``
+     attribute says so.
    - Vehicles are placed by occupancy fusion: every outline is read as a
      range scan and all frames of a survey day vote on a ground grid.
 
@@ -75,8 +77,13 @@ detector = rt.MapillaryFeatureExtractor(
     # polygons for buildings and points for vehicles; 'footprint' would give
     # the vehicles polygons too.
     assumed_depth_m=10.0,  # depth drawn where the survey saw less of a house
-    min_gap_m=1.0,  # free ground that separates one house from the next
+    min_gap_m=1.0,  # free ground that separates one wall piece from the next
     structure_views=3,  # views kept per building: from the left, front, right
+    # With a GPU, one SAM 3 mask per house keeps neighbors apart where a
+    # fence or a shed joins them in Mapillary's outline (about 0.4 s per
+    # frame, and a thumbnail of every frame is downloaded):
+    # detection_source={'buildings': 'sam3'},
+    # sam3_prompts={'buildings': 'house'},
 )
 
 # --------------------------------------------------------------- Step 3
