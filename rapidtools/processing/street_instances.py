@@ -707,8 +707,8 @@ def discover_instances(
             counts['too_few_points'] += 1
             continue
         own: dict[int, list[int]] = defaultdict(list)
-        for outline in np.flatnonzero(track == number):
-            own[int(frame[outline])].append(int(outline))
+        for position in np.flatnonzero(track == number):
+            own[int(frame[position])].append(int(position))
         units.append(_Unit(rows, dict(own)))
     counts['tracks'] = len(units)
 
