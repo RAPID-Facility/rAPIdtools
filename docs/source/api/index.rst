@@ -69,10 +69,16 @@ Detection, segmentation and regularization
    :nosignatures:
 
    SAM3OrthoFeatureExtractor
+   feature_extractors.is_building_prompt
+   feature_extractors.ScanSettings
    MapillaryFeatureExtractor
    SAM3ImageSegmenter
    BuildingRegularizer
+   FootprintRegularizer
    RoadwayRegularizer
+   instance_fusion.fuse_view_detections
+   postprocessing.footprints.regularize_footprint
+   postprocessing.footprints.regularize_footprints
    vectorize.mask_to_wgs84_polygons
 
 Street-level localization

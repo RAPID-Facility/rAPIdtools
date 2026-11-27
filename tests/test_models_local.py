@@ -35,10 +35,11 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 09-22-2026
+# 11-27-2026
 
 """Tests for the local (Hugging Face / PyTorch) model wrappers with fake weights."""
 
+import logging
 import types
 from pathlib import Path
 
@@ -798,6 +799,46 @@ def test_sam3_loading_options(fake_sam):
     sam = SAM3Inference(device='cuda:1', load_in_4bit=True)
     assert sam.model.kwargs['device_map'] == 'cuda:1'
     assert 'quantization_config' in sam.model.kwargs
+
+
+def test_sam3_cpu_fallback_is_reported(fake_sam, monkeypatch, caplog):
+    """A model the loader moved to the CPU next to a GPU still loads, with a warning."""
+
+    class Offloaded(FakeSamModel):
+        def __init__(self, model_id, **kwargs):
+            super().__init__(model_id, **kwargs)
+            self.hf_device_map = {'': 'cpu'}
+
+    monkeypatch.setattr(sam3_mod, 'Sam3Model', Offloaded)
+    monkeypatch.setattr(sam3_mod.torch.cuda, 'is_available', lambda: True)
+    threads: list[int] = []
+    monkeypatch.setattr(sam3_mod.torch, 'set_num_threads', threads.append)
+    monkeypatch.setattr(sam3_mod.torch, 'get_num_threads', lambda: 16)
+    monkeypatch.setattr(sam3_mod.os, 'cpu_count', lambda: 16)
+    with caplog.at_level(logging.WARNING, logger=sam3_mod.__name__):
+        assert SAM3Inference().model.hf_device_map == {'': 'cpu'}
+    assert 'did not fit on the GPU and runs on the cpu' in caplog.text
+    # Half of the cores, so the computer stays usable:
+    assert threads == [8]
+    assert 'using 8 of the 16 CPU cores' in caplog.text
+
+    # On purpose, on a machine without a GPU, or on the GPU: nothing to report.
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger=sam3_mod.__name__):
+        SAM3Inference(device='cpu')
+        monkeypatch.setattr(sam3_mod.torch.cuda, 'is_available', lambda: False)
+        SAM3Inference()
+
+        class OnGpu(FakeSamModel):
+            def __init__(self, model_id, **kwargs):
+                super().__init__(model_id, **kwargs)
+                self.hf_device_map = {'': 0}
+
+        monkeypatch.setattr(sam3_mod, 'Sam3Model', OnGpu)
+        monkeypatch.setattr(sam3_mod.torch.cuda, 'is_available', lambda: True)
+        SAM3Inference()
+    assert 'did not fit on the GPU' not in caplog.text
+    assert threads == [8]  # no further limits
 
 
 def test_sam3_run_inference(fake_sam, image, tmp_path):

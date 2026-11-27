@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 09-22-2026
+# 11-27-2026
 
 import logging
 import math
@@ -47,14 +47,12 @@ import pyproj
 import pytest
 from PIL import Image
 from shapely.geometry import (
-    GeometryCollection,
     LineString,
-    MultiPolygon,
     Point,
     Polygon,
     box,
 )
-from shapely.ops import transform
+from shapely.ops import transform, unary_union
 
 from rapidtools.core import (
     ImageAsset,
@@ -102,33 +100,42 @@ class FakeSAM3:
         self.model_id = model_id
         self.calls: list[dict] = []
         self.masks_by_name: dict[str, np.ndarray] = {}
+        self.scores_by_name: dict[str, list[float]] = {}
         self.on_call = None
 
     def run_inference(self, image_inputs, prompt, threshold, mask_threshold, **kw):
         paths = list(image_inputs)
         self.calls.append(
-            {'inputs': paths, 'threshold': threshold, 'mask_threshold': mask_threshold}
+            {
+                'inputs': paths,
+                'threshold': threshold,
+                'mask_threshold': mask_threshold,
+                'kwargs': kw,
+            }
         )
         if self.on_call is not None:
             self.on_call()
-        masks = []
+        masks, scores = [], []
         for p in paths:
             name = Path(p).name  # separator-agnostic: CI also runs on Windows
             masks.append(
                 self.masks_by_name.get(name, np.zeros((1, MASK_SIZE, MASK_SIZE), bool))
             )
-        return ModelOutput(masks=masks, bounding_boxes=None)
+            scores.append(self.scores_by_name.get(name))
+        raw = {'scores': scores} if any(v is not None for v in scores) else None
+        return ModelOutput(masks=masks, bounding_boxes=None, raw_response=raw)
 
 
 @pytest.fixture
 def fake_sam(monkeypatch):
-    holder = {'masks_by_name': {}}
+    holder = {'masks_by_name': {}, 'scores_by_name': {}}
 
     def factory(**kwargs):
         inst = FakeSAM3(**kwargs)
         # Share one mask registry so fixtures can register masks before the
         # regularizer (and therefore the model) is constructed:
         inst.masks_by_name = holder['masks_by_name']
+        inst.scores_by_name = holder.setdefault('scores_by_name', {})
         holder['instance'] = inst
         return inst
 
@@ -190,6 +197,9 @@ def test_init_defaults(fake_sam):
     assert reg.segmenter.mask_threshold == 0.5
     assert reg.segmenter.batch_size == 4
     assert reg.segmenter.cancel_event is event
+    assert reg.regularize_outlines is True
+    assert reg.neck_width_m == 1.0
+    assert reg.segmenter.max_mask_side == buildings.DEFAULT_MAX_MASK_SIDE
 
 
 def test_init_list_prompt_and_custom_thresholds(fake_sam):
@@ -306,149 +316,13 @@ def test_process_canceled_before_start(fake_sam, prelim):
 
 
 # ==========================================
-# 4. _georeference_and_filter
+# 4. Fusion, matching and outlines
 # ==========================================
 
 
-def test_georeference_creates_split_assets(regularizer, tmp_path):
-    """Passing masks become '<id>_split_i_j' assets carrying seed metadata."""
-    geom = ft_box(-20, -15, 20, 15)
-    asset = PhysicalAsset(id='a', geometry=geom, attributes={'k': 'v'})
-    bounds = ft_box(-40, -40, 40, 40).bounds
-    _attach_image(asset, tmp_path, 'a_aerial.jpg', bounds)
-    asset.attributes['sam3_masks'] = {'a_aerial': mask_from_geometry(geom, bounds)}
-
-    refined = regularizer._georeference_and_filter(PhysicalAssetCollection([asset]))
-    assert len(refined) == 1
-    new = refined['a_split_0_0']
-    assert new.attributes['k'] == 'v'
-    assert new.attributes['sam3_refined'] is True
-    assert new.attributes['preliminary_geometry_wkt'] == geom.wkt
-    assert 'sam3_masks' in new.attributes
-    assert len(new.image_assets) == 1
-    assert new.geometry.intersection(geom).area / geom.area > 0.9
-
-
-def test_georeference_accepts_2d_mask_and_drops_non_matching(regularizer, tmp_path):
-    """2D masks are promoted; masks far from the seed are rejected."""
-    geom = ft_box(-20, -15, 20, 15)
-    asset = PhysicalAsset(id='a', geometry=geom)
-    bounds = ft_box(-40, -40, 40, 40).bounds
-    _attach_image(asset, tmp_path, 'a_aerial.jpg', bounds)
-    far = ft_box(25, 25, 38, 38)
-    asset.attributes['sam3_masks'] = {'a_aerial': mask_from_geometry(far, bounds)[0]}
-    refined = regularizer._georeference_and_filter(PhysicalAssetCollection([asset]))
-    assert len(refined) == 0
-
-
-def test_georeference_skips_assets_without_usable_data(regularizer, tmp_path):
-    """Empty geometry, missing masks, empty masks or missing bounds are skipped."""
-    bounds = ft_box(-40, -40, 40, 40).bounds
-    geom = ft_box(-20, -15, 20, 15)
-    good_mask = mask_from_geometry(geom, bounds)
-
-    empty_geom = PhysicalAsset(id='e', geometry=Polygon())
-    empty_geom.attributes['sam3_masks'] = {'x': good_mask}
-
-    no_masks = PhysicalAsset(id='n', geometry=geom)
-
-    zero_len = PhysicalAsset(id='z', geometry=geom)
-    _attach_image(zero_len, tmp_path, 'z_aerial.jpg', bounds)
-    zero_len.attributes['sam3_masks'] = {'z_aerial': np.zeros((0, 4, 4), bool)}
-
-    no_bounds = PhysicalAsset(id='nb', geometry=geom)
-    Image.new('RGB', (4, 4)).save(tmp_path / 'nb.jpg')
-    no_bounds.add_image_assets(ImageAsset(id='nb_img', path=tmp_path / 'nb.jpg'))
-    no_bounds.attributes['sam3_masks'] = {'nb_img': good_mask}
-
-    all_zero = PhysicalAsset(id='az', geometry=geom)
-    _attach_image(all_zero, tmp_path, 'az_aerial.jpg', bounds)
-    all_zero.attributes['sam3_masks'] = {
-        'az_aerial': np.zeros((1, MASK_SIZE, MASK_SIZE), bool)
-    }
-
-    refined = regularizer._georeference_and_filter(
-        PhysicalAssetCollection([empty_geom, no_masks, zero_len, no_bounds, all_zero])
-    )
-    assert len(refined) == 0
-
-
-def test_georeference_reprojects_web_mercator_seed(regularizer, tmp_path):
-    """Seeds in EPSG:3857 are reprojected to WGS84 before comparison."""
-    geom = ft_box(-20, -15, 20, 15)
-    to_3857 = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:3857', always_xy=True)
-    geom_3857 = transform(to_3857.transform, geom)
-    asset = PhysicalAsset(id='m', geometry=geom_3857)
-    bounds = ft_box(-40, -40, 40, 40).bounds
-    _attach_image(asset, tmp_path, 'm_aerial.jpg', bounds)
-    asset.attributes['sam3_masks'] = {'m_aerial': mask_from_geometry(geom, bounds)}
-    refined = regularizer._georeference_and_filter(PhysicalAssetCollection([asset]))
-    assert len(refined) == 1
-    assert refined[0].geometry.bounds[0] == pytest.approx(geom.bounds[0], abs=1e-5)
-
-
-def test_georeference_bridges_fragmented_mask(regularizer, tmp_path):
-    """Two mask blobs separated by a small gap are fused into one footprint."""
-    geom = ft_box(-20, -15, 20, 15)
-    asset = PhysicalAsset(id='f', geometry=geom)
-    bounds = ft_box(-40, -40, 40, 40).bounds
-    _attach_image(asset, tmp_path, 'f_aerial.jpg', bounds)
-    fragments = MultiPolygon([ft_box(-20, -15, -3, 15), ft_box(3, -15, 20, 15)])
-    asset.attributes['sam3_masks'] = {'f_aerial': mask_from_geometry(fragments, bounds)}
-    refined = regularizer._georeference_and_filter(PhysicalAssetCollection([asset]))
-    assert len(refined) == 1
-    assert refined[0].geometry.geom_type == 'Polygon'
-    assert refined[0].geometry.intersection(geom).area / geom.area > 0.9
-
-
-# ==========================================
-# 5. Geometry helpers
-# ==========================================
-
-
-def test_fill_holes(regularizer):
-    """Interior rings are removed from polygons and multipolygons."""
-    holed = Polygon(
-        box(0, 0, 10, 10).exterior.coords, [box(4, 4, 6, 6).exterior.coords]
-    )
-    assert regularizer._fill_holes(holed).area == pytest.approx(100.0)
-    multi = MultiPolygon([holed, box(20, 20, 22, 22)])
-    filled = regularizer._fill_holes(multi)
-    assert filled.geom_type == 'MultiPolygon'
-    assert filled.area == pytest.approx(104.0)
-    gc_no_polys = GeometryCollection([Point(0, 0)])
-    assert regularizer._fill_holes(gc_no_polys) is gc_no_polys
-    pt = Point(1, 1)
-    assert regularizer._fill_holes(pt) is pt
-
-
-def test_bridge_fragments_merges_close_parts(regularizer):
-    """Nearby fragments are fused into one polygon covering the gap."""
-    parts = MultiPolygon([ft_box(0, 0, 20, 20), ft_box(24, 0, 44, 20)])
-    bridged = regularizer._bridge_fragments(parts)
-    assert bridged.geom_type == 'Polygon'
-    assert bridged.area == pytest.approx(ft_box(0, 0, 44, 20).area, rel=0.02)
-
-
-def test_bridge_fragments_far_parts_keep_largest(regularizer):
-    """Fragments further apart than max_gap_bridge_ft collapse to the largest."""
-    small, large = ft_box(0, 0, 10, 10), ft_box(80, 0, 110, 20)
-    bridged = regularizer._bridge_fragments(MultiPolygon([small, large]))
-    assert bridged.geom_type == 'Polygon'
-    assert bridged.area == pytest.approx(large.area, rel=0.02)
-
-
-def test_bridge_fragments_passthrough(regularizer):
-    """Single polygons and collections with <=1 polygon are returned as-is."""
-    poly = ft_box(0, 0, 10, 10)
-    assert regularizer._bridge_fragments(poly) is poly
-    gc = GeometryCollection([poly, Point(CX, CY)])
-    assert regularizer._bridge_fragments(gc) is gc
-
-
-# ==========================================
-# 6. _truncate_intrusions
-# ==========================================
+def _stack(*geoms, bounds):
+    """Instance masks (N, size, size) of WGS84 geometries in a crop."""
+    return np.concatenate([mask_from_geometry(g, bounds) for g in geoms])
 
 
 def _assets(*geoms):
@@ -457,120 +331,167 @@ def _assets(*geoms):
     )
 
 
-def test_truncate_intrusions_cuts_along_wall(regularizer):
-    """A small building poking into a big one is sliced along the wall."""
-    big = box(0, 0, 10, 10)
-    small = box(8, 4, 14, 6)
-    result = regularizer._truncate_intrusions(_assets(small, big))
+def _to_feet(x, y):
+    """WGS84 to feet around (CX, CY), for checking shapes."""
+    return ((x - CX) / DLON, (y - CY) / DLAT)
+
+
+def test_process_keeps_touching_neighbors_apart(fake_sam, tmp_path):
+    """Two touching buildings under one merged seed come back as two."""
+    blob = ft_box(-30, -10, 30, 10)
+    asset = PhysicalAsset(id='blob', geometry=blob)
+    bounds = ft_box(-40, -40, 40, 40).bounds
+    _attach_image(asset, tmp_path, 'blob_aerial.jpg', bounds)
+    left, right = ft_box(-28, -8, -2, 8), ft_box(-2, -8, 28, 8)
+    fake_sam['masks_by_name']['blob_aerial.jpg'] = _stack(left, right, bounds=bounds)
+    result = BuildingRegularizer(retry_dropped=False)(PhysicalAssetCollection([asset]))
     assert len(result) == 2
-    assert result['g1'].geometry.equals(big)
-    cut = result['g0'].geometry
-    assert cut.equals(box(10, 4, 14, 6))
+    geoms = [a.geometry for a in result]
+    assert geoms[0].intersection(geoms[1]).area < 1e-12
+    assert all(a.attributes['source_ids'] == ['blob'] for a in result)
 
 
-def test_truncate_intrusions_wgs84_scale(regularizer):
-    """The cut also works for degree-scale geometries (relative tolerances)."""
-    big = ft_box(0, 0, 40, 40)
-    small = ft_box(35, 10, 60, 20)
-    result = regularizer._truncate_intrusions(_assets(small, big))
-    cut = result['g0'].geometry
-    assert cut.intersection(big).area < 1e-6 * big.area
-    assert cut.area == pytest.approx(ft_box(40, 10, 60, 20).area, rel=1e-3)
-
-
-def test_truncate_intrusions_interior_overlap_uses_difference(regularizer):
-    """A building fully inside another is reduced to an empty geometry."""
-    big = box(0, 0, 10, 10)
-    inner = box(2, 2, 4, 4)
-    result = regularizer._truncate_intrusions(_assets(big, inner))
-    assert result['g1'].geometry.is_empty
-
-
-def test_truncate_intrusions_ignores_disjoint_and_negligible(regularizer):
-    """Disjoint or barely touching buildings are left untouched."""
-    a = box(0, 0, 10, 10)
-    b = box(20, 0, 30, 10)
-    touching = box(10, 0, 20, 10)
-    result = regularizer._truncate_intrusions(_assets(a, b, touching))
-    assert result['g0'].geometry.equals(a)
-    assert result['g1'].geometry.equals(b)
-    assert result['g2'].geometry.equals(touching)
-
-
-def test_truncate_intrusions_multipolygon_keeps_largest_part(regularizer):
-    """Multi-part inputs are reduced to their largest polygon."""
-    big = box(0, 0, 10, 10)
-    fragmented = MultiPolygon([box(20, 0, 25, 5), box(30, 0, 31, 1)])
-    result = regularizer._truncate_intrusions(_assets(big, fragmented))
-    geom = result['g1'].geometry
-    assert geom.geom_type == 'Polygon'
-    assert geom.equals(box(20, 0, 25, 5))
-
-
-def test_truncate_intrusions_multipolygon_inside_becomes_empty(regularizer):
-    """Multi-part geometry fully inside a larger one is emptied by difference."""
-    big = box(0, 0, 10, 10)
-    inner_parts = MultiPolygon([box(1, 1, 2, 2), box(5, 5, 6, 6)])
-    result = regularizer._truncate_intrusions(_assets(big, inner_parts))
-    assert result['g0'].geometry.equals(big)
-    assert result['g1'].geometry.is_empty
-
-
-def test_truncate_intrusions_skips_empty(regularizer):
-    """Empty geometries are dropped from the output."""
-    result = regularizer._truncate_intrusions(_assets(Polygon(), box(0, 0, 1, 1)))
-    assert len(result) == 1
-
-
-# ==========================================
-# 7. _dissolve_overlapping_assets
-# ==========================================
-
-
-def test_dissolve_merges_duplicates_keeps_neighbors(regularizer):
-    """Polygons overlapping >50% merge; adjacent ones stay separate."""
-    a = box(0, 0, 10, 10)
-    a_dup = box(1, 1, 11, 11)
-    neighbor = box(10, 0, 20, 10)
-    slight = box(9, 9, 19, 19)  # overlaps a by 1% -> separate
-    result = regularizer._dissolve_overlapping_assets(
-        _assets(a, a_dup, neighbor, slight)
+def test_process_cuts_masks_bleeding_between_roofs(fake_sam, tmp_path):
+    """One mask joining two roofs by a thin strip is cut into two buildings."""
+    blob = ft_box(-30, -10, 30, 10)
+    asset = PhysicalAsset(id='blob', geometry=blob)
+    bounds = ft_box(-40, -40, 40, 40).bounds
+    _attach_image(asset, tmp_path, 'blob_aerial.jpg', bounds)
+    joined = unary_union(
+        # The strip is one 2 ft (0.6 m) pixel wide:
+        [ft_box(-30, -10, -6, 10), ft_box(-6, -1.5, 6, 0.5), ft_box(6, -10, 30, 10)]
     )
-    assert len(result) == 3
-    areas = sorted(round(x.geometry.area, 6) for x in result)
-    assert areas == [100.0, 100.0, pytest.approx(119.0)]
-    for asset in result:
-        assert asset.id.startswith('bldg_merged_')
-        assert asset.attributes == {'asset_type': 'building_footprint'}
-
-
-def test_dissolve_fills_holes_and_handles_empty(regularizer):
-    """A ring of overlapping boxes becomes one solid polygon; empty input ok."""
-    ring = [
-        box(0, 0, 10, 3),
-        box(0, 7, 10, 10),
-        box(0, 0, 3, 10),
-        box(7, 0, 10, 10),
-    ]
-    result = regularizer._dissolve_overlapping_assets(_assets(*ring))
-    # Ring pieces overlap each other by less than 50% -> stay separate parts,
-    # but the union of each component is hole-free.
-    assert all(len(a.geometry.interiors) == 0 for a in result)
-    assert len(regularizer._dissolve_overlapping_assets(PhysicalAssetCollection())) == 0
-    assert len(regularizer._dissolve_overlapping_assets(_assets(Polygon()))) == 0
-
-
-def test_dissolve_skips_non_polygon_union_parts(regularizer):
-    """Unions that degenerate to lines are not emitted."""
-    line_like = LineString([(0, 0), (1, 1)]).buffer(0)  # empty polygon
-    result = regularizer._dissolve_overlapping_assets(
-        _assets(line_like, box(0, 0, 1, 1))
+    fake_sam['masks_by_name']['blob_aerial.jpg'] = mask_from_geometry(joined, bounds)
+    result = BuildingRegularizer(retry_dropped=False)(PhysicalAssetCollection([asset]))
+    assert len(result) == 2
+    # Without the cut the strip joins them into one footprint:
+    kept_whole = BuildingRegularizer(retry_dropped=False, neck_width_m=0.0)(
+        PhysicalAssetCollection([asset])
     )
+    assert len(kept_whole) == 1
+
+
+def test_process_fuses_views_of_overlapping_crops(fake_sam, tmp_path):
+    """A building seen in its own and in its neighbor's crop is one footprint."""
+    a_geom, b_geom = ft_box(-30, -10, -6, 10), ft_box(6, -10, 30, 10)
+    a = PhysicalAsset(id='a', geometry=a_geom)
+    b = PhysicalAsset(id='b', geometry=b_geom)
+    a_bounds = ft_box(-45, -40, 35, 40).bounds
+    b_bounds = ft_box(-35, -40, 45, 40).bounds
+    _attach_image(a, tmp_path, 'a_aerial.jpg', a_bounds)
+    _attach_image(b, tmp_path, 'b_aerial.jpg', b_bounds)
+    fake_sam['masks_by_name']['a_aerial.jpg'] = _stack(a_geom, b_geom, bounds=a_bounds)
+    fake_sam['masks_by_name']['b_aerial.jpg'] = _stack(a_geom, b_geom, bounds=b_bounds)
+    fake_sam['scores_by_name']['a_aerial.jpg'] = [0.9, 0.7]
+    fake_sam['scores_by_name']['b_aerial.jpg'] = [0.8, 0.6]
+    result = BuildingRegularizer(retry_dropped=False)(PhysicalAssetCollection([a, b]))
+    assert len(result) == 2
+    assert all(asset.attributes['views'] == 2 for asset in result)
+    by_seed = {asset.attributes['source_ids'][0]: asset for asset in result}
+    assert by_seed['a'].attributes['confidence'] == pytest.approx(0.85)
+    assert by_seed['b'].attributes['confidence'] == pytest.approx(0.65)
+    # The masks are released once traced:
+    assert 'sam3_masks' not in a.attributes
+    assert 'sam3_masks' not in b.attributes
+
+
+def test_process_drops_buildings_matching_no_seed(fake_sam, tmp_path):
+    """A neighbor visible in the crop but not among the seeds is not returned."""
+    seed = ft_box(-30, -10, -6, 10)
+    asset = PhysicalAsset(id='a', geometry=seed)
+    bounds = ft_box(-40, -40, 40, 40).bounds
+    _attach_image(asset, tmp_path, 'a_aerial.jpg', bounds)
+    neighbor = ft_box(10, -10, 30, 10)
+    fake_sam['masks_by_name']['a_aerial.jpg'] = _stack(seed, neighbor, bounds=bounds)
+    result = BuildingRegularizer(retry_dropped=False)(PhysicalAssetCollection([asset]))
     assert len(result) == 1
+    assert result[0].attributes['source_ids'] == ['a']
+
+
+def test_process_draws_square_walls(fake_sam, tmp_path):
+    """A stair-stepped mask of a rotated building becomes a clean rectangle."""
+    from shapely import affinity
+
+    seed = transform(
+        lambda x, y: (CX + x * DLON, CY + y * DLAT),
+        affinity.rotate(box(-20, -12, 20, 12), 25, origin=(0, 0)),
+    )
+    asset = PhysicalAsset(id='r', geometry=seed)
+    bounds = ft_box(-40, -40, 40, 40).bounds
+    _attach_image(asset, tmp_path, 'r_aerial.jpg', bounds)
+    fake_sam['masks_by_name']['r_aerial.jpg'] = mask_from_geometry(seed, bounds)
+    result = BuildingRegularizer(retry_dropped=False)(PhysicalAssetCollection([asset]))
+    assert len(result) == 1
+    outline = transform(_to_feet, result[0].geometry)
+    coords = np.asarray(outline.exterior.coords)[:-1]
+    assert len(coords) == 4
+    for i in range(4):
+        u = coords[i - 1] - coords[i]
+        v = coords[(i + 1) % 4] - coords[i]
+        assert abs(u @ v) / (np.linalg.norm(u) * np.linalg.norm(v)) < 0.02
+    # Without regularization the traced pixel outline keeps its steps:
+    raw = BuildingRegularizer(retry_dropped=False, regularize_outlines=False)(
+        PhysicalAssetCollection([asset])
+    )
+    assert len(raw[0].geometry.exterior.coords) > 10
+
+
+def test_process_reprojects_web_mercator_seed(fake_sam, tmp_path):
+    """Seeds in EPSG:3857 are reprojected to WGS84 before matching."""
+    geom = ft_box(-20, -15, 20, 15)
+    to_3857 = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:3857', always_xy=True)
+    asset = PhysicalAsset(id='m', geometry=transform(to_3857.transform, geom))
+    bounds = ft_box(-40, -40, 40, 40).bounds
+    _attach_image(asset, tmp_path, 'm_aerial.jpg', bounds)
+    fake_sam['masks_by_name']['m_aerial.jpg'] = mask_from_geometry(geom, bounds)
+    result = BuildingRegularizer(retry_dropped=False)(PhysicalAssetCollection([asset]))
+    assert len(result) == 1
+    assert result[0].geometry.intersection(geom).area / geom.area > 0.9
+
+
+def test_process_ignores_images_without_georeference(fake_sam, tmp_path):
+    """Crops with neither native_georef nor wgs84_bounds contribute nothing."""
+    geom = ft_box(-20, -15, 20, 15)
+    asset = PhysicalAsset(id='n', geometry=geom)
+    Image.new('RGB', (MASK_SIZE, MASK_SIZE)).save(tmp_path / 'n.jpg')
+    asset.add_image_assets(ImageAsset(id='n', path=tmp_path / 'n.jpg'))
+    fake_sam['masks_by_name']['n.jpg'] = mask_from_geometry(
+        geom, ft_box(-40, -40, 40, 40).bounds
+    )
+    result = BuildingRegularizer(retry_dropped=False)(PhysicalAssetCollection([asset]))
+    assert len(result) == 0
+
+
+def test_max_mask_side_is_passed_to_the_model(regularizer, prelim, fake_sam):
+    """The segmenter asks SAM 3 for reduced-size masks of large crops."""
+    regularizer(prelim)
+    kwargs = fake_sam['instance'].calls[0]['kwargs']
+    assert kwargs['max_mask_side'] == buildings.DEFAULT_MAX_MASK_SIDE
+
+
+def test_shares_a_loaded_model(fake_sam, prelim):
+    """The SAM 3 of the scan can be reused instead of loading a second copy."""
+    loaded = FakeSAM3()
+    loaded.masks_by_name = fake_sam['masks_by_name']
+    loaded.scores_by_name = fake_sam['scores_by_name']
+    regularizer = BuildingRegularizer(model=loaded)
+    assert regularizer.segmenter.model is loaded
+    assert 'instance' not in fake_sam  # nothing new was loaded
+    regularizer(prelim)
+    assert loaded.calls
+
+
+def test_deprecated_parameters_warn(fake_sam):
+    """The bridging and snapping parameters no longer do anything and warn."""
+    with pytest.warns(DeprecationWarning, match='max_gap_bridge_ft'):
+        reg = BuildingRegularizer(max_gap_bridge_ft=10.0)
+    assert reg.max_gap_bridge_ft == 10.0
+    with pytest.warns(DeprecationWarning, match='snap_tolerance_ft'):
+        BuildingRegularizer(snap_tolerance_ft=1.0)
 
 
 # ==========================================
-# 8. _filter_degenerate_assets
+# 5. _filter_degenerate_assets
 # ==========================================
 
 

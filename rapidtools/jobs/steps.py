@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 11-24-2026
+# 11-27-2026
 
 """
 The step types a rapidtools job can contain.
@@ -883,8 +883,9 @@ register_step(
             'Finds every instance of the named asset types in an orthomosaic '
             'with SAM 3, by default on a pre-event satellite basemap stitched '
             'over the raster extent (assets destroyed in the post-event '
-            'imagery are still found there). Buildings and roads are '
-            'regularized into clean polygons.'
+            'imagery are still found there). Building footprints always get '
+            'straight, square walls; by default they are also refined on '
+            'close-up crops, and roads are regularized into clean polygons.'
         ),
         build=_build_detect,
         run=_run_detect,
@@ -961,14 +962,18 @@ register_step(
             Param(
                 'regularize',
                 'boolean',
-                'Regularize building footprints and road polygons.',
+                'Refine building footprints with a second SAM 3 pass on '
+                'close-up crops, and regularize road polygons. Building '
+                'walls are squared either way.',
                 default=True,
             ),
             Param(
                 'merge_overlaps',
                 'boolean',
                 'Merge detections that overlap across patches into one asset. '
-                'Turn off to keep touching instances separate.',
+                'Turn off to keep touching instances separate. Building '
+                'prompts are always kept separate, from patches overlapping '
+                'by at least half.',
                 default=True,
             ),
             Param(

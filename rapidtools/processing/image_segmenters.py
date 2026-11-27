@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 09-22-2026
+# 11-27-2026
 
 """
 Batched, prompt-guided image segmentation for asset imagery.
@@ -121,6 +121,8 @@ class SAM3ImageSegmenter:
           ``(N, H, W)`` boolean array).
         - ``'sam3_bounding_boxes'``: ``{image_id: boxes}`` (only when the
           model returns boxes).
+        - ``'sam3_scores'``: ``{image_id: scores}``, one confidence per mask
+          (only when the model reports scores).
         - ``'ai_model_used'``: The Hugging Face model ID that was used.
 
     Args:
@@ -152,6 +154,17 @@ class SAM3ImageSegmenter:
             Cooperative cancellation flag. When set, the segmenter raises
             :class:`~rapidtools.core.OperationCanceled` before starting the
             next batch. Defaults to ``None``.
+        max_mask_side (int | None, optional):
+            Store the masks of images larger than this many pixels on their
+            longer side at a reduced size (see
+            :meth:`~rapidtools.models.SAM3Inference.run_inference`), which
+            keeps memory in check for crops of centimeter-resolution drone
+            orthomosaics. ``None`` (default) stores masks at the image size.
+        model (SAM3Inference | None, optional):
+            An already loaded SAM 3 to use instead of loading another copy
+            (``model_id``, ``device`` and ``load_in_4bit`` are then
+            ignored); one copy fits an 8 GB GPU where two may not. Defaults
+            to ``None``.
 
     Example:
         Segment only the aerial crops of each asset:
@@ -181,6 +194,8 @@ class SAM3ImageSegmenter:
         mask_threshold: float = 0.5,
         image_filter: Callable[[ImageAsset], bool] | None = None,
         cancel_event: threading.Event | None = None,
+        max_mask_side: int | None = None,
+        model: 'SAM3Inference | None' = None,
     ) -> None:
         """
         Initialize the SAM 3 Image Segmenter and load the model once.
@@ -205,9 +220,14 @@ class SAM3ImageSegmenter:
                 Predicate selecting which images of each asset to segment.
             cancel_event (threading.Event | None, optional):
                 Cooperative cancellation flag checked between batches.
+            max_mask_side (int | None, optional):
+                Longest side, in pixels, of the stored masks.
+            model (SAM3Inference | None, optional):
+                An already loaded SAM 3 to share instead of loading one.
         """
         # Cooperative cancellation (stops between batches):
         self.cancel_event = cancel_event
+        self.max_mask_side = max_mask_side
         if isinstance(prompt, list):
             self.prompt = '. '.join(prompt)
         else:
@@ -218,11 +238,16 @@ class SAM3ImageSegmenter:
         self.threshold = threshold
         self.mask_threshold = mask_threshold
 
-        # Instantiate the underlying inference model ONCE to save load time:
-        self.model = _sam3_inference_class()(
-            model_id=model_id,
-            device=device,
-            load_in_4bit=load_in_4bit,
+        # Instantiate the underlying inference model ONCE to save load time
+        # (or share one that is already loaded):
+        self.model = (
+            model
+            if model is not None
+            else _sam3_inference_class()(
+                model_id=model_id,
+                device=device,
+                load_in_4bit=load_in_4bit,
+            )
         )
 
     def __call__(
@@ -290,11 +315,15 @@ class SAM3ImageSegmenter:
 
             try:
                 # Run inference on the batch of images:
+                extra: dict[str, Any] = (
+                    {'max_mask_side': self.max_mask_side} if self.max_mask_side else {}
+                )
                 result = self.model.run_inference(
                     image_inputs=image_paths,
                     prompt=self.prompt,
                     threshold=self.threshold,
                     mask_threshold=self.mask_threshold,
+                    **extra,
                 )
 
                 if result is None or result.masks is None:
@@ -313,6 +342,10 @@ class SAM3ImageSegmenter:
                         if isinstance(result.bounding_boxes, list)
                         else [result.bounding_boxes]
                     )
+                raw = getattr(result, 'raw_response', None)
+                scores_list = raw.get('scores') if isinstance(raw, dict) else None
+                if not isinstance(scores_list, list) or len(scores_list) != len(batch):
+                    scores_list = [None] * len(batch)
 
                 # The model returns exactly one entry per input image (``None``
                 # for images it could not load); anything else would silently
@@ -327,8 +360,8 @@ class SAM3ImageSegmenter:
                     continue
 
                 # Map the results back to the original assets and images:
-                for (asset, img), masks, boxes in zip(
-                    batch, masks_list, boxes_list, strict=True
+                for (asset, img), masks, boxes, scores in zip(
+                    batch, masks_list, boxes_list, scores_list, strict=True
                 ):
                     if masks is None:
                         logger.warning(f'SAM 3 could not process image {img.id}.')
@@ -344,6 +377,8 @@ class SAM3ImageSegmenter:
                     # with numpy arrays:
                     if boxes is not None:
                         asset.attributes['sam3_bounding_boxes'][img.id] = boxes
+                    if scores is not None:
+                        asset.attributes.setdefault('sam3_scores', {})[img.id] = scores
 
                     asset.attributes['ai_model_used'] = self.model.model_id
 

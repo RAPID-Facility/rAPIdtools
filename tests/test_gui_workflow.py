@@ -37,11 +37,26 @@ class FakeSAM3:
     def __init__(self, prompt, **kwargs):
         self.prompt = prompt
         self.kwargs = kwargs
+        self.model = object()  # the loaded SAM 3
         self.calls: list[tuple[str, Path]] = []
+        self.seen: list[dict] = []
         FakeSAM3.instances.append(self)
 
     def __call__(self, raster_path):
         self.calls.append((self.prompt, Path(raster_path)))
+        # The scan settings in effect for this prompt:
+        self.seen.append(
+            {
+                key: getattr(self, key, None)
+                for key in (
+                    'merge_overlaps',
+                    'overlap_ratio',
+                    'neck_width_m',
+                    'min_detection_rate',
+                    'regularize',
+                )
+            }
+        )
         if self.prompt == 'nothing':
             return PhysicalAssetCollection()
         return _collection(slugify(self.prompt))
@@ -67,8 +82,11 @@ class FakeCropExtractor:
 
 
 class FakeBuildingRegularizer:
+    created: list = []
+
     def __init__(self, **kwargs):
         self.kwargs = kwargs
+        FakeBuildingRegularizer.created.append(self)
 
     def __call__(self, collection):
         collection.set_attribute('regularized', 'building', overwrite=True)
@@ -154,6 +172,7 @@ def raster(tmp_path: Path) -> Path:
 @pytest.fixture
 def patched(monkeypatch):
     FakeSAM3.instances.clear()
+    FakeBuildingRegularizer.created.clear()
     FakeAnalyzer.created.clear()
     monkeypatch.setattr(rapidtools, 'SAM3OrthoFeatureExtractor', FakeSAM3)
     monkeypatch.setattr(rapidtools, 'AerialImageryExtractor', FakeCropExtractor)
@@ -273,6 +292,64 @@ def test_detect_multiple_assets_reuses_sam_and_merges(patched, raster, tmp_path)
     assert result.combined_geojson == out / 'assets_final.geojson'
     assert result.combined_geojson.is_file()
     assert any('Detection complete' in s for s in statuses)
+
+
+def test_detect_scans_buildings_as_separate_objects(patched, raster, tmp_path):
+    """Building prompts are fused per object from half-overlapping tiles."""
+    AssetAnalysisWorkflow().detect(
+        DetectionSettings(
+            raster_path=raster,
+            output_dir=tmp_path,
+            assets=['house', 'tree'],
+            detect_in_recon_imagery=True,
+            overlap_ratio=0.25,
+        )
+    )
+    house, tree = FakeSAM3.instances[0].seen
+    assert house == {
+        'merge_overlaps': False,
+        'overlap_ratio': 0.5,
+        'neck_width_m': 1.0,
+        'min_detection_rate': 0.3,
+        'regularize': True,
+    }
+    # Other prompts keep the user's settings:
+    assert tree == {
+        'merge_overlaps': True,
+        'overlap_ratio': 0.25,
+        'neck_width_m': 0.0,
+        'min_detection_rate': 0.0,
+        'regularize': False,
+    }
+
+
+def test_detect_refinement_shares_the_scan_model(patched, raster, tmp_path):
+    """The crop refinement reuses the scan's SAM 3 instead of loading a copy."""
+    AssetAnalysisWorkflow().detect(
+        DetectionSettings(
+            raster_path=raster,
+            output_dir=tmp_path,
+            assets=['building'],
+            detect_in_recon_imagery=True,
+        )
+    )
+    (regularizer,) = FakeBuildingRegularizer.created
+    assert regularizer.kwargs['model'] is FakeSAM3.instances[0].model
+    assert regularizer.kwargs['batch_size'] == 4
+
+
+def test_detect_squares_buildings_without_refinement(patched, raster, tmp_path):
+    """Unticking regularization skips the crop refinement, not the square walls."""
+    AssetAnalysisWorkflow().detect(
+        DetectionSettings(
+            raster_path=raster,
+            output_dir=tmp_path,
+            assets=['building'],
+            detect_in_recon_imagery=True,
+            regularize=False,
+        )
+    )
+    assert FakeSAM3.instances[0].seen[0]['regularize'] is True
 
 
 def test_detect_uses_bing_basemap_by_default(patched, raster, tmp_path):

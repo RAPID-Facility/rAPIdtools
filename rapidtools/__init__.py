@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 09-28-2026
+# 11-27-2026
 
 """
 Initializations and metadata for the rapidtools package.
@@ -139,6 +139,7 @@ _LAZY_ATTRIBUTES: dict[str, str] = {
     'DroneImageExtractor': 'rapidtools.processing',
     'DroneViewSelector': 'rapidtools.processing',
     'DuplicateResolver': 'rapidtools.processing',
+    'FootprintRegularizer': 'rapidtools.processing',
     'GeminiAssetAnalyzer': 'rapidtools.processing',
     'Gemma4AssetAnalyzer': 'rapidtools.processing',
     'GoogleOrthomosaicExtractor': 'rapidtools.processing',
@@ -177,6 +178,7 @@ __all__ = [
     'DroneImageExtractor',
     'DroneViewSelector',
     'DuplicateResolver',
+    'FootprintRegularizer',
     'GeminiInference',
     'Gemma4Inference',
     'GenerationConfig',
@@ -288,6 +290,7 @@ if TYPE_CHECKING:  # pragma: no cover - static analysis only
         DroneImageExtractor,
         DroneViewSelector,
         DuplicateResolver,
+        FootprintRegularizer,
         GeminiAssetAnalyzer,
         Gemma4AssetAnalyzer,
         GoogleOrthomosaicExtractor,

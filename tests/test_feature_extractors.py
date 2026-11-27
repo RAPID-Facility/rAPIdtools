@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 09-22-2026
+# 11-27-2026
 
 import logging
 import os
@@ -305,9 +305,7 @@ def test_call_accepts_list_of_masks(fake_sam, wgs84_raster):
 # ==========================================
 
 
-@pytest.mark.parametrize(
-    'mode', ['none', 'no_masks', 'empty', 'mixed_none', 'all_zero']
-)
+@pytest.mark.parametrize('mode', ['no_masks', 'empty', 'mixed_none', 'all_zero'])
 def test_call_returns_empty_collection_when_nothing_detected(
     fake_sam, wgs84_raster, mode, caplog
 ):
@@ -320,6 +318,42 @@ def test_call_returns_empty_collection_when_nothing_detected(
         result = ext(wgs84_raster)
     assert len(result) == 0
     assert 'Yielded 0 unique assets' in caplog.text
+
+
+def test_call_raises_when_every_batch_fails(fake_sam, wgs84_raster):
+    """A scan in which the model never answered is an error, not an empty map."""
+    ext = SAM3OrthoFeatureExtractor(
+        prompt='x', patch_size=32, unit='pixels', overlap_ratio=0.0
+    )
+    fake_sam['instance'].mode = 'none'
+    with pytest.raises(RuntimeError, match='failed on every batch'):
+        ext(wgs84_raster)
+
+
+def test_call_stops_after_failed_batches_in_a_row(fake_sam, wgs84_raster, caplog):
+    """Isolated failures are reported; a run of them stops the scan."""
+    ext = SAM3OrthoFeatureExtractor(
+        prompt='x', patch_size=32, unit='pixels', overlap_ratio=0.0, batch_size=1
+    )
+    fake = fake_sam['instance']
+    answers = iter(['none', 'square', 'square', 'square'])
+
+    def flaky(*args, **kwargs):
+        fake.mode = next(answers)
+        return FakeSAM3.run_inference(fake, *args, **kwargs)
+
+    fake.run_inference = flaky
+    with caplog.at_level(logging.WARNING):
+        result = ext(wgs84_raster)
+    assert len(result) == 3
+    assert 'failed on 1 of 4 batches' in caplog.text
+
+    del fake.run_inference
+    fake.mode = 'none'
+    with pytest.raises(RuntimeError, match='3 batches in a row'):
+        ext(wgs84_raster)
+    # Stopped at the third failure, before the fourth tile:
+    assert len(fake.calls) == 4 + 3
 
 
 def test_call_missing_raster_raises(fake_sam, tmp_path):
@@ -478,24 +512,250 @@ def test_merge_mode_ignores_scores(fake_sam, wgs84_raster):
     assert 'confidence' not in result[0].attributes
 
 
-def test_suppress_duplicates_prefers_higher_confidence():
-    """Overlapping polygons keep the best-scoring one; touching ones survive."""
-    a = box(0, 0, 10, 10)
-    shifted = box(2, 0, 12, 10)  # 80% overlap with a
-    touching = box(10, 0, 20, 10)  # shares an edge with a, zero overlap area
-    partial = box(7, 0, 12, 10)  # 60% of this smaller box is covered by a
-    kept = SAM3OrthoFeatureExtractor._suppress_duplicates(
-        [shifted, a, touching, partial], [0.8, 0.9, 0.7, 0.85]
+class _TileMasks:
+    """FakeSAM3 stand-in that draws, per tile, the given boxes in raster pixels.
+
+    ``boxes`` maps a tile's column/row offset (in raster pixels) to a list of
+    ``(col0, row0, col1, row1, score)`` boxes in raster pixel coordinates;
+    each box becomes one instance clipped to the tile.
+    """
+
+    def __init__(self, ext, raster, boxes):
+        self.ext, self.raster, self.boxes = ext, raster, boxes
+
+    def install(self, monkeypatch):
+        offsets = []
+        original = self.ext._process_batch
+
+        def spy(images, bounds, raw, scores=None, georefs=None, **kw):
+            offsets.extend(
+                (
+                    round((g.transform.c - self.origin[0]) / self.res[0]),
+                    round((g.transform.f - self.origin[1]) / self.res[1]),
+                )
+                for g in georefs
+            )
+            self.pending = offsets[-len(images) :]
+            return original(images, bounds, raw, scores, georefs, **kw)
+
+        with rasterio.open(self.raster) as ds:
+            self.origin = (ds.transform.c, ds.transform.f)
+            self.res = (ds.transform.a, ds.transform.e)
+        monkeypatch.setattr(self.ext, '_process_batch', spy)
+        self.ext.model.run_inference = self.run_inference
+
+    def run_inference(self, image_inputs, prompt, threshold, mask_threshold, **kw):
+        from PIL import Image
+
+        masks, scores = [], []
+        for path, (c0, r0) in zip(image_inputs, self.pending, strict=True):
+            w, h = Image.open(path).size
+            tile_masks, tile_scores = [], []
+            for bc0, br0, bc1, br1, score in self.boxes:
+                m = np.zeros((h, w), dtype=bool)
+                m[
+                    max(0, br0 - r0) : max(0, br1 - r0),
+                    max(0, bc0 - c0) : max(0, bc1 - c0),
+                ] = True
+                if m.any():
+                    tile_masks.append(m)
+                    tile_scores.append(score)
+            masks.append(
+                np.array(tile_masks) if tile_masks else np.zeros((0, h, w), bool)
+            )
+            scores.append(tile_scores)
+        return ModelOutput(masks=masks, raw_response={'scores': scores})
+
+
+def test_instance_mode_fuses_tile_edge_cuts(fake_sam, utm_raster, monkeypatch):
+    """An object cut by one tile and whole in the overlapping tile is one asset."""
+    ext = SAM3OrthoFeatureExtractor(
+        prompt='building',
+        patch_size=32,
+        unit='pixels',
+        overlap_ratio=0.5,
+        merge_overlaps=False,
     )
-    assert [score for _, score in kept] == [0.9, 0.7]
-    assert kept[0][0].equals(a)
-    assert kept[1][0].equals(touching)
+    # A 12 x 10 m building straddling the 32 px tile boundary (1 px = 1 m):
+    _TileMasks(ext, utm_raster, [(26, 20, 38, 30, 0.8)]).install(monkeypatch)
+    result = ext(utm_raster)
+    assert len(result) == 1
+    asset = result[0]
+    assert asset.attributes['views'] >= 2
+    assert asset.attributes['confidence'] == pytest.approx(0.8)
+    # The outline is the whole building, not the piece one tile saw:
+    import pyproj
+    from shapely.ops import transform
+
+    to_utm = pyproj.Transformer.from_crs('EPSG:4326', 'EPSG:32611', always_xy=True)
+    area = transform(to_utm.transform, asset.geometry).area
+    assert area == pytest.approx(120.0, rel=0.1)
 
 
-def test_suppress_duplicates_without_scores_keeps_first_seen():
-    """With no scores, earlier polygons win and ``None`` is reported."""
-    a = box(0, 0, 10, 10)
-    kept = SAM3OrthoFeatureExtractor._suppress_duplicates([a, box(1, 1, 11, 11)], None)
-    assert len(kept) == 1
-    assert kept[0] == (a, None)
-    assert SAM3OrthoFeatureExtractor._suppress_duplicates([], None) == []
+def test_instance_mode_keeps_neighbors_in_one_tile_apart(
+    fake_sam, utm_raster, monkeypatch
+):
+    """Two touching instances from the same tile are never merged."""
+    ext = SAM3OrthoFeatureExtractor(
+        prompt='building',
+        patch_size=32,
+        unit='pixels',
+        overlap_ratio=0.5,
+        merge_overlaps=False,
+    )
+    boxes = [(20, 20, 30, 30, 0.9), (30, 20, 40, 30, 0.9)]
+    _TileMasks(ext, utm_raster, boxes).install(monkeypatch)
+    assert len(ext(utm_raster)) == 2
+
+
+def test_instance_mode_cuts_masks_at_narrow_necks(fake_sam, utm_raster, monkeypatch):
+    """A mask bleeding across a gap is cut when neck_width_m is set."""
+    # Two 10 x 10 m roofs joined by a 1 m wide strip of mask:
+    boxes = [(10, 10, 20, 20, 0.9), (20, 14, 23, 15, 0.9), (23, 10, 33, 20, 0.9)]
+
+    def run(neck):
+        ext = SAM3OrthoFeatureExtractor(
+            prompt='building',
+            patch_size=64,
+            unit='pixels',
+            overlap_ratio=0.0,
+            merge_overlaps=False,
+            neck_width_m=neck,
+        )
+        fake = _TileMasks(ext, utm_raster, [])
+        fake.install(monkeypatch)
+
+        def joined(image_inputs, prompt, threshold, mask_threshold, **kw):
+            from PIL import Image
+
+            w, h = Image.open(image_inputs[0]).size
+            m = np.zeros((h, w), dtype=bool)
+            for c0, r0, c1, r1, _ in boxes:
+                m[r0:r1, c0:c1] = True
+            return ModelOutput(masks=[m[np.newaxis]], raw_response={'scores': [[0.9]]})
+
+        ext.model.run_inference = joined
+        return ext(utm_raster)
+
+    assert len(run(0.0)) == 1
+    assert len(run(2.0)) == 2
+
+
+def test_instance_mode_min_detection_rate(fake_sam, utm_raster, monkeypatch):
+    """Objects only some of the tiles that saw them detected can be dropped."""
+    ext = SAM3OrthoFeatureExtractor(
+        prompt='building',
+        patch_size=32,
+        unit='pixels',
+        overlap_ratio=0.5,
+        merge_overlaps=False,
+        min_detection_rate=0.6,
+    )
+    # Inside the tiles at (0, 0), (16, 0), (0, 16) and (16, 16):
+    fake = _TileMasks(ext, utm_raster, [(18, 18, 24, 24, 0.9)])
+    fake.install(monkeypatch)
+    seen_by_all = len(ext(utm_raster))
+    # Only the tile at the origin reports the object now:
+    original = fake.run_inference
+
+    def first_tile_only(image_inputs, prompt, threshold, mask_threshold, **kw):
+        out = original(image_inputs, prompt, threshold, mask_threshold)
+        for k, (c0, r0) in enumerate(fake.pending):
+            if (c0, r0) != (16, 16):
+                h, w = out.masks[k].shape[-2:]
+                out.masks[k] = np.zeros((0, h, w), bool)
+                out.raw_response['scores'][k] = []
+        return out
+
+    ext.model.run_inference = first_tile_only
+    assert seen_by_all == 1
+    assert len(ext(utm_raster)) == 0
+
+
+def test_instance_mode_validates_parameters(fake_sam):
+    """Negative neck widths and rates outside [0, 1] are rejected."""
+    with pytest.raises(ValueError, match='neck_width_m'):
+        SAM3OrthoFeatureExtractor(prompt='x', neck_width_m=-1)
+    with pytest.raises(ValueError, match='min_detection_rate'):
+        SAM3OrthoFeatureExtractor(prompt='x', min_detection_rate=1.5)
+
+
+# --------------------------------------------------------------------------
+# Building prompts
+# --------------------------------------------------------------------------
+
+
+def test_is_building_prompt():
+    """Prompts naming buildings are recognized in any case and inside words."""
+    assert feature_extractors.is_building_prompt('Damaged HOUSE')
+    assert feature_extractors.is_building_prompt('warehouse')
+    assert feature_extractors.is_building_prompt('residential buildings')
+    assert not feature_extractors.is_building_prompt('swimming pool')
+
+
+def test_building_prompts_get_building_defaults(fake_sam):
+    """Settings left unset follow the prompt; explicit settings are kept."""
+    ext = SAM3OrthoFeatureExtractor(prompt='house')
+    s = ext.scan_settings()
+    assert (s.building, s.merge_overlaps, s.overlap_ratio) == (True, False, 0.5)
+    assert (s.neck_width_m, s.min_detection_rate, s.regularize) == (1.0, 0.3, True)
+    # Changing the prompt of a loaded extractor re-derives the defaults:
+    ext.prompt = 'tree'
+    s = ext.scan_settings()
+    assert (s.building, s.merge_overlaps, s.overlap_ratio) == (False, True, 0.15)
+    assert (s.neck_width_m, s.min_detection_rate, s.regularize) == (0.0, 0.0, False)
+    # Explicit settings win:
+    ext = SAM3OrthoFeatureExtractor(
+        prompt='building', overlap_ratio=0.3, merge_overlaps=True, regularize=False
+    )
+    s = ext.scan_settings()
+    assert (s.merge_overlaps, s.overlap_ratio, s.regularize) == (True, 0.3, False)
+    # The neck cut and detection rate only apply to buildings kept separate:
+    assert (s.neck_width_m, s.min_detection_rate) == (0.0, 0.0)
+
+
+def _rotated_box_mask(width, height, angle=25.0, size=(30.0, 16.0)):
+    """A pixel mask of a rotated rectangle centered in the image."""
+    from PIL import Image, ImageDraw
+    from shapely import affinity
+
+    rect = box(-size[0] / 2, -size[1] / 2, size[0] / 2, size[1] / 2)
+    rect = affinity.translate(
+        affinity.rotate(rect, angle, origin=(0, 0)), width / 2, height / 2
+    )
+    image = Image.new('1', (width, height), 0)
+    ImageDraw.Draw(image).polygon(list(rect.exterior.coords), fill=1)
+    return np.array(image, dtype=bool)
+
+
+def test_building_scans_are_regularized(fake_sam, utm_raster):
+    """Building footprints get square walls unless regularize=False."""
+
+    def scan(**kwargs):
+        ext = SAM3OrthoFeatureExtractor(
+            prompt='building', patch_size=64, unit='pixels', overlap_ratio=0.0, **kwargs
+        )
+
+        def rotated(image_inputs, prompt, threshold, mask_threshold, **kw):
+            from PIL import Image
+
+            masks = []
+            for path in image_inputs:
+                w, h = Image.open(path).size
+                masks.append(_rotated_box_mask(w, h)[np.newaxis])
+            return ModelOutput(
+                masks=masks, raw_response={'scores': [[0.9]] * len(masks)}
+            )
+
+        ext.model.run_inference = rotated
+        return ext(utm_raster)
+
+    raw, square = scan(regularize=False), scan()
+    assert len(raw) == len(square) == 1
+    assert len(square[0].geometry.exterior.coords) == 5  # a rectangle
+    assert len(raw[0].geometry.exterior.coords) > 5  # the pixel staircase
+    # Same building, same place:
+    assert square[0].geometry.intersection(raw[0].geometry).area > (
+        0.9 * raw[0].geometry.area
+    )
+    assert square[0].attributes['views'] == 1

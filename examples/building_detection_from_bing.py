@@ -35,18 +35,23 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 05-24-2026
+# 11-27-2026
 
 """
 This script demonstrates how to:
 1. Download a sample drone orthomosaic (eaton_patch1).
 2. Extract its exact geographic bounding polygon.
 3. Use that polygon to download the corresponding Bing Maps tiles.
-4. Extract preliminary building footprints from the synthetic Bing orthomosaic 
-   using SAM 3.
-5. Crop high-resolution aerial imagery around each preliminary footprint.
-6. Regularize the footprints using AI to resolve overlaps, bridge gaps, and 
-   create production-ready boundaries.
+4. Extract building footprints from the synthetic Bing orthomosaic with
+   SAM 3, one footprint per building with straight, square walls: every
+   building is seen by several overlapping tiles and their views are fused,
+   so neighbors stay apart.
+5. Crop high-resolution aerial imagery around each footprint.
+6. Refine the footprints by segmenting the crops again.
+
+The footprints of step 4 are already usable. Step 6 takes a few minutes per
+hundred buildings on a GPU and completes roofs and buildings the scan
+missed.
 """
 
 from rapidtools import (
@@ -58,7 +63,7 @@ from rapidtools import (
     download_dataset,
 )
 
-prompt_target = 'building roof'
+prompt_target = 'building'
 output_tiff = 'eaton_patch1_bing.tiff'
 output_geojson1 = 'eaton_patch1_buildings_preliminary.geojson'
 output_geojson2 = 'eaton_patch1_buildings_final.geojson'
@@ -78,15 +83,19 @@ bing_tiff_path = bing_extractor(
 )
 
 # Extract the buildings from the TIFF image based on Bing tiles and save the
-# extracted preliminary building masks in a GeoJSON file:
+# extracted preliminary footprints in a GeoJSON file. A building prompt gets
+# the building scan: tiles overlapping by half show every building whole in
+# several tiles, those views are fused into one footprint per building
+# instead of dissolving touching masks (which would merge neighbors), and the
+# footprints get straight, square walls (sam_extractor.scan_settings() lists
+# the settings):
 sam_extractor = SAM3OrthoFeatureExtractor(
     prompt=prompt_target,
-    patch_size=50,          
-    unit='meters',           
-    overlap_ratio=0.25,      
-    batch_size=4,            
+    patch_size=50,
+    unit='meters',
+    batch_size=4,
     threshold=0.50,
-    mask_threshold=0.40,
+    mask_threshold=0.50,
 )
 
 print('Running preliminary SAM 3 extraction...')
@@ -111,14 +120,11 @@ print('Extracting buffered image crops for regularization...')
 assets_with_images = extractor(prelim_collection)
 
 # Set up the regularizer:
-regularizer = BuildingRegularizer(
-    batch_size=8
-)
+regularizer = BuildingRegularizer(batch_size=8)
 
-# Regularize building footprints by running a more context-aware segmentation,  
-# dissolving overlapping and adjoining polygons, performing straight-edge cuts 
-# between neighboring polygons, and returning the final, refined geometries to a 
-# GeoJSON file:
+# Refine the footprints: segment every crop again, fuse the views of each
+# building from its own and its neighbors' crops, and square the walls
+# again. The final footprints do not overlap:
 print('Running building regularizer...')
 final_buildings = regularizer(assets_with_images)
 _ = final_buildings.to_geojson(output_geojson2)

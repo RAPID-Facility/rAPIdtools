@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 09-30-2026
+# 11-27-2026
 
 """
 Headless workflow engine behind the rapidtools asset-analysis GUI.
@@ -140,6 +140,22 @@ BASEMAP_PROVIDERS: dict[str, dict[str, Any]] = {
     'google': {'label': 'Google', 'default_zoom': 19, 'max_zoom': 21},
 }
 DETECTION_BASEMAPS = ('bing', 'google', 'recon')
+
+
+def is_building_asset(asset_name: str) -> bool:
+    """
+    Whether an asset prompt asks for buildings (scanned and regularized as
+    buildings; see :func:`rapidtools.processing.feature_extractors.is_building_prompt`).
+
+    Example:
+        >>> is_building_asset('Building roof'), is_building_asset('tree')
+        (True, False)
+    """
+    # Imported here so the GUI starts without the raster stack:
+    from rapidtools.processing.feature_extractors import is_building_prompt
+
+    return is_building_prompt(asset_name)
+
 
 # Where the crops analyzed by the model come from, in the order the GUI shows.
 IMAGERY_SOURCES: dict[str, dict[str, Any]] = {
@@ -286,6 +302,8 @@ class DetectionSettings:
     overlap_ratio: float = 0.25
     batch_size: int = 4
     crop_buffer: str = '20 m'
+    # Refine building footprints on close-up crops and regularize roads
+    # (building walls are squared by the scan either way):
     regularize: bool = True
     merge_overlaps: bool = True
     bing_max_workers: int = 10
@@ -762,6 +780,11 @@ class AssetAnalysisWorkflow:
             GoogleOrthomosaicExtractor,
             SAM3OrthoFeatureExtractor,
         )
+        from rapidtools.processing.feature_extractors import (
+            BUILDING_MIN_DETECTION_RATE,
+            BUILDING_NECK_WIDTH_M,
+            BUILDING_OVERLAP_RATIO,
+        )
 
         # 1. Decide which raster to scan.
         self._release_local_assistant()
@@ -815,6 +838,24 @@ class AssetAnalysisWorkflow:
             slug = slugify(asset_name)
             self._progress(f"Scanning for '{asset_name}'...")
             sam_extractor.prompt = asset_name
+            if is_building_asset(asset_name):
+                # Dissolving touching masks merges neighboring buildings, so
+                # buildings are always fused per object (see
+                # SAM3OrthoFeatureExtractor) from tiles that overlap by half,
+                # and their footprints always get square walls:
+                sam_extractor.merge_overlaps = False
+                sam_extractor.overlap_ratio = max(
+                    settings.overlap_ratio, BUILDING_OVERLAP_RATIO
+                )
+                sam_extractor.neck_width_m = BUILDING_NECK_WIDTH_M
+                sam_extractor.min_detection_rate = BUILDING_MIN_DETECTION_RATE
+                sam_extractor.regularize = True
+            else:
+                sam_extractor.merge_overlaps = settings.merge_overlaps
+                sam_extractor.overlap_ratio = settings.overlap_ratio
+                sam_extractor.neck_width_m = 0.0
+                sam_extractor.min_detection_rate = 0.0
+                sam_extractor.regularize = False
             prelim = sam_extractor(detection_raster)
             prelim.to_geojson(output_dir / f'{slug}_preliminary.geojson')
 
@@ -838,7 +879,12 @@ class AssetAnalysisWorkflow:
 
             final = with_images
             if settings.regularize:
-                final = self._regularize(asset_name, with_images)
+                # The refinement shares the scan's SAM 3: a second copy may
+                # not fit on the GPU, and the loader would then run it on
+                # the CPU (see SAM3Inference).
+                final = self._regularize(
+                    asset_name, with_images, model=sam_extractor.model
+                )
 
             final_path = output_dir / f'{slug}_final.geojson'
             final.to_geojson(final_path, ignore_properties=['image_assets'])
@@ -866,16 +912,29 @@ class AssetAnalysisWorkflow:
         )
 
     def _regularize(
-        self, asset_name: str, collection: PhysicalAssetCollection
+        self,
+        asset_name: str,
+        collection: PhysicalAssetCollection,
+        model: Any = None,
     ) -> PhysicalAssetCollection:
-        """Apply the building or road regularizer when the asset name matches."""
+        """
+        Apply the building or road regularizer when the asset name matches.
+
+        Building scans already have square walls (the scan regularizes
+        them); here every building is segmented again on its close-up crop
+        (:class:`~rapidtools.BuildingRegularizer`), which recovers missed
+        roof sections and buildings the scan dropped. ``model`` is the
+        loaded SAM 3 to reuse for that (``None`` loads one).
+        """
         from rapidtools import BuildingRegularizer, RoadwayRegularizer
 
         lowered = asset_name.lower()
-        if 'building' in lowered or 'house' in lowered or 'structure' in lowered:
-            self._progress(f"Regularizing '{asset_name}' footprints...")
+        if is_building_asset(asset_name):
+            self._progress(f"Refining '{asset_name}' footprints on close-up crops...")
+            # Batches of four crops keep the GPU memory at the level of the
+            # scan, which matters on 8 GB cards:
             regularizer = BuildingRegularizer(
-                batch_size=8, cancel_event=self._cancel_event
+                batch_size=4, cancel_event=self._cancel_event, model=model
             )
             return regularizer(collection)
         if 'road' in lowered or 'street' in lowered:

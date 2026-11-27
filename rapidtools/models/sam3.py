@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 09-22-2026
+# 11-27-2026
 
 """
 Meta Segment Anything Model 3 (SAM 3) via Transformers.
@@ -61,6 +61,7 @@ Example:
 from __future__ import annotations
 
 import logging
+import os
 import warnings
 from collections.abc import Sequence
 from pathlib import Path
@@ -84,6 +85,42 @@ from .catalogs import (
 from .local_base import BaseLocalInferenceModel
 
 logger = logging.getLogger(__name__)
+
+
+def _warn_if_off_gpu(model: Any, device: str, model_id: str) -> None:
+    """
+    Report a model the loader put on the CPU although a GPU exists.
+
+    With ``device='auto'`` the loader puts the weights wherever there is
+    room. When the GPU is full, or unusable after a driver reset, that is
+    the CPU: the model still works there, dozens of times slower, so a scan
+    that takes minutes on the GPU can keep every core busy for hours. The
+    fallback is kept, but it is logged as a warning instead of happening
+    silently, and PyTorch is limited to half of the CPU cores so that the
+    computer stays usable. A deliberate CPU run (``device='cpu'``, or a
+    machine without a GPU) is left alone.
+    """
+    if device != 'auto' or not torch.cuda.is_available():
+        return
+    placement = getattr(model, 'hf_device_map', None)
+    if not isinstance(placement, dict):
+        return
+    offloaded = sorted(
+        {str(d) for d in placement.values() if str(d) in ('cpu', 'disk')}
+    )
+    if not offloaded:
+        return
+    cores = os.cpu_count() or 2
+    threads = max(1, min(torch.get_num_threads(), cores // 2))
+    torch.set_num_threads(threads)
+    logger.warning(
+        f'{model_id} did not fit on the GPU and runs on the '
+        f'{" and ".join(offloaded)} instead, dozens of times slower, using '
+        f'{threads} of the {cores} CPU cores so the computer stays usable: the '
+        'GPU is busy, out of memory, or was reset by its driver. To use the GPU '
+        'again, close other programs that use it (or restart after a driver '
+        "reset); pass device='cpu' to run on the CPU without this warning."
+    )
 
 
 class SAM3Inference(BaseLocalInferenceModel):
@@ -126,6 +163,11 @@ class SAM3Inference(BaseLocalInferenceModel):
             load_in_4bit: Quantize with bitsandbytes to reduce VRAM.
             temperature: Deprecated and ignored (SAM does not sample text).
             max_tokens: Deprecated and ignored.
+
+        With ``device='auto'`` the model runs on the GPU when there is one
+        with room for it, and on the CPU otherwise; a GPU that is present
+        but full, or unusable after a driver reset, is reported with a
+        warning, since the CPU is dozens of times slower.
         """
         if temperature is not None or max_tokens is not None:
             warnings.warn(
@@ -162,6 +204,7 @@ class SAM3Inference(BaseLocalInferenceModel):
             )
 
         self.model = Sam3Model.from_pretrained(self.model_id, **model_kwargs)
+        _warn_if_off_gpu(self.model, self.device, self.model_id)
         self.model.eval()
         logger.info(f'SAM 3 model {self.model_id} loaded successfully.')
 
@@ -190,6 +233,7 @@ class SAM3Inference(BaseLocalInferenceModel):
         threshold: float | None = None,
         mask_threshold: float | None = None,
         config: SegmentationConfig | None = None,
+        max_mask_side: int | None = None,
         **kwargs: Any,
     ) -> ModelOutput | None:
         """
@@ -203,6 +247,12 @@ class SAM3Inference(BaseLocalInferenceModel):
             mask_threshold: Threshold for binarizing mask logits (default 0.5).
             config: A :class:`~rapidtools.models.base.SegmentationConfig`;
                 explicit keyword arguments take precedence over it.
+            max_mask_side: Return masks (and boxes) of images larger than
+                this many pixels on their longer side at a reduced size with
+                that longer side, instead of at the image size. SAM 3
+                predicts masks at about 288 x 288 pixels, so nothing is lost,
+                while a few full-size masks of a 2 cm drone crop take
+                gigabytes. ``None`` (default) keeps the image size.
             **kwargs: Ignored; accepted for interface compatibility.
 
         Returns:
@@ -283,11 +333,20 @@ class SAM3Inference(BaseLocalInferenceModel):
             with torch.no_grad():
                 outputs = self.model(**inputs)
 
+            target_sizes = inputs['original_sizes'].tolist()
+            if max_mask_side:
+                target_sizes = [
+                    [
+                        max(1, round(h * min(1.0, max_mask_side / max(h, w)))),
+                        max(1, round(w * min(1.0, max_mask_side / max(h, w)))),
+                    ]
+                    for h, w in target_sizes
+                ]
             results = self.processor.post_process_instance_segmentation(
                 outputs,
                 threshold=threshold,
                 mask_threshold=mask_threshold,
-                target_sizes=inputs['original_sizes'].tolist(),
+                target_sizes=target_sizes,
             )
 
             n_inputs = len(image_list)
@@ -363,6 +422,7 @@ class SAM3PointInference(BaseLocalInferenceModel):
             dtype=torch.float16,
             device_map='auto' if self.device == 'auto' else self.device,
         )
+        _warn_if_off_gpu(self.model, self.device, self.model_id)
         self.model.eval()
 
     def run_inference(

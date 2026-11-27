@@ -99,7 +99,7 @@ data.download
 detect.aerial
 ~~~~~~~~~~~~~
 
-**Detect assets in aerial imagery.** Finds every instance of the named asset types in an orthomosaic with SAM 3, by default on a pre-event satellite basemap stitched over the raster extent (assets destroyed in the post-event imagery are still found there). Buildings and roads are regularized into clean polygons.
+**Detect assets in aerial imagery.** Finds every instance of the named asset types in an orthomosaic with SAM 3, by default on a pre-event satellite basemap stitched over the raster extent (assets destroyed in the post-event imagery are still found there). Building footprints always get straight, square walls; by default they are also refined on close-up crops, and roads are regularized into clean polygons.
 
 *Inputs*
 
@@ -161,11 +161,11 @@ detect.aerial
    * - ``regularize``
      - boolean
      - ``true``
-     - Regularize building footprints and road polygons.
+     - Refine building footprints with a second SAM 3 pass on close-up crops, and regularize road polygons. Building walls are squared either way.
    * - ``merge_overlaps``
      - boolean
      - ``true``
-     - Merge detections that overlap across patches into one asset. Turn off to keep touching instances separate.
+     - Merge detections that overlap across patches into one asset. Turn off to keep touching instances separate. Building prompts are always kept separate, from patches overlapping by at least half.
    * - ``max_workers``
      - integer
      - ``10``

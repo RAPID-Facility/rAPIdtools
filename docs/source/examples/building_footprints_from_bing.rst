@@ -2,8 +2,8 @@ Building footprints from a Bing basemap
 =======================================
 
 If you have no footprint inventory, you can make one. This example stitches
-a basemap of the area, lets SAM 3 find the roofs, and then refines the rough
-masks into clean footprints.
+a basemap of the area, lets SAM 3 find the buildings, one footprint per
+building, and then refines them into clean footprints with square walls.
 
 Source: ``examples/building_detection_from_bing.py``.
 
@@ -27,15 +27,16 @@ Source: ``examples/building_detection_from_bing.py``.
        region=region, output_path='eaton_patch1_bing.tiff'
    )
 
-   # 3. Preliminary roofs from SAM 3.
+   # 3. Footprints from SAM 3. A building prompt gets the building scan:
+   #    tiles overlapping by half, the views of every building fused so
+   #    neighbors stay apart, and straight, square walls.
    preliminary = SAM3OrthoFeatureExtractor(
-       prompt='building roof',
-       patch_size=50, unit='meters', overlap_ratio=0.25,
-       batch_size=4, threshold=0.50, mask_threshold=0.40,
+       prompt='building', patch_size=50, unit='meters',
+       batch_size=4, threshold=0.50, mask_threshold=0.50,
    )(bing_tiff)
    preliminary.to_geojson('eaton_patch1_buildings_preliminary.geojson')
 
-   # 4. Crops around each preliminary footprint, then regularization.
+   # 4. Refinement: crops around each footprint, segmented again.
    with_crops = AerialImageryExtractor(
        dataset=bing_tiff, save_directory='output/building_crops',
        buffer_asset='20 m', force_square_image=True,
@@ -46,6 +47,10 @@ Source: ``examples/building_detection_from_bing.py``.
 Notes
 -----
 
+- The footprints of step 3 are already usable: one per building, with
+  square walls. Step 4 segments every crop again, which takes a few minutes
+  per hundred buildings on a GPU, and completes roofs and buildings the scan
+  missed.
 - To refine the footprints against the post-event drone imagery, point
   ``AerialImageryExtractor`` at the drone raster instead of the Bing TIFF
   in step 4.

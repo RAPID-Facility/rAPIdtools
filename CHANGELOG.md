@@ -9,6 +9,59 @@ minor releases may change public APIs.
 
 ### Added
 
+- **One footprint per building from a tiled scan.**
+  `SAM3OrthoFeatureExtractor(merge_overlaps=False)` no longer keeps the
+  best-scoring copy of each detection: the views of an object from all the
+  overlapping tiles are fused into one consensus outline
+  (`rapidtools.processing.instance_fusion.fuse_view_detections`). Two
+  detections from different tiles are the same object only if they agree
+  inside the area both tiles covered, so a building cut by a tile edge
+  still matches the whole building in the next tile; two instances from
+  the same tile are never merged; and an outline made of two or more other
+  outlines (a mask that took a house and its garage together) gives way to
+  the parts. New options: `neck_width_m` cuts masks where they narrow below
+  that width (a mask bleeding across the gap between two roofs), and
+  `min_detection_rate` drops objects that most of the tiles seeing them
+  missed. Assets carry a new `views` attribute. On the Eaton sample
+  (`eaton_patch1`), scored against the 93 county footprints visible in the
+  unburned half of the drone orthomosaic (4 more are hidden under trees or
+  debris), the GUI's building detection (this scan with 50% tile overlap,
+  then `BuildingRegularizer`) left 3, 4 and 0 polygons covering two or
+  more buildings on Bing, Google and the RAPID drone orthomosaic, against
+  6, 9 and 3 before, and found 84%, 81% and 99% of the buildings (68%, 63%
+  and 95% before). The one RAPID building it did not match has a county
+  outline shifted onto the neighboring carport; the detected outline
+  follows the roof.
+- **Square building outlines.** `FootprintRegularizer` (and
+  `regularize_footprint` / `regularize_footprints` in
+  `rapidtools.processing.postprocessing.footprints`) redraws mask-traced
+  footprints with straight walls at right angles: each footprint is
+  rasterized on a grid turned to its main wall direction (its own, its
+  minimum rotated rectangle's, or the one its neighbors share), cleaned of
+  bulges and dents narrower than about a meter, traced back, and cleared
+  of short steps; near-rectangles become rectangles, round buildings are
+  only simplified, and neighbors are made non-overlapping. It needs no
+  model. On the Eaton sample the median footprint went from 150 to 10
+  vertices (8 on the drone orthomosaic, from about 2,000), with 98-100% of
+  the corners square, as in the county footprints.
+- **Building scans need no settings and come out regularized.**
+  `SAM3OrthoFeatureExtractor` recognizes prompts that name buildings
+  (`building`, `house`, `structure`, also inside longer words; see
+  `is_building_prompt`) and gives them the building scan for every setting
+  left out: one footprint per building, tiles overlapping by half, masks
+  cut at 1 m necks, buildings that fewer than 30% of the tiles seeing them
+  detected dropped. The new `regularize` option, on by default for these
+  prompts, gives the footprints straight, square walls with
+  `FootprintRegularizer`; `regularize=False` returns the raw outlines.
+  `scan_settings()` shows the settings a scan will use. Settings left out
+  follow the prompt, so an extractor reused for another prompt switches to
+  that prompt's defaults.
+- `SAM3Inference.run_inference(max_mask_side=...)` and
+  `SAM3ImageSegmenter(max_mask_side=...)` return the masks of large images
+  at a reduced size; SAM 3 predicts masks at about 288 pixels, so nothing
+  is lost. `SAM3ImageSegmenter` also stores the confidences of the masks in
+  the `sam3_scores` attribute.
+
 - **Newer models in the catalogs.** Hosted: Gemini 4 (`gemini-4-neon`,
   `gemini-4-carbon`, `gemini-4-argon`, `gemini-4-hydrogen`), GPT-6.2 Astra
   and Sol, GPT-6.1 Sol and Terra, Claude Fable 5.2, Opus 5.5 and Sonnet 5.5,
@@ -76,6 +129,27 @@ minor releases may change public APIs.
 
 ### Fixed
 
+- **Out of memory regularizing drone crops.** `BuildingRegularizer` kept
+  the masks of every crop at full resolution until the end; on the 1.9 cm
+  Eaton orthomosaic (432 crops of about 2,900 pixels) that exhausted a
+  32 GB machine. Masks are now kept at no more than 1,024 pixels a side and
+  released as soon as they are traced.
+- **SAM 3 no longer falls back to the CPU without a word.** With
+  `device='auto'` the loader puts the weights wherever there is room; when
+  the GPU was full, or unusable after a driver reset, that was the CPU,
+  where SAM 3 is dozens of times slower and kept every core busy for hours
+  (in the GUI, the building refinement loaded a second copy of SAM 3 next
+  to the scan's and could end up there). The fallback stays, but
+  `SAM3Inference` and `SAM3PointInference` now log a warning that says what
+  happened when a GPU is present and the weights did not land on it, and
+  then use at most half of the CPU cores so the computer stays usable;
+  `device='cpu'` and machines without a GPU run on the CPU as before.
+- **Scans no longer skip failed batches silently.** When SAM 3 failed on a
+  batch of tiles, `SAM3OrthoFeatureExtractor` went on without those tiles.
+  It now warns with the number of failed batches, stops after three failed
+  batches in a row (a GPU that stopped responding fails every batch that
+  follows), and raises when every batch failed instead of reporting that
+  nothing was found.
 - **Gemini answers cut off by the output limit.** A response that spent
   its whole limit on thinking used to come back as an empty success; it
   is now a failure that says to raise `max_tokens`, and a partly written
@@ -83,6 +157,44 @@ minor releases may change public APIs.
 
 ### Changed
 
+- **`BuildingRegularizer` keeps neighbors apart.** It used to dissolve
+  every pair of masks that overlapped by half (so chains of overlaps
+  merged whole rows), bridge gaps of up to 15 ft inside a mask, and cut
+  overlapping buildings along the extension of a wall, which drew long
+  straight lines through neighbors. It now fuses the views of each
+  building from its own and its neighbors' crops like the tiled scan does
+  (see Added), keeps the buildings that match a preliminary footprint (a
+  footprint that covered two buildings yields both), regularizes the
+  outlines with `FootprintRegularizer` and removes the overlaps. Outputs
+  carry `confidence`, `views` and `source_ids` (the matched preliminary
+  footprints). New options: `regularize_outlines`, `neck_width_m`,
+  `min_area_m2` and `max_mask_side`.
+- **Building scans in the GUI and job files.** The `detect.aerial` step
+  scans prompts that name buildings (`building`, `house`, `structure`)
+  object by object whatever `merge_overlaps` says, from tiles that overlap
+  by at least half, with masks cut at 1 m necks and buildings that fewer
+  than 30% of the tiles seeing them detected dropped, and always squares
+  their walls. Its `regularize` option (the *Refine building footprints*
+  box in the GUI, on by default) now decides whether the footprints are
+  also refined on close-up crops with `BuildingRegularizer`, and whether
+  roads are regularized. The refinement now reuses the scan's SAM 3 instead
+  of loading a second copy (`BuildingRegularizer(model=...)` and
+  `SAM3ImageSegmenter(model=...)` accept a loaded model) and segments four
+  crops at a time instead of eight, so it fits an 8 GB GPU next to the
+  display. Other prompts are unchanged.
+- **New defaults for building prompts in `SAM3OrthoFeatureExtractor`.**
+  `overlap_ratio`, `merge_overlaps`, `neck_width_m` and
+  `min_detection_rate` now default to `None`, meaning the prompt's defaults
+  (see Added); for prompts that do not name buildings these are the old
+  values. A building scan therefore keeps neighbors apart and squares the
+  walls without being asked, and with tiles overlapping by half it runs
+  about three times as many tiles as before. Pass
+  `merge_overlaps=True, overlap_ratio=0.15, regularize=False` for the old
+  behavior.
+- `SAM3OrthoFeatureExtractor` downsamples tiles larger than 1,024 pixels
+  before inference (SAM 3 works at 1,008 pixels) and writes its temporary
+  tiles at JPEG quality 95. Scanning the 1.9 cm Eaton orthomosaic took
+  2.4 s per tile instead of 3.2 s on a GTX 1080.
 - **New default for other open models.** `load('hf')`, `HFVisionInference()`
   and *Other open models* in the GUI now default to `zai-org/GLM-4.6V-Flash`
   (10B) instead of `Qwen/Qwen3.5-4B`. Its weights are about 20 GB; pass
@@ -120,6 +232,12 @@ minor releases may change public APIs.
   62 to 14; the median overlap with the mapped footprint rose from 0.50 to
   0.55. Structures spanning two or more neighbors went from 10 to 12,
   mostly where a fence between houses is segmented as building.
+
+### Deprecated
+
+- `BuildingRegularizer(max_gap_bridge_ft=..., snap_tolerance_ft=...)`:
+  both are ignored and warn. Bridging the gaps inside a mask is what merged
+  neighboring buildings; `snap_tolerance_ft` was never used.
 
 ## [0.3.0] - 2026-11-25
 

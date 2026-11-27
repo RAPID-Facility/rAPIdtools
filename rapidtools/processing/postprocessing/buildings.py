@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 09-22-2026
+# 11-27-2026
 
 """
 SAM 3 based refinement of preliminary building footprints.
@@ -45,7 +45,14 @@ takes coarse building polygons (for example from OpenStreetMap, a parcel
 layer or :class:`~rapidtools.processing.SAM3OrthoFeatureExtractor`) together
 with the aerial crops attached by
 :class:`~rapidtools.processing.AerialImageryExtractor`, and replaces each
-preliminary shape with the precise roof outline segmented by SAM 3.
+preliminary shape with the roof outline segmented by SAM 3, drawn with
+straight, square walls.
+
+Every crop is a view of its building and of the neighbors around it, so a
+building is usually segmented in several crops. The views are fused with
+:func:`~rapidtools.processing.instance_fusion.fuse_view_detections`, which
+keeps neighbors that touch apart, and the fused outlines are regularized
+with :func:`~rapidtools.processing.postprocessing.footprints.regularize_footprints`.
 
 Example:
     >>> from rapidtools.core import PhysicalAssetCollection
@@ -59,24 +66,47 @@ Example:
 """
 
 import logging
-import math
 import threading
 import uuid
-from typing import Any
+import warnings
+from collections.abc import Callable, Hashable
+from typing import TYPE_CHECKING, Any
 
-import networkx as nx
 import numpy as np
 import pyproj
-from shapely.geometry import LineString, MultiPolygon, Polygon
+from rasterio.crs import CRS
+from rasterio.warp import transform_geom
+from shapely.geometry import Polygon, box, mapping, shape
 from shapely.geometry.base import BaseGeometry
-from shapely.ops import split, unary_union
 from shapely.ops import transform as shapely_transform
+from shapely.ops import unary_union
+from shapely.strtree import STRtree
 
-from rapidtools.core import PhysicalAsset, PhysicalAssetCollection, raise_if_canceled
+from rapidtools.core import (
+    ImageAsset,
+    PhysicalAsset,
+    PhysicalAssetCollection,
+    raise_if_canceled,
+)
 from rapidtools.data_sources.orthomosaic_reader import PatchGeoref
 from rapidtools.processing.image_segmenters import SAM3ImageSegmenter
+from rapidtools.processing.instance_fusion import (
+    FusedObject,
+    ViewDetection,
+    fuse_view_detections,
+)
 from rapidtools.processing.step import Stage
 from rapidtools.processing.vectorize import mask_to_wgs84_polygons
+
+from .footprints import (
+    DEFAULT_MIN_AREA_M2,
+    local_metric_transformers,
+    regularize_footprints,
+    resolve_overlaps,
+)
+
+if TYPE_CHECKING:
+    from rapidtools.models import SAM3Inference
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +117,18 @@ DEFAULT_CONFIDENCE_THRESHOLD = 0.5
 DEFAULT_MASK_THRESHOLD = 0.5
 DEFAULT_RETRY_CONFIDENCE_THRESHOLD = 0.3
 DEFAULT_RETRY_MASK_THRESHOLD = 0.3
+# Kept for backward compatibility; neither value is used any more:
+DEFAULT_MAX_GAP_BRIDGE_FT = 15.0
 DEFAULT_SNAP_TOLERANCE_FT = 0.5
+# Masks bleeding across a gap narrower than this are cut (meters):
+DEFAULT_NECK_WIDTH_M = 1.0
+# Longest side of the stored SAM 3 masks, in pixels (see SAM3ImageSegmenter):
+DEFAULT_MAX_MASK_SIDE = 1024
+# Assets segmented per chunk; masks are vectorized and released after each:
+_SEGMENT_CHUNK = 64
+# A building recovered in the retry pass is discarded when this share of it
+# already belongs to a building from the first pass:
+_RETRY_MAX_OVERLAP = 0.3
 
 
 class BuildingRegularizer:
@@ -95,18 +136,31 @@ class BuildingRegularizer:
     Pipeline component to regularize and refine preliminary building polygons.
 
     This regularizer takes assets that have preliminary building geometries
-    and associated cropped imagery, runs a batched SAM 3 segmentation to find
-    the exact physical boundaries of the buildings, and maps the resulting
-    pixel masks back to real-world WGS84 coordinates.
+    and associated cropped imagery, segments the crops with SAM 3, and
+    returns one clean footprint per building:
 
-    It filters out AI hallucinations and giant blobs using IoU, splits merged
-    preliminary shapes using Recall, and runs a second low-threshold pass
-    on dropped assets to rescue shadowed buildings.
+    1. The masks of every crop are traced into polygons; a mask whose
+       pieces are separate, or joined only by a strip narrower than
+       ``neck_width_m``, becomes several candidates.
+    2. Crops overlap (a building appears in its own crop and in those of
+       its neighbors), so the candidates are fused across crops: two are
+       the same building only if they agree where both crops could see,
+       and two instances from the same crop are never merged. The outline
+       is the one most crops agree on.
+    3. Fused buildings are kept if they match a preliminary footprint (IoU
+       of at least ``min_overlap_ratio``, or covering at least half of it,
+       or lying at least half inside it). A preliminary footprint that
+       covered two buildings therefore yields both.
+    4. Preliminary footprints without a match get a second, low-threshold
+       pass, which rescues many buildings in shadow.
+    5. The footprints get straight, square walls (see
+       :class:`~rapidtools.processing.FootprintRegularizer`) and are made
+       mutually non-overlapping.
 
-    Every image attached to an input asset must carry a ``'wgs84_bounds'``
-    property (``(min_lon, min_lat, max_lon, max_lat)``), as written by
-    :class:`~rapidtools.processing.AerialImageryExtractor`; images without it
-    are ignored.
+    Every image attached to an input asset must carry a ``'native_georef'``
+    (preferred) or ``'wgs84_bounds'`` property, as written by
+    :class:`~rapidtools.processing.AerialImageryExtractor`; images without
+    either are ignored.
 
     Args:
         prompt (str | list[str], optional):
@@ -119,12 +173,13 @@ class BuildingRegularizer:
             Whether to load the SAM 3 model in 4-bit precision to save memory.
             Defaults to ``True``.
         min_overlap_ratio (float, optional):
-            Minimum Intersection over Union (IoU) between a mask and its
-            preliminary seed required to keep the mask. A mask is also kept
-            if it covers at least 50% of the seed (recall). Defaults to 0.15.
-        max_gap_bridge_ft (float, optional):
-            Maximum distance in feet to dynamically bridge fragmented
-            polygons. Defaults to 15.0.
+            Minimum Intersection over Union (IoU) between a building and a
+            preliminary footprint for the building to be kept (it is also
+            kept when it covers at least half of the footprint or lies at
+            least half inside it). Defaults to 0.15.
+        max_gap_bridge_ft (float | None, optional):
+            Deprecated and ignored. Gaps inside a mask are no longer
+            bridged: bridging is what merged neighboring buildings.
         confidence_threshold (float, optional):
             Primary confidence threshold for SAM 3 mask generation. Defaults
             to 0.5.
@@ -137,12 +192,32 @@ class BuildingRegularizer:
             Lower confidence threshold for the retry pass. Defaults to 0.3.
         retry_mask_threshold (float, optional):
             Lower mask threshold for the retry pass. Defaults to 0.3.
-        snap_tolerance_ft (float, optional):
-            Tolerance in feet for snapping polygon vertices. Defaults to 0.5.
+        snap_tolerance_ft (float | None, optional):
+            Deprecated and ignored.
         cancel_event (threading.Event | None, optional):
             Cooperative cancellation flag shared with the internal segmenter.
             When set, :class:`~rapidtools.core.OperationCanceled` is raised
             between SAM 3 batches or between pipeline stages. Defaults to
+            ``None``.
+        regularize_outlines (bool, optional):
+            Give the footprints straight, square walls. With ``False`` the
+            fused mask outlines are returned (still non-overlapping).
+            Defaults to ``True``.
+        neck_width_m (float, optional):
+            Masks are cut where they narrow below this width in meters.
+            Defaults to 1.0.
+        min_area_m2 (float, optional):
+            Footprints smaller than this are dropped. Defaults to 4.
+        max_mask_side (int | None, optional):
+            Longest side, in pixels, at which SAM 3 masks are kept (see
+            :class:`~rapidtools.processing.SAM3ImageSegmenter`). Defaults to
+            1024, which keeps the crops of centimeter-resolution drone
+            orthomosaics from exhausting memory.
+        model (SAM3Inference | None, optional):
+            An already loaded SAM 3, for example the one of the
+            :class:`~rapidtools.processing.SAM3OrthoFeatureExtractor` that
+            found the preliminary footprints, to use instead of loading a
+            second copy (``load_in_4bit`` is then ignored). Defaults to
             ``None``.
 
     Example:
@@ -166,14 +241,19 @@ class BuildingRegularizer:
         batch_size: int = 4,
         load_in_4bit: bool = True,
         min_overlap_ratio: float = 0.15,
-        max_gap_bridge_ft: float = 15.0,
+        max_gap_bridge_ft: float | None = None,
         confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
         mask_threshold: float = DEFAULT_MASK_THRESHOLD,
         retry_dropped: bool = True,
         retry_confidence_threshold: float = DEFAULT_RETRY_CONFIDENCE_THRESHOLD,
         retry_mask_threshold: float = DEFAULT_RETRY_MASK_THRESHOLD,
-        snap_tolerance_ft: float = DEFAULT_SNAP_TOLERANCE_FT,
+        snap_tolerance_ft: float | None = None,
         cancel_event: threading.Event | None = None,
+        regularize_outlines: bool = True,
+        neck_width_m: float = DEFAULT_NECK_WIDTH_M,
+        min_area_m2: float = DEFAULT_MIN_AREA_M2,
+        max_mask_side: int | None = DEFAULT_MAX_MASK_SIDE,
+        model: 'SAM3Inference | None' = None,
     ) -> None:
         """
         Initialize the BuildingRegularizer with SAM 3 and pipeline thresholds.
@@ -186,9 +266,9 @@ class BuildingRegularizer:
             load_in_4bit (bool, optional):
                 Whether to load the SAM 3 model in 4-bit precision.
             min_overlap_ratio (float, optional):
-                Minimum IoU required to keep a mask.
-            max_gap_bridge_ft (float, optional):
-                Maximum distance in feet to bridge fragmented polygons.
+                Minimum IoU with a preliminary footprint to keep a building.
+            max_gap_bridge_ft (float | None, optional):
+                Deprecated and ignored.
             confidence_threshold (float, optional):
                 Primary confidence threshold for SAM 3 mask generation.
             mask_threshold (float, optional):
@@ -199,19 +279,51 @@ class BuildingRegularizer:
                 Lower confidence threshold for the retry pass.
             retry_mask_threshold (float, optional):
                 Lower mask threshold for the retry pass.
-            snap_tolerance_ft (float, optional):
-                Tolerance in feet for snapping polygon vertices.
+            snap_tolerance_ft (float | None, optional):
+                Deprecated and ignored.
             cancel_event (threading.Event | None, optional):
                 Cooperative cancellation flag.
+            regularize_outlines (bool, optional):
+                Give the footprints straight, square walls.
+            neck_width_m (float, optional):
+                Width below which masks are cut into pieces, in meters.
+            min_area_m2 (float, optional):
+                Smallest footprint kept, in square meters.
+            max_mask_side (int | None, optional):
+                Longest side of the stored SAM 3 masks, in pixels.
+            model (SAM3Inference | None, optional):
+                An already loaded SAM 3 to share instead of loading one.
         """
+        for name, value in (
+            ('max_gap_bridge_ft', max_gap_bridge_ft),
+            ('snap_tolerance_ft', snap_tolerance_ft),
+        ):
+            if value is not None:
+                warnings.warn(
+                    f'BuildingRegularizer ignores {name}; it will be removed in '
+                    'a future release.',
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
         # Cooperative cancellation (stops between SAM 3 batches):
         self.cancel_event = cancel_event
         self.min_overlap_ratio = min_overlap_ratio
-        self.max_gap_bridge_ft = max_gap_bridge_ft
-        self.snap_tolerance_ft = snap_tolerance_ft
+        self.max_gap_bridge_ft = (
+            DEFAULT_MAX_GAP_BRIDGE_FT
+            if max_gap_bridge_ft is None
+            else max_gap_bridge_ft
+        )
+        self.snap_tolerance_ft = (
+            DEFAULT_SNAP_TOLERANCE_FT
+            if snap_tolerance_ft is None
+            else snap_tolerance_ft
+        )
         self.retry_dropped = retry_dropped
         self.retry_confidence_threshold = retry_confidence_threshold
         self.retry_mask_threshold = retry_mask_threshold
+        self.regularize_outlines = regularize_outlines
+        self.neck_width_m = neck_width_m
+        self.min_area_m2 = min_area_m2
 
         # Safely handle lists by converting them to the period-separated string
         # format:
@@ -227,6 +339,8 @@ class BuildingRegularizer:
             threshold=confidence_threshold,
             mask_threshold=mask_threshold,
             cancel_event=cancel_event,
+            max_mask_side=max_mask_side,
+            model=model,
         )
 
     def __call__(
@@ -255,12 +369,12 @@ class BuildingRegularizer:
 
         This pipeline consists of:
 
-            1. Running batched SAM 3 segmentation on the image crops.
-            2. Georeferencing masks and applying geometric/spatial filters.
+            1. Segmenting the image crops with SAM 3 and tracing the masks.
+            2. Fusing the crops' views of every building and matching the
+               buildings to the preliminary footprints.
             3. (Optional) Retrying dropped assets with lower thresholds.
-            4. Dissolving overlapping duplicates.
-            5. Truncating neighboring intrusions to form clean property lines.
-            6. Removing degenerate geometries.
+            4. Giving the footprints straight walls and removing overlaps.
+            5. Removing degenerate geometries.
 
         Args:
             input_assets (PhysicalAssetCollection):
@@ -268,11 +382,14 @@ class BuildingRegularizer:
 
         Returns:
             PhysicalAssetCollection:
-                Collection of refined, georeferenced, and non-overlapping
-                building assets. The output assets carry new IDs
-                (``'bldg_merged_<hash>'``) and the attribute
-                ``'asset_type': 'building_footprint'``. Returns an empty
-                collection when ``input_assets`` is empty.
+                Collection of refined, non-overlapping building assets. The
+                output assets carry new IDs (``'bldg_merged_<hash>'``) and
+                the attributes ``'asset_type': 'building_footprint'``,
+                ``'confidence'`` (mean SAM 3 score, ``None`` when the model
+                reported none), ``'views'`` (number of crops that detected
+                the building) and ``'source_ids'`` (IDs of the matched
+                preliminary assets). Returns an empty collection when
+                ``input_assets`` is empty.
 
         Raises:
             OperationCanceled:
@@ -289,549 +406,318 @@ class BuildingRegularizer:
             logger.warning('No assets provided to BuildingRegularizer. Exiting.')
             return PhysicalAssetCollection()
 
-        # Pass 1:
-        logger.info('Step 1/4: Running SAM 3 segmentation on image crops...')
-        segmented_assets = self.segmenter(input_assets)
+        seeds = self._seed_geometries(input_assets)
+        if not seeds:
+            logger.warning('No polygonal preliminary footprints to regularize.')
+            return PhysicalAssetCollection()
+        center = unary_union(list(seeds.values())).centroid
+        to_local, to_wgs84 = local_metric_transformers(center.x, center.y)
+        local_seeds = {k: shapely_transform(to_local, g) for k, g in seeds.items()}
 
+        # Pass 1:
+        logger.info('Step 1/5: Running SAM 3 segmentation on image crops...')
+        detections, windows = self._segment(input_assets, to_local)
         raise_if_canceled(self.cancel_event, 'building regularization')
-        logger.info('Step 2/4: Georeferencing masks and dynamically bridging gaps...')
-        refined_collection = self._georeference_and_filter(segmented_assets)
+
+        logger.info('Step 2/5: Fusing overlapping crops and matching footprints...')
+        accepted = self._match_seeds(self._fuse(detections, windows), local_seeds)
 
         # Pass 2: Retry dropped assets with lower thresholds:
         if self.retry_dropped:
-            # Strip the '_split_' suffix so the IDs match input assets:
-            successful_ids = {
-                asset.id.split('_split_')[0] for asset in refined_collection
-            }
-            dropped_assets = PhysicalAssetCollection()
-
-            for asset in input_assets:
-                if asset.id not in successful_ids:
-                    dropped_assets.add(asset)
-
+            matched = {seed_id for _, ids in accepted for seed_id in ids}
+            dropped_assets = PhysicalAssetCollection(
+                [a for a in input_assets if a.id in seeds and a.id not in matched]
+            )
             if len(dropped_assets) > 0:
                 logger.info(
-                    f'Step 3/4: Retrying {len(dropped_assets)} dropped assets '
+                    f'Step 3/5: Retrying {len(dropped_assets)} dropped assets '
                     f'with lower thresholds...'
                 )
-
-                # Temporarily overwrite segmenter thresholds:
-                orig_conf = self.segmenter.threshold
-                orig_mask = self.segmenter.mask_threshold
-                self.segmenter.threshold = self.retry_confidence_threshold
-                self.segmenter.mask_threshold = self.retry_mask_threshold
-
-                try:
-                    # Run the retry pass:
-                    retry_segmented = self.segmenter(dropped_assets)
-                    retry_refined = self._georeference_and_filter(retry_segmented)
-                finally:
-                    # Restore original thresholds:
-                    self.segmenter.threshold = orig_conf
-                    self.segmenter.mask_threshold = orig_mask
-
+                recovered = self._retry(dropped_assets, local_seeds, accepted, to_local)
                 logger.info(
-                    f'Pass 2 recovered {len(retry_refined)} previously dropped assets.'
+                    f'Pass 2 recovered {len(recovered)} previously dropped assets.'
                 )
-
-                # Merge recovered assets into the main collection:
-                for asset in retry_refined:
-                    refined_collection.add(asset)
+                accepted.extend(recovered)
             else:
-                logger.info('Step 3/4: No dropped assets to retry.')
+                logger.info('Step 3/5: No dropped assets to retry.')
         else:
-            logger.info('Step 3/4: Retry step skipped (retry_dropped=False).')
+            logger.info('Step 3/5: Retry step skipped (retry_dropped=False).')
 
-        # Dissolve:
-        logger.info('Step 4/4: Dissolving overlapping and adjoining polygons...')
-        merged_collection = self._dissolve_overlapping_assets(refined_collection)
+        raise_if_canceled(self.cancel_event, 'building regularization')
+        logger.info('Step 4/5: Regularizing outlines and separating neighbors...')
+        outlines = [obj.geometry for obj, _ in accepted]
+        priorities = [
+            obj.n_views * 1e3 + (obj.score or 0.0) * 1e2 + obj.geometry.area * 1e-4
+            for obj, _ in accepted
+        ]
+        if self.regularize_outlines:
+            outlines = regularize_footprints(
+                outlines, priorities=priorities, min_area=self.min_area_m2
+            )
+        else:
+            outlines = resolve_overlaps(
+                outlines, priorities=priorities, min_area=self.min_area_m2
+            )
 
-        # Clip minor overlaps:
-        logger.info('Step 5: Truncating intrusions between neighboring polygons...')
-        final_collection = self._truncate_intrusions(merged_collection)
+        final_collection = PhysicalAssetCollection()
+        for (obj, seed_ids), outline in zip(accepted, outlines, strict=True):
+            if outline is None:
+                continue
+            final_collection.add(
+                PhysicalAsset(
+                    id=f'bldg_merged_{uuid.uuid4().hex[:8]}',
+                    geometry=shapely_transform(to_wgs84, outline),
+                    attributes={
+                        'asset_type': 'building_footprint',
+                        'confidence': obj.score,
+                        'views': obj.n_views,
+                        'source_ids': sorted(str(s) for s in seed_ids),
+                    },
+                )
+            )
 
         # Remove degenerate shapes:
-        logger.info('Step 6: Filtering out degenerate geometries...')
+        logger.info('Step 5/5: Filtering out degenerate geometries...')
         final_collection = self._filter_degenerate_assets(final_collection)
 
         # Default undefined asset types to 'building':
         final_collection.set_asset_type(ASSET_TYPE, overwrite=False)
 
-        logger.info('Building regularization complete.')
+        logger.info(
+            f'Building regularization complete: {len(final_collection)} footprints.'
+        )
         return final_collection
 
-    def _fill_holes(self, geometry: BaseGeometry) -> BaseGeometry:
+    # ------------------------------------------------------------ stages
+    @staticmethod
+    def _seed_geometries(assets: PhysicalAssetCollection) -> dict[Hashable, Polygon]:
         """
-        Remove interior rings (holes) from polygons to ensure solid footprints.
+        WGS84 polygons of the preliminary footprints, keyed by asset ID.
 
-        Args:
-            geometry (BaseGeometry):
-                A ``Polygon``, ``MultiPolygon`` or ``GeometryCollection``.
-
-        Returns:
-            BaseGeometry:
-                The same geometry type without interior rings. Non-polygonal
-                inputs are returned unchanged.
+        Preliminary geometries in Web Mercator (EPSG:3857, recognizable by
+        coordinates outside the WGS84 range) are reprojected on the fly.
+        Non-polygonal and empty geometries are skipped.
         """
-        if geometry.geom_type == 'Polygon':
-            return Polygon(geometry.exterior)
-        elif geometry.geom_type in ('MultiPolygon', 'GeometryCollection'):
-            polygons = [
-                Polygon(p.exterior)
-                for p in getattr(geometry, 'geoms', [])
-                if p.geom_type == 'Polygon'
-            ]
-            return MultiPolygon(polygons) if polygons else geometry
-
-        return geometry
-
-    def _truncate_intrusions(
-        self, asset_collection: PhysicalAssetCollection
-    ) -> PhysicalAssetCollection:
-        """
-        Slice off intrusions of smaller buildings into larger neighbors.
-
-        Assets are processed from largest to smallest. Whenever a polygon
-        overlaps an already-accepted (larger) polygon, the longest wall of the
-        larger building touching the overlap is extended into an infinite
-        cutting line and the smaller polygon is split along it, keeping the
-        piece outside the larger building. This guarantees clean cuts without
-        L-shaped bites or notches. If no wall can be identified (e.g., the
-        overlap is fully interior) a plain geometric difference is used.
-
-        Args:
-            asset_collection (PhysicalAssetCollection):
-                Polygonal assets, possibly overlapping.
-
-        Returns:
-            PhysicalAssetCollection:
-                The same assets with mutually non-overlapping geometries.
-                Multi-part results are reduced to their largest polygon.
-        """
-        # Sort by area descending so large, primary buildings act as the
-        # unyielding 'walls'
-        assets = sorted(
-            list(asset_collection), key=lambda a: a.geometry.area, reverse=True
-        )
-
-        resolved_collection = PhysicalAssetCollection()
-        seen_geoms: list[BaseGeometry] = []
-
-        for asset in assets:
-            geom = asset.geometry.buffer(0)
-            if geom.is_empty:
-                continue
-
-            # Check for overlaps against all primary buildings we've already
-            # locked in
-            for larger_geom in seen_geoms:
-                if not geom.intersects(larger_geom):
-                    continue
-
-                overlap = geom.intersection(larger_geom)
-                # Ignore numerically negligible overlaps. The tolerance is
-                # relative so that it works for WGS84 degrees as well as
-                # projected units:
-                min_area = min(geom.area, larger_geom.area)
-                if overlap.is_empty or overlap.area < 1e-4 * min_area:
-                    continue
-
-                # 1. Extract all exterior wall segments of the primary building
-                segments = []
-                if larger_geom.geom_type == 'Polygon':
-                    ext_coords = list(larger_geom.exterior.coords)
-                    segments = [
-                        LineString([ext_coords[k], ext_coords[k + 1]])
-                        for k in range(len(ext_coords) - 1)
-                    ]
-
-                # 2. Find the walls that the smaller building is touching/crossing
-                # (scale-aware tolerance for near misses):
-                wall_tol = 1e-3 * math.sqrt(larger_geom.area)
-                intersecting_walls = [
-                    seg
-                    for seg in segments
-                    if seg.intersects(overlap) or seg.distance(overlap) < wall_tol
-                ]
-
-                if intersecting_walls:
-                    # 3. Pick the longest wall segment involved in the collision
-                    main_wall = max(intersecting_walls, key=lambda s: s.length)
-
-                    # 4. Extend this wall into an infinite cutting line
-                    coords = list(main_wall.coords)
-                    p1, p2 = coords[0], coords[1]
-                    dx = p2[0] - p1[0]
-                    dy = p2[1] - p1[1]
-                    length = math.hypot(dx, dy)
-
-                    if length > 0:
-                        ux, uy = dx / length, dy / length
-                        # Make the line long enough to slice the whole neighbor
-                        ext = 5000
-                        ext_p1 = (p1[0] - ux * ext, p1[1] - uy * ext)
-                        ext_p2 = (p2[0] + ux * ext, p2[1] + uy * ext)
-                        cut_line = LineString([ext_p1, ext_p2])
-
-                        # 5. Slice the invading building cleanly along the
-                        # extended wall!
-                        try:
-                            parts = split(geom, cut_line)
-                            valid_polys = [
-                                p
-                                for p in parts.geoms
-                                if p.geom_type == 'Polygon' and not p.is_empty
-                            ]
-
-                            if len(valid_polys) > 1:
-                                # Keep the piece that safely sits OUTSIDE the
-                                # main building
-                                geom = min(
-                                    valid_polys,
-                                    key=lambda p: p.intersection(larger_geom).area,
-                                )
-                            else:
-                                geom = geom.difference(larger_geom)  # Fallback
-                        except Exception:
-                            geom = geom.difference(larger_geom)  # Fallback
-                    else:
-                        geom = geom.difference(larger_geom)
-                else:
-                    geom = geom.difference(larger_geom)  # Fallback
-
-            # 6. Clean up the final shape (drop tiny splinters if any)
-            if geom.geom_type in ('MultiPolygon', 'GeometryCollection'):
-                polys = [
-                    g for g in getattr(geom, 'geoms', []) if g.geom_type == 'Polygon'
-                ]
-                if polys:
-                    geom = max(polys, key=lambda p: p.area)
-                else:
-                    continue
-
-            asset.geometry = geom
-            seen_geoms.append(geom)
-            resolved_collection.add(asset)
-
-        return resolved_collection
-
-    def _bridge_fragments(self, geometry: BaseGeometry) -> BaseGeometry:
-        """
-        Fuse disconnected polygon parts using morphological closing.
-
-        The geometry is projected to a local azimuthal-equidistant frame in US
-        feet, a minimum spanning tree over the parts determines the largest
-        gap to bridge, and a buffer/unbuffer of half that gap (capped at
-        ``max_gap_bridge_ft``) is applied. Useful for reconnecting building
-        components split by visual obstructions like tree branches or
-        shadows.
-
-        Args:
-            geometry (BaseGeometry):
-                A WGS84 ``MultiPolygon`` or ``GeometryCollection``. Other
-                geometry types are returned unchanged.
-
-        Returns:
-            BaseGeometry:
-                The bridged geometry in WGS84. If bridging still leaves
-                several parts, the largest polygon is returned.
-        """
-        if geometry.geom_type not in ('MultiPolygon', 'GeometryCollection'):
-            return geometry
-
-        proj_wgs84 = pyproj.CRS('EPSG:4326')
-        proj_local = pyproj.CRS(
-            f'+proj=aeqd +lat_0={geometry.centroid.y} '
-            f'+lon_0={geometry.centroid.x} +datum=WGS84 +units=us-ft'
-        )
-
-        to_local = pyproj.Transformer.from_crs(
-            proj_wgs84, proj_local, always_xy=True
-        ).transform
         to_wgs84 = pyproj.Transformer.from_crs(
-            proj_local, proj_wgs84, always_xy=True
+            'EPSG:3857', 'EPSG:4326', always_xy=True
         ).transform
+        seeds: dict[Hashable, Polygon] = {}
+        for asset in assets:
+            geom = asset.geometry
+            if geom is None or geom.is_empty:
+                continue
+            if geom.geom_type not in ('Polygon', 'MultiPolygon'):
+                continue
+            minx, miny, maxx, maxy = geom.bounds
+            if minx < -180 or maxx > 180 or miny < -90 or maxy > 90:
+                geom = shapely_transform(to_wgs84, geom)
+            if not geom.is_valid:
+                geom = geom.buffer(0)
+            if not geom.is_empty:
+                seeds[asset.id] = geom
+        return seeds
 
-        local_geom = shapely_transform(to_local, geometry)
-        polygons = [
-            g for g in getattr(local_geom, 'geoms', []) if g.geom_type == 'Polygon'
-        ]
+    def _segment(
+        self,
+        assets: PhysicalAssetCollection,
+        to_local: Callable[..., Any],
+    ) -> tuple[list[ViewDetection], dict[Hashable, BaseGeometry]]:
+        """
+        Segment the crops and trace every mask into a candidate outline.
 
-        if len(polygons) <= 1:
-            return geometry
+        Assets are segmented in chunks and their masks are released right
+        after tracing, so memory stays flat however many buildings there are.
 
-        G = nx.Graph()
-        for i, p1 in enumerate(polygons):
-            G.add_node(i)
-            for j, p2 in enumerate(polygons):
-                if i < j:
-                    G.add_edge(i, j, weight=p1.distance(p2))
+        Returns:
+            tuple: The candidates (planar CRS) and the ground window of each
+            crop, keyed by image ID.
+        """
+        detections: list[ViewDetection] = []
+        windows: dict[Hashable, BaseGeometry] = {}
+        asset_list = list(assets)
+        for start in range(0, len(asset_list), _SEGMENT_CHUNK):
+            chunk = PhysicalAssetCollection(asset_list[start : start + _SEGMENT_CHUNK])
+            self.segmenter(chunk)
+            for asset in chunk:
+                masks_by_image = asset.attributes.pop('sam3_masks', None) or {}
+                scores_by_image = asset.attributes.pop('sam3_scores', None) or {}
+                asset.attributes.pop('sam3_bounding_boxes', None)
+                for img_asset in asset.image_assets:
+                    if img_asset.id is None or img_asset.id not in masks_by_image:
+                        continue
+                    traced = self._trace_image(
+                        img_asset,
+                        masks_by_image[img_asset.id],
+                        scores_by_image.get(img_asset.id),
+                    )
+                    if traced is None:
+                        continue
+                    window, instances = traced
+                    view = img_asset.id
+                    windows[view] = shapely_transform(to_local, window)
+                    detections.extend(
+                        ViewDetection(shapely_transform(to_local, geom), view, score)
+                        for geom, score in instances
+                    )
+        return detections, windows
 
-        mst = nx.minimum_spanning_tree(G)
-        max_gap = max(data['weight'] for _, _, data in mst.edges(data=True))
-        dynamic_buffer = (max_gap / 2.0) * 1.05
-        dynamic_buffer = min(dynamic_buffer, self.max_gap_bridge_ft)
+    @staticmethod
+    def _image_georef(img_asset: ImageAsset) -> PatchGeoref | None:
+        """The crop's native georeference, or ``None`` if missing or unreadable."""
+        georef_dict = img_asset.properties.get('native_georef')
+        if not georef_dict:
+            return None
+        try:
+            return PatchGeoref.from_dict(georef_dict)
+        except (KeyError, TypeError, ValueError) as e:
+            logger.warning(
+                f"Ignoring unreadable 'native_georef' on image '{img_asset.id}': {e}"
+            )
+            return None
 
-        bridged_local = local_geom.buffer(dynamic_buffer, join_style=2).buffer(
-            -dynamic_buffer, join_style=2
+    def _trace_image(
+        self, img_asset: ImageAsset, masks: Any, scores: Any
+    ) -> tuple[BaseGeometry, list[tuple[BaseGeometry, float | None]]] | None:
+        """
+        The ground window of one crop and its instance outlines (WGS84).
+
+        Returns ``None`` for crops without georeferencing.
+        """
+        wgs84_bounds = img_asset.properties.get('wgs84_bounds')
+        georef = self._image_georef(img_asset)
+        window: BaseGeometry
+        if georef is not None:
+            t = georef.transform
+            corners = Polygon(
+                [
+                    t * (0, 0),
+                    t * (georef.width, 0),
+                    t * (georef.width, georef.height),
+                    t * (0, georef.height),
+                ]
+            )
+            window = (
+                corners
+                if georef.crs is None or georef.crs == CRS.from_epsg(4326)
+                else shape(
+                    transform_geom(georef.crs, CRS.from_epsg(4326), mapping(corners))
+                )
+            )
+        elif wgs84_bounds:
+            min_lon, min_lat, max_lon, max_lat = wgs84_bounds
+            window = box(min_lon, min_lat, max_lon, max_lat)
+        else:
+            return None
+
+        masks = np.asarray(masks)
+        if masks.size == 0:
+            return window, []
+        if masks.ndim == 2:
+            masks = masks[np.newaxis, ...]
+        score_list = list(scores) if scores is not None else []
+        instances = []
+        for index, instance_mask in enumerate(masks):
+            parts = mask_to_wgs84_polygons(
+                instance_mask, georef=georef, wgs84_bounds=wgs84_bounds
+            )
+            if not parts:
+                continue
+            score = float(score_list[index]) if index < len(score_list) else None
+            instances.append((unary_union(parts), score))
+        return window, instances
+
+    def _fuse(
+        self,
+        detections: list[ViewDetection],
+        windows: dict[Hashable, BaseGeometry],
+    ) -> list[FusedObject]:
+        """Fuse the candidates of all crops into one outline per building."""
+        if not detections:
+            return []
+        return fuse_view_detections(
+            detections,
+            windows,
+            neck_width=self.neck_width_m,
+            min_area=min(self.min_area_m2, 3.0),
         )
 
-        bridged_wgs84 = shapely_transform(to_wgs84, bridged_local)
-
-        if bridged_wgs84.geom_type in ('MultiPolygon', 'GeometryCollection'):
-            polygons = [
-                g
-                for g in getattr(bridged_wgs84, 'geoms', [])
-                if g.geom_type == 'Polygon'
-            ]
-            if polygons:
-                return max(polygons, key=lambda p: p.area)
-
-        return bridged_wgs84
-
-    def _georeference_and_filter(
-        self, asset_collection: PhysicalAssetCollection
-    ) -> PhysicalAssetCollection:
+    def _match_seeds(
+        self,
+        objects: list[FusedObject],
+        local_seeds: dict[Hashable, BaseGeometry],
+    ) -> list[tuple[FusedObject, list[Hashable]]]:
         """
-        Georeference pixel masks to WGS84 and apply spatial quality filters.
+        Keep the buildings that match a preliminary footprint.
 
-        Evaluates SAM 3 masks against their preliminary seed geometry using
-        Intersection over Union (IoU) and Recall. Masks that pass
-        (``iou >= min_overlap_ratio`` or ``recall >= 0.5``) are healed with a
-        zero buffer and each resulting polygon becomes a new asset with the ID
-        ``'<asset_id>_split_<instance>_<part>'``, inheriting the original
-        attributes plus ``'preliminary_geometry_wkt'`` and
-        ``'sam3_refined': True``. Preliminary geometries in Web Mercator
-        (EPSG:3857) are reprojected to WGS84 on the fly.
-
-        Args:
-            asset_collection (PhysicalAssetCollection):
-                Assets that have been run through ``SAM3ImageSegmenter`` and
-                therefore carry ``'sam3_masks'`` in their attributes.
-
-        Masks are vectorized in the crop's own pixel grid using the
-        ``'native_georef'`` property written by ``AerialImageryExtractor``
-        and reprojected to WGS84; crops that only carry ``'wgs84_bounds'``
-        fall back to that envelope, which is exact only for north-up WGS84
-        rasters.
-
-        Returns:
-            PhysicalAssetCollection:
-                Newly created refined assets. Assets without masks, without
-                georeferencing on their images, or whose masks fail the
-                filters are dropped.
+        A building matches a footprint when their IoU reaches
+        ``min_overlap_ratio``, when it covers at least half of the
+        footprint, or when at least half of it lies inside the footprint
+        (a footprint that covered several buildings matches each of them).
+        Buildings that match no footprint are neighbors that only appear at
+        the edge of the crops and are dropped.
         """
-        refined_collection = PhysicalAssetCollection()
-
-        for asset in asset_collection:
-            prelim_geom = asset.geometry
-            if not prelim_geom or prelim_geom.is_empty:
-                continue
-
-            # If coordinates are outside valid WGS84 bounds (-180 to 180),
-            # dynamically reproject prelim_geom to WGS84 so they can intersect:
-            minx, miny, maxx, maxy = prelim_geom.bounds
-            if minx < -180 or maxx > 180 or miny < -90 or maxy > 90:
-                transformer = pyproj.Transformer.from_crs(
-                    'EPSG:3857', 'EPSG:4326', always_xy=True
-                )
-                prelim_geom = shapely_transform(transformer.transform, prelim_geom)
-
-            sam3_masks_dict: dict[str, Any] = asset.attributes.get('sam3_masks', {})
-            if not sam3_masks_dict:
-                continue
-
-            valid_instances = []
-
-            for img_asset in asset.image_assets:
-                if img_asset.id is None:
+        if not objects or not local_seeds:
+            return []
+        seed_ids = list(local_seeds)
+        seed_geoms = [local_seeds[k] for k in seed_ids]
+        tree = STRtree(seed_geoms)
+        accepted = []
+        for obj in objects:
+            geom = obj.geometry
+            ids = []
+            for j in tree.query(geom, predicate='intersects'):
+                seed = seed_geoms[int(j)]
+                inter = geom.intersection(seed).area
+                if inter <= 0:
                     continue
-                masks = sam3_masks_dict.get(img_asset.id)
-                if masks is None or len(masks) == 0:
-                    continue
-
-                wgs84_bounds = img_asset.properties.get('wgs84_bounds')
-                georef = None
-                georef_dict = img_asset.properties.get('native_georef')
-                if georef_dict:
-                    try:
-                        georef = PatchGeoref.from_dict(georef_dict)
-                    except (KeyError, TypeError, ValueError) as e:
-                        logger.warning(
-                            f"Ignoring unreadable 'native_georef' on image "
-                            f"'{img_asset.id}': {e}"
-                        )
-                if georef is None and not wgs84_bounds:
-                    continue
-
-                masks = np.asarray(masks)
-                if masks.ndim == 2:
-                    masks = masks[np.newaxis, ...]
-
-                for instance_mask in masks:
-                    instance_parts = mask_to_wgs84_polygons(
-                        instance_mask, georef=georef, wgs84_bounds=wgs84_bounds
-                    )
-
-                    if not instance_parts:
-                        continue
-
-                    instance_geom = unary_union(instance_parts)
-
-                    if instance_geom.geom_type in (
-                        'MultiPolygon',
-                        'GeometryCollection',
-                    ):
-                        instance_geom = self._bridge_fragments(instance_geom)
-
-                    # Calculate areas safely:
-                    prelim_area = prelim_geom.area
-                    if prelim_area == 0 or instance_geom.area == 0:
-                        continue
-
-                    intersection_area = instance_geom.intersection(prelim_geom).area
-
-                    # RECALL: Did the new mask cover the preliminary seed:
-                    recall = intersection_area / prelim_geom.area
-
-                    # IoU: The ultimate measure of spatial similarity:
-                    union_area = prelim_geom.union(instance_geom).area
-                    iou = intersection_area / union_area if union_area > 0 else 0.0
-
-                    # Accept the mask if it is a solid 1-to-1 match (IoU) OR if
-                    # it is a cleanly extracted building that covers the
-                    # preliminary seed (recall):
-                    if iou >= self.min_overlap_ratio or recall >= 0.50:
-                        valid_instances.append(instance_geom)
-
-            # Process all valid instances we collected:
-            if valid_instances:
-                for idx, valid_geom in enumerate(valid_instances):
-                    # HEAL: Fix any self-intersections instantly:
-                    healed_geom = valid_geom.buffer(0)
-
-                    if healed_geom.geom_type in ('MultiPolygon', 'GeometryCollection'):
-                        valid_polys = [
-                            g
-                            for g in getattr(healed_geom, 'geoms', [])
-                            if g.geom_type == 'Polygon' and not g.is_empty
-                        ]
-                    elif (
-                        healed_geom.geom_type == 'Polygon' and not healed_geom.is_empty
-                    ):
-                        valid_polys = [healed_geom]
-                    else:
-                        continue
-
-                    # Add each piece as a brand new asset to the collection:
-                    for p_idx, final_poly in enumerate(valid_polys):
-                        new_attrs = asset.attributes.copy() if asset.attributes else {}
-                        new_attrs['preliminary_geometry_wkt'] = prelim_geom.wkt
-                        new_attrs['sam3_refined'] = True
-
-                        new_asset = PhysicalAsset(
-                            id=f'{asset.id}_split_{idx}_{p_idx}',
-                            geometry=final_poly,
-                            attributes=new_attrs,
-                        )
-
-                        for img in asset.image_assets:
-                            new_asset.add_image_assets(img)
-
-                        refined_collection.add(new_asset)
-            else:
-                logger.debug(
-                    f"Asset '{asset.id}' dropped. No SAM 3 instances passed filters."
-                )
-
-        return refined_collection
-
-    def _dissolve_overlapping_assets(
-        self, asset_collection: PhysicalAssetCollection
-    ) -> PhysicalAssetCollection:
-        """
-        Dissolve highly overlapping (duplicate) geometries into single assets.
-
-        Builds a network graph in which two polygons are connected when their
-        intersection exceeds 50% of the smaller polygon's area, then merges
-        each connected component with ``unary_union``. Adjacent but distinct
-        neighbor buildings stay separate. Holes are filled in the result.
-
-        Args:
-            asset_collection (PhysicalAssetCollection):
-                Refined polygon assets, possibly containing duplicates.
-
-        Returns:
-            PhysicalAssetCollection:
-                New assets with IDs ``'bldg_merged_<hash>'`` and the attribute
-                ``'asset_type': 'building_footprint'``. Empty if the input
-                contains no non-empty geometries.
-        """
-        geometries = [
-            asset.geometry
-            for asset in asset_collection
-            if asset.geometry and not asset.geometry.is_empty
-        ]
-
-        if not geometries:
-            return PhysicalAssetCollection()
-
-        # Build a network graph to group duplicates:
-        G = nx.Graph()
-        for i, geom in enumerate(geometries):
-            G.add_node(i, geom=geom)
-
-        # Check overlap between every pair of polygons:
-        for i in range(len(geometries)):
-            for j in range(i + 1, len(geometries)):
-                g1 = geometries[i]
-                g2 = geometries[j]
-
-                if not (
-                    g1.bounds[0] > g2.bounds[2]
-                    or g1.bounds[2] < g2.bounds[0]
-                    or g1.bounds[1] > g2.bounds[3]
-                    or g1.bounds[3] < g2.bounds[1]
+                union = geom.area + seed.area - inter
+                if (
+                    (union > 0 and inter / union >= self.min_overlap_ratio)
+                    or inter >= 0.5 * seed.area
+                    or inter >= 0.5 * geom.area
                 ):
-                    if g1.intersects(g2):
-                        inter_area = g1.intersection(g2).area
-                        min_area = min(g1.area, g2.area)
+                    ids.append(seed_ids[int(j)])
+            if ids:
+                accepted.append((obj, ids))
+            else:
+                logger.debug('A segmented building matched no preliminary footprint.')
+        return accepted
 
-                        # If they overlap by more than 50% of the smaller
-                        # polygon's area, they are duplicates targeting the same
-                        # physical building:
-                        if min_area > 0 and (inter_area / min_area) > 0.5:
-                            G.add_edge(i, j)
-
-        final_collection = PhysicalAssetCollection()
-
-        # Merge grouped duplicates and create the final assets:
-        for comp in nx.connected_components(G):
-            comp_geoms = [G.nodes[n]['geom'] for n in comp]
-
-            merged_geom = unary_union(comp_geoms).buffer(0)
-
-            clean_parts = (
-                [merged_geom]
-                if merged_geom.geom_type == 'Polygon'
-                else list(getattr(merged_geom, 'geoms', []))
-            )
-
-            for poly in clean_parts:
-                if poly.is_empty or poly.geom_type != 'Polygon':
-                    continue
-
-                # Fill any holes caused by HVACs, shadows, or trees:
-                solid_poly = self._fill_holes(poly)
-
-                new_asset = PhysicalAsset(
-                    id=f'bldg_merged_{uuid.uuid4().hex[:8]}',
-                    geometry=solid_poly,
-                    attributes={'asset_type': 'building_footprint'},
+    def _retry(
+        self,
+        dropped_assets: PhysicalAssetCollection,
+        local_seeds: dict[Hashable, BaseGeometry],
+        accepted: list[tuple[FusedObject, list[Hashable]]],
+        to_local: Callable[..., Any],
+    ) -> list[tuple[FusedObject, list[Hashable]]]:
+        """Segment dropped assets at lower thresholds and keep new buildings."""
+        orig_conf = self.segmenter.threshold
+        orig_mask = self.segmenter.mask_threshold
+        self.segmenter.threshold = self.retry_confidence_threshold
+        self.segmenter.mask_threshold = self.retry_mask_threshold
+        try:
+            detections, windows = self._segment(dropped_assets, to_local)
+        finally:
+            self.segmenter.threshold = orig_conf
+            self.segmenter.mask_threshold = orig_mask
+        dropped_seeds: dict[Hashable, BaseGeometry] = {
+            a.id: local_seeds[a.id] for a in dropped_assets if a.id in local_seeds
+        }
+        candidates = self._match_seeds(self._fuse(detections, windows), dropped_seeds)
+        existing = [obj.geometry for obj, _ in accepted]
+        tree = STRtree(existing) if existing else None
+        recovered = []
+        for obj, ids in candidates:
+            geom = obj.geometry
+            if tree is not None:
+                taken = sum(
+                    existing[int(j)].intersection(geom).area
+                    for j in tree.query(geom, predicate='intersects')
                 )
-                final_collection.add(new_asset)
-
-        return final_collection
+                if taken > _RETRY_MAX_OVERLAP * geom.area:
+                    continue
+            recovered.append((obj, ids))
+        return recovered
 
     def _filter_degenerate_assets(
         self, asset_collection: PhysicalAssetCollection

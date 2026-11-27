@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 09-22-2026
+# 11-27-2026
 
 """
 Processing components and the pipeline engine of ``rapidtools``.
@@ -111,6 +111,7 @@ from .pipeline import Pipeline
 
 # Import postprocessing tools:
 from .postprocessing.buildings import BuildingRegularizer
+from .postprocessing.footprints import FootprintRegularizer
 from .postprocessing.roads import RoadwayRegularizer
 from .step import PipelineStep, Stage
 from .street_objects import MapillaryFeatureExtractor, MapillaryObjectImageExtractor
@@ -129,6 +130,7 @@ __all__ = [
     'DroneImageExtractor',
     'DroneViewSelector',
     'DuplicateResolver',
+    'FootprintRegularizer',
     'GeminiAssetAnalyzer',
     'Gemma4AssetAnalyzer',
     'GoogleOrthomosaicExtractor',

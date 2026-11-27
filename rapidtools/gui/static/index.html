@@ -459,8 +459,8 @@
                   <div class="range-row"><input type="range" id="mask-threshold" min="0.05" max="0.95" step="0.05" value="0.4"><output id="mask-threshold-out">0.40</output></div>
                 </div>
               </div>
-              <div class="check"><input type="checkbox" id="regularize" checked><label for="regularize" style="margin:0;font-weight:500;color:var(--ink)">Regularize geometries (buildings and roads)</label></div>
-              <div class="check"><input type="checkbox" id="instances"><label for="instances" style="margin:0;font-weight:500;color:var(--ink)">Keep every detected instance separate (countable objects such as vehicles)</label></div>
+              <div class="check"><input type="checkbox" id="regularize" checked><label for="regularize" style="margin:0;font-weight:500;color:var(--ink)">Refine building footprints on close-up crops and clean up roads (slower; building walls are squared either way)</label></div>
+              <div class="check"><input type="checkbox" id="instances"><label for="instances" style="margin:0;font-weight:500;color:var(--ink)">Keep every detected instance separate (countable objects such as vehicles; buildings are always kept separate)</label></div>
             </div>
           </details>
         </div>

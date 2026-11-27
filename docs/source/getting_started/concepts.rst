@@ -98,7 +98,8 @@ which fixes where they run:
        :class:`~rapidtools.processing.MapillaryObjectImageExtractor` attach
        imagery to assets.
    * - ``REGULARIZE``
-     - :class:`~rapidtools.processing.BuildingRegularizer` and
+     - :class:`~rapidtools.processing.BuildingRegularizer`,
+       :class:`~rapidtools.processing.FootprintRegularizer` and
        :class:`~rapidtools.processing.RoadwayRegularizer` clean up
        geometries.
    * - ``SEGMENT``

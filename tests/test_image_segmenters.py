@@ -35,7 +35,7 @@
 # Barbaros Cetiner
 #
 # Last updated:
-# 09-22-2026
+# 11-27-2026
 
 import logging
 import threading
@@ -188,6 +188,14 @@ def test_init_string_prompt_and_model_kwargs(fake_sam):
     assert inst.device == 'cpu'
     assert inst.load_in_4bit is False
     assert seg.model is inst
+
+
+def test_init_shares_a_loaded_model(fake_sam):
+    """A model passed in is used instead of loading another copy."""
+    loaded = FakeSAM3(model_id='already/loaded')
+    seg = SAM3ImageSegmenter(prompt='roof', model=loaded)
+    assert seg.model is loaded
+    assert 'instance' not in fake_sam  # nothing new was loaded
 
 
 def test_init_stores_thresholds_and_event(fake_sam):
