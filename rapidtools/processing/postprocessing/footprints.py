@@ -784,6 +784,12 @@ def resolve_overlaps(
                 poly = largest_polygon(  # type: ignore[assignment]
                     _valid_polygon(opened.intersection(remainder))
                 )
+                # The intersection can leave a vertex in the middle of a
+                # straight wall, off the line only by float noise (seen on
+                # Linux builds of GEOS); a micrometer simplify drops it
+                # without moving any real corner:
+                if poly is not None:
+                    poly = poly.simplify(1e-6, preserve_topology=True)
         if poly is None or poly.is_empty or poly.area < min_area:
             result[i] = None
             continue
